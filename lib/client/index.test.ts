@@ -57,4 +57,16 @@ describe("getIncidentClient", () => {
     expect(calls.real).toBe(1);
     expect(calls.mock).toBe(0);
   });
+
+  test.each(["0", "true", "false", "yes"])(
+    "returns the real client when NEXT_PUBLIC_ZH_MOCK is %s",
+    async (flag) => {
+      vi.stubGlobal("window", { location: { origin: "http://localhost:3001" } });
+      const { getIncidentClient, isMockIncidentClient } = await load(flag);
+      expect(isMockIncidentClient()).toBe(false);
+      getIncidentClient();
+      expect(calls.real).toBe(1);
+      expect(calls.mock).toBe(0);
+    },
+  );
 });

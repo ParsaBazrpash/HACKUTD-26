@@ -2,8 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
+import { AdmissionControls } from "@/components/incidents/admission-controls";
 import { HourClock } from "@/components/incidents/hour-clock";
 import { DemoBanner } from "@/components/incidents/demo-banner";
+import { InviteControls } from "@/components/incidents/invite-controls";
+import { MessageComposer } from "@/components/incidents/message-composer";
 import {
   CHANNEL_LABELS,
   ROLE_LABELS,
@@ -22,6 +25,7 @@ import { useIncident } from "@/hooks/use-incident";
 import { getIncidentClient, isMockIncidentClient } from "@/lib/client";
 import { clientErrorMessage } from "@/lib/client/errors";
 import type { IncidentClient, IncidentState, MemberView } from "@/lib/client/types";
+import { authorizedChatChannels } from "@/components/incidents/room-controls";
 import { projectLegalDeadlines } from "@/lib/legal";
 import type { LegalDeadlineStatus } from "@/lib/legal";
 import { formatTimestamp } from "@/lib/time";
@@ -208,6 +212,8 @@ function Room({ state, mock }: { state: IncidentState; mock: boolean }) {
   const incident = state.incident;
   if (!incident) return <p className="text-sm text-muted">No incident is open in this tab.</p>;
   const awareness = (state.discovery?.determinedAt ?? incident.createdAt).toISOString();
+  const chatChannels = authorizedChatChannels(state.me?.role, state.me?.state, state.channels);
+  const commander = state.me?.role === "commander" && state.me.state === "active";
 
   return (
     <div>
@@ -287,6 +293,13 @@ function Room({ state, mock }: { state: IncidentState; mock: boolean }) {
         </Panel>
       </div>
 
+      {commander && state.me ? (
+        <div className="mt-6 grid gap-4 lg:grid-cols-2">
+          <InviteControls />
+          <AdmissionControls members={state.members} me={state.me} />
+        </div>
+      ) : null}
+
       <NoticeClocks incidentId={incident.id} awarenessAt={awareness} />
 
       <section className="mt-8" aria-labelledby="record-heading">
@@ -326,33 +339,41 @@ function Room({ state, mock }: { state: IncidentState; mock: boolean }) {
 
       <div className="mt-8 grid gap-4 lg:grid-cols-2">
         <Panel id="channels-heading" title="CHANNELS">
-          <ul className="mt-4 space-y-5">
-            {state.channels.map((channel) => (
-              <li key={channel.kind}>
-                <p className="text-sm font-medium text-foreground">{CHANNEL_LABELS[channel.kind]}</p>
-                {channel.kind === "privileged" ? (
-                  <p className="mt-1 text-xs text-muted">Attorney-client privileged and confidential</p>
-                ) : null}
-                {channel.messages.length === 0 ? (
-                  <p className="mt-2 text-sm text-muted">No messages.</p>
-                ) : (
-                  <ul className="mt-2 space-y-3">
-                    {channel.messages.map((message) => (
-                      <li key={message.messageId} className="text-sm">
-                        <p className="leading-6 text-foreground">
-                          <SafeText text={message.text} />
-                        </p>
-                        <p className="mt-1 text-xs text-muted">
-                          {message.author?.displayName ?? "Unknown author"} · {formatTimestamp(message.sentAt)}
-                          {message.verdict.ok ? "" : " · Failed check"}
-                        </p>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </li>
-            ))}
-          </ul>
+          {chatChannels.length === 0 ? (
+            <p className="mt-4 text-sm text-muted">No chat channel is open for this role.</p>
+          ) : (
+            <ul className="mt-4 space-y-5">
+              {chatChannels.map((channel) => (
+                <li key={channel.kind}>
+                  <p className="text-sm font-medium text-foreground">{CHANNEL_LABELS[channel.kind]}</p>
+                  {channel.kind === "privileged" ? (
+                    <p className="mt-1 text-xs text-muted">Attorney-client privileged and confidential</p>
+                  ) : null}
+                  {channel.waitingForKeys ? (
+                    <p className="mt-2 text-sm text-muted">Waiting for channel keys.</p>
+                  ) : null}
+                  {channel.messages.length === 0 ? (
+                    <p className="mt-2 text-sm text-muted">No messages.</p>
+                  ) : (
+                    <ul className="mt-2 space-y-3">
+                      {channel.messages.map((message) => (
+                        <li key={message.messageId} className="text-sm">
+                          <p className="leading-6 text-foreground">
+                            <SafeText text={message.text} />
+                          </p>
+                          <p className="mt-1 text-xs text-muted">
+                            {message.author?.displayName ?? "Unknown author"} · {formatTimestamp(message.sentAt)}
+                            {message.verdict.ok ? "" : " · Failed check"}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <MessageComposer channel={channel.kind} />
+                </li>
+              ))}
+            </ul>
+          )}
         </Panel>
 
         <Panel id="tasks-heading" title="TASKS">

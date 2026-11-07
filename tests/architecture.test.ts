@@ -63,6 +63,9 @@ test("app, components, hooks, and lib do not import the old model", () => {
     const text = readFileSync(file, "utf8");
     expect(text, file).not.toContain("@/lib/data");
     expect(text, file).not.toContain("@/types");
-    expect(text, file).not.toContain("dangerouslySetInnerHTML");
+    // Scanner tests name this sink. Shipped modules still cannot use it.
+    if (!/\.test\.tsx?$/.test(file)) {
+      expect(text, file).not.toContain("dangerouslySetInnerHTML");
+    }
   }
 });

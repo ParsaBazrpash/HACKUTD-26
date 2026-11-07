@@ -4,6 +4,9 @@
 // directly (they are private). Rows are converted to plain data; nothing here
 // interprets ciphertext. Browser only.
 
+// Must load before the bindings: swaps the SDK's eval-based codecs so the
+// production CSP can keep 'unsafe-eval' out of script-src (see strict-csp.ts).
+import './strict-csp';
 import { Identity } from 'spacetimedb';
 import { DbConnection, tables } from '@/src/module_bindings';
 import { isChannel, type ChannelKind } from '@/spacetimedb/src/shared/policy';

@@ -29,7 +29,7 @@ Message and record content (including attorney-client privileged communications)
 | T3 | Edits, reorders or deletes past entries | Per-channel SHA-256 hash chain assigned in a transactional reducer and recomputed by every client; no update or delete reducer exists | `append_event`, `lib/crypto/chain.ts`, `verify.ts` | Demo: owner `UPDATE` turns screens red at that seq; `verify.test.ts` reorder and broken link cases | Planned |
 | T4 | Rewrites the whole history consistently, or rolls it back | Clients pin the last verified `{seq, hash}` per channel in IndexedDB and re-check it; commander-signed checkpoints (P1); head hashes printed in the report | `verify.ts` step 8, `post_checkpoint`, report | `verify.test.ts` rewritten-history and rollback cases | Planned |
 | T5 | Injects a fake member or swaps a member's public key to intercept channel keys | Commander-signed admission certificate binds identity, role, name and both public keys; joiner proves knowledge of the invite secret via HMAC; 12-digit safety code read aloud; commander key pinned from the invite fingerprint | `lib/crypto/invite.ts`, `keys.ts`, `admit_member` | `invite.test.ts` wrong tag; `verify.test.ts` uncertified author ignored; fingerprint mismatch screen | Planned |
-| T6 | Replays or duplicates an old message | Unique client event id and strictly increasing per-author counter, both inside the signed input; module and clients reject repeats | `append_event`, `verify.ts` step 7 | Module test duplicate id and stale counter; `verify.test.ts` replay | Planned |
+| T6 | Replays or duplicates an old message | Unique client event id and strictly increasing per-author counter, both inside the signed input; module and clients reject repeats | `append_event`, `verify.ts` step 7 | Module test duplicate id and stale counter; `verify.test.ts` replay | Done |
 | T7 | Moves a ciphertext to another channel, epoch or incident | AES-GCM associated data binds incident, channel, epoch, author, event id and counter | `seal.ts` | `seal.test.ts` wrong-AAD cases fail | Done |
 | T8 | Withholds rows or key envelopes | Cannot be prevented by an untrusted server; clients detect seq gaps and missing keys and show them | `verify.ts` steps 1 and 5 | `verify.test.ts` gap case | Accepted (detect only) |
 | T9 | Publishes a malicious module version | Confidentiality and integrity never depend on module logic (all checks repeated client-side); publish rights limited to one owner identity whose token stays off the demo machine | Process | README note | Planned |
@@ -39,10 +39,10 @@ Message and record content (including attorney-client privileged communications)
 
 | # | Threat | Mitigation | Where | Verification | Status |
 | --- | --- | --- | --- | --- | --- |
-| T11 | A member reads a channel their role does not allow | Views filter by role; the channel key is never wrapped for that role (module rejects such envelopes) | `my_events`, `my_envelopes`, `admit_member`, `policy.ts` | Module test: Technical gets no privileged rows or envelopes | Planned |
-| T12 | A member calls admin actions | Every reducer checks active membership and role; clients re-check payload kinds against the same policy | All reducers, `lib/protocol/events.ts` | Module test per reducer | Planned |
+| T11 | A member reads a channel their role does not allow | Views filter by role; the channel key is never wrapped for that role (module rejects such envelopes) | `my_events`, `my_envelopes`, `admit_member`, `policy.ts` | Module test: Technical gets no privileged rows or envelopes | Done |
+| T12 | A member calls admin actions | Every reducer checks active membership and role; clients re-check payload kinds against the same policy | All reducers, `lib/protocol/events.ts` | Module test per reducer | Done |
 | T13 | A revoked or compromised member keeps access | Revoke sets state immediately (views go empty, reducers reject) and rotates every readable channel to a new epoch; revocation signed and logged in #record; revoked client wipes local keys | `revoke_member`, `real.ts` | Demo: target locks; module test old-epoch append rejected | Planned |
-| T14 | An insider deletes or alters evidence | Append-only for every role including commander; corrections are new entries with `amends` | Module (no delete path), `events.ts` | Code review: no delete or update on `event` | Planned |
+| T14 | An insider deletes or alters evidence | Append-only for every role including commander; corrections are new entries with `amends` | Module (no delete path), `events.ts` | Code review: no delete or update on `event` | Done |
 | T15 | Display-name impersonation and look-alike Unicode | NFKC normalization, control and bidi characters stripped, unique per incident; role badge and fingerprint always shown | `limits.ts`, `create_incident`, `redeem_invite`, UI | `names.test.ts` | Planned |
 
 ### Joining and sessions
@@ -50,7 +50,7 @@ Message and record content (including attorney-client privileged communications)
 | # | Threat | Mitigation | Where | Verification | Status |
 | --- | --- | --- | --- | --- | --- |
 | T16 | Leaked invite link | Single use, 15 minute default expiry (60 max), role-bound, joiner stays pending until the commander verifies them by voice | `create_invite`, `redeem_invite`, UI | Module test used and expired invites fail | Planned |
-| T17 | Brute-forcing invite codes | 128-bit codes; only `SHA-256` stored; generic result; 5 attempts per 10 minutes per identity, recorded without throwing so the counter persists | `redeem_invite`, `join_attempt` | Module test: sixth attempt refused | Planned |
+| T17 | Brute-forcing invite codes | 128-bit codes; only `SHA-256` stored; generic result; 5 attempts per 10 minutes per identity, recorded without throwing so the counter persists | `redeem_invite`, `join_attempt` | Module test: sixth attempt refused | Done |
 | T18 | Server learns the invite secret | Secret only in the URL fragment (never sent); fragment stripped from the address bar on load; only the HMAC is sent | `/join`, `invite.ts` | Test: redeem payload contains no secret | Planned |
 | T19 | Stolen Spacetime auth token | Token alone cannot decrypt or sign (device keys non-extractable); revoke from another device; CSP reduces XSS exposure | `store.ts`, headers | Manual | Accepted (residual) |
 | T20 | Lost or seized device | Revoke and rotate from another device; full-disk encryption advised; PIN lock on keys is P2 | Process | n/a | Accepted |
@@ -60,7 +60,7 @@ Message and record content (including attorney-client privileged communications)
 | # | Threat | Mitigation | Where | Verification | Status |
 | --- | --- | --- | --- | --- | --- |
 | T21 | Script injection via decrypted text | Text-only rendering, `react/no-danger` lint rule, http(s)-only links with `rel="noopener noreferrer"`, strict CSP | Components, `eslint.config.mjs`, `next.config.ts` | Test rendering `<img onerror>` and `javascript:` payloads as text | Planned |
-| T22 | Malformed or oversized payloads | zod validation of every decrypted payload, unknown kinds flagged; 12 KB plaintext and 16 KB ciphertext caps in client and module | `events.ts`, `limits.ts`, `append_event` | `events.test.ts`, module size test | Planned |
+| T22 | Malformed or oversized payloads | zod validation of every decrypted payload, unknown kinds flagged; 12 KB plaintext and 16 KB ciphertext caps in client and module | `events.ts`, `limits.ts`, `append_event` | `events.test.ts`, module size test | Done |
 | T23 | SQL or command injection | Module uses typed table APIs only; subscriptions are fixed view names in code | Module, `real.ts` | Code review | Planned |
 | T24 | Spreadsheet formula injection in exports | Report is HTML/PDF; any CSV export escapes cells starting with `= + - @` | `lib/report/` | `report.test.ts` | Planned |
 | T25 | Clickjacking | `frame-ancestors 'none'` | `next.config.ts` | Header check in CI or manual | Planned |
@@ -96,7 +96,8 @@ Message and record content (including attorney-client privileged communications)
 
 ## Progress notes
 
-- 2026-11-07 (Lane A): the client crypto library and its negative tests are in (`lib/crypto/*.test.ts`: seal, sign, wrap, invite, chain, verify, store). T7 is Done. Rows that also depend on the module (T2, T3, T4, T5, T6, T11 to T13, T16 to T18) stay Planned until the module tests and the two-browser demo exist.
+- 2026-11-07 (Lane A): the client crypto library and its negative tests are in (`lib/crypto/*.test.ts`: seal, sign, wrap, invite, chain, verify, store). T7 is Done.
+- 2026-11-07 (Lane A): the module and its 34 tests are in (`spacetimedb/src/module.test.ts`), including a test that the client verifier accepts the module's hash chain. T6, T11, T12, T14, T17 and T22 are Done. T13 waits for the revoke demo, T16 and T18 for the join UI, and T2 to T5 for the two-browser demo and module-side signature checks (P1).
 
 ## Downgrades taken
 

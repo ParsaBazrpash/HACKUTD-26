@@ -2,7 +2,7 @@
 // and a correctly chained event log, so tests can then tamper with it.
 // Not imported by app code.
 
-import { admitStatement, bytesToHex, revokeStatement } from '@/spacetimedb/src/shared/encoding';
+import { admitStatement, bytesToHex, checkpointStatement, revokeStatement } from '@/spacetimedb/src/shared/encoding';
 import { CHANNELS, type ChannelKind, type Role, readableChannels } from '@/spacetimedb/src/shared/policy';
 import { type Payload, serializePayload } from '@/lib/protocol/events';
 import { computeEventHash, genesisHash } from './chain';
@@ -11,7 +11,7 @@ import { type DeviceKeys, generateDeviceKeys } from './keys';
 import { randomBytes } from './hash';
 import { generateChannelKeyBytes, importChannelKey } from './seal';
 import { sign } from './sign';
-import type { RawEvent, RosterMember, VerifyInput } from './verify';
+import type { RawCheckpoint, RawEvent, RosterMember, VerifyInput } from './verify';
 
 export interface TestMember {
   keys: DeviceKeys;
@@ -153,6 +153,13 @@ export class TestIncident {
         hash: e.hash.slice(),
       }));
     return out;
+  }
+
+  /** A commander-signed checkpoint at `seq` of `channel` (hash taken from the current events unless given). */
+  async checkpoint(channel: ChannelKind, seq: bigint, hash?: Uint8Array, signer = this.commander): Promise<RawCheckpoint> {
+    const h = hash ?? this.events[channel].find((e) => e.seq === seq)!.hash;
+    const signature = await sign(signer.keys.signPriv, checkpointStatement(this.incidentId, channel, seq, h));
+    return { channel, seq, hash: h, signature };
   }
 
   /** Verify input for a viewer with `role` (sees only readable channels and keys). */

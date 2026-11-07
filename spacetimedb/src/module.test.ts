@@ -12,7 +12,7 @@ import { createSealedEvent } from '@/lib/crypto/event';
 import { newInvite } from '@/lib/crypto/invite';
 import { computeJoinTag } from '@/lib/crypto/invite';
 import { sign } from '@/lib/crypto/sign';
-import { admitStatement, eventSigInput, revokeStatement } from './shared/encoding';
+import { admitStatement, checkpointStatement, eventSigInput, revokeStatement } from './shared/encoding';
 import { genesisHash } from '@/lib/crypto/chain';
 import { verifyIncident, type RawEvent, type RosterMember } from '@/lib/crypto/verify';
 import { chat, timeline } from '@/lib/crypto/testkit';
@@ -790,13 +790,160 @@ describe('views filter by role and membership (T11)', () => {
   });
 });
 
+describe('post_checkpoint (PLAN 4.10)', () => {
+  const signCp = async (w: World, channel: ChannelKind, seq: bigint, hash: Uint8Array, incidentId = w.incidentId) =>
+    sign(w.cmd.keys.signPriv, checkpointStatement(incidentId, channel, seq, hash));
+
+  it('stores a commander-signed checkpoint for an existing event, only forward, and shows it to readers of that channel', async () => {
+    const w = await World.create();
+    await w.joinAndAdmit('sam', 'technical');
+    await w.joinAndAdmit('exec', 'executive');
+    await w.append('commander', 'record', timeline('one'));
+    await w.append('commander', 'record', timeline('two'));
+    await w.append('sam', 'technical', chat('iocs'));
+    const rec = w.events('record');
+    const sig = await signCp(w, 'record', 2n, rec[1].hash);
+    call(w.h, 'commander', mod.post_checkpoint, { incidentId: w.incidentId, kind: 'record', seq: 2n, signature: sig });
+    const rows = [...w.h.db.checkpoint.iter()];
+    expect(rows.length).toBe(1);
+    expect(bytesToHex(rows[0].hash)).toBe(bytesToHex(rec[1].hash));
+    // not backwards, not a repeat
+    const sig1 = await signCp(w, 'record', 1n, rec[0].hash);
+    expectThrows(() => call(w.h, 'commander', mod.post_checkpoint, { incidentId: w.incidentId, kind: 'record', seq: 1n, signature: sig1 }));
+    expectThrows(() => call(w.h, 'commander', mod.post_checkpoint, { incidentId: w.incidentId, kind: 'record', seq: 2n, signature: sig }));
+    // views follow the channel read policy
+    const tech = w.events('technical');
+    call(w.h, 'commander', mod.post_checkpoint, {
+      incidentId: w.incidentId, kind: 'technical', seq: 1n, signature: await signCp(w, 'technical', 1n, tech[0].hash),
+    });
+    expect(view(w.h, 'commander', mod.my_checkpoints).length).toBe(2);
+    expect(view(w.h, 'sam', mod.my_checkpoints).map((c) => c.kind).sort()).toEqual(['record', 'technical']);
+    expect(view(w.h, 'exec', mod.my_checkpoints).map((c) => c.kind)).toEqual(['record']);
+    expect(view(w.h, 'stranger', mod.my_checkpoints)).toEqual([]);
+  });
+
+  it('refuses non-commanders, bad signatures, wrong hashes, unknown events and bad channels', async () => {
+    const w = await World.create();
+    await w.joinAndAdmit('dana', 'counsel');
+    await w.append('commander', 'record', timeline('one'));
+    const ev = w.events('record')[0];
+    const good = await signCp(w, 'record', 1n, ev.hash);
+    const args = { incidentId: w.incidentId, kind: 'record', seq: 1n, signature: good };
+    expectThrows(() => call(w.h, 'dana', mod.post_checkpoint, args), 'not authorized');
+    expectThrows(() => call(w.h, 'stranger', mod.post_checkpoint, args), 'not authorized');
+    // signed by someone else
+    const dana = w.people.get('dana')!;
+    const forged = await sign(dana.keys.signPriv, checkpointStatement(w.incidentId, 'record', 1n, ev.hash));
+    expectThrows(() => call(w.h, 'commander', mod.post_checkpoint, { ...args, signature: forged }), 'invalid request');
+    // signed over a different hash (a commander who saw another chain cannot attest to the module's)
+    const wrongHash = await signCp(w, 'record', 1n, new Uint8Array(32).fill(7));
+    expectThrows(() => call(w.h, 'commander', mod.post_checkpoint, { ...args, signature: wrongHash }), 'invalid request');
+    // beyond the head, seq 0, unknown channel, short signature
+    expectThrows(() => call(w.h, 'commander', mod.post_checkpoint, { ...args, seq: 2n }), 'invalid request');
+    expectThrows(() => call(w.h, 'commander', mod.post_checkpoint, { ...args, seq: 0n }), 'invalid request');
+    expectThrows(() => call(w.h, 'commander', mod.post_checkpoint, { ...args, kind: 'nope' }), 'invalid request');
+    expectThrows(() => call(w.h, 'commander', mod.post_checkpoint, { ...args, signature: new Uint8Array(10) }), 'invalid request');
+    expect([...w.h.db.checkpoint.iter()].length).toBe(0);
+    call(w.h, 'commander', mod.post_checkpoint, args);
+    expect([...w.h.db.checkpoint.iter()].length).toBe(1);
+  });
+});
+
+describe('append rate bucket (T21)', () => {
+  it('allows a burst of 30, then refuses until tokens refill at 3 per second', async () => {
+    const w = await World.create();
+    const send = async (counter: bigint) => {
+      const p = w.cmd;
+      const eventId = crypto.randomUUID();
+      const sealed = await createSealedEvent(
+        { incidentId: w.incidentId, channel: 'record', epoch: 0, author: p.hex, clientEventId: eventId, authorCounter: counter },
+        serializePayload(chat('x')),
+        w.keys.get('record/0')!,
+        p.keys.signPriv,
+      );
+      call(w.h, 'commander', mod.append_event, {
+        incidentId: w.incidentId, kind: 'record', epoch: 0, clientEventId: eventId, authorCounter: counter,
+        iv: sealed.iv, ciphertext: sealed.ciphertext, signature: sealed.signature,
+      });
+    };
+    for (let i = 1n; i <= 30n; i++) await send(i);
+    await expect(send(31n)).rejects.toThrow();
+    expect(w.events('record').length).toBe(30);
+    expect(w.memberRow('commander').lastCounter).toBe(30n);
+    // one second later there are three tokens again
+    advanceMin(w.h, 0);
+    w.h.clock.set(new Timestamp(w.h.clock.now().microsSinceUnixEpoch + 1_000_000n));
+    await send(31n);
+    await send(32n);
+    await send(33n);
+    await expect(send(34n)).rejects.toThrow();
+    expect(w.events('record').length).toBe(33);
+  });
+
+  it('is per identity: one member cannot starve another', async () => {
+    const w = await World.create();
+    await w.joinAndAdmit('dana', 'counsel');
+    for (let i = 0; i < 30; i++) await w.append('commander', 'record');
+    await w.append('dana', 'record');
+    expect(w.events('record').length).toBe(31);
+  });
+});
+
+describe('invite sweep (scheduled housekeeping)', () => {
+  const internal = () => TestAuth.internal();
+  const runSweep = (w: World, auth: ReturnType<typeof authFor> | ReturnType<typeof TestAuth.internal>) =>
+    w.h.withReducerTx(auth, (ctx: any) => (mod.sweep_invites as any)(ctx, { arg: { scheduledId: 1n, scheduledAt: { tag: 'Interval', value: { __time_duration_micros__: 1n } } } }));
+
+  it('create_invite schedules the sweep once', async () => {
+    const w = await World.create();
+    expect([...w.h.db.invite_sweep.iter()].length).toBe(0);
+    await w.join('a', 'counsel');
+    await w.join('b', 'technical');
+    expect([...w.h.db.invite_sweep.iter()].length).toBe(1);
+  });
+
+  it('refuses any caller that is not the scheduler (a client cannot run it)', async () => {
+    const w = await World.create();
+    await w.join('a', 'counsel');
+    expect(() => runSweep(w, authFor('commander'))).toThrow('not authorized');
+    expect(() => runSweep(w, authFor('a'))).toThrow('not authorized');
+    expect([...w.h.db.invite.iter()].length).toBe(1);
+  });
+
+  it('removes dead invites after the keep window, never live ones, and prunes old join attempts', async () => {
+    const w = await World.create();
+    await w.join('used', 'counsel'); // redeemed
+    const inv = newInvite(w.incidentId);
+    call(w.h, 'commander', mod.create_invite, { incidentId: w.incidentId, codeHash: inv.codeHash, role: 'technical', ttlMinutes: 15 });
+    expect([...w.h.db.invite.iter()].length).toBe(2);
+    expect([...w.h.db.join_attempt.iter()].length).toBeGreaterThan(0);
+    runSweep(w, internal());
+    expect([...w.h.db.invite.iter()].length).toBe(2); // nothing is old yet
+    advanceMin(w.h, 90);
+    const live = newInvite(w.incidentId);
+    call(w.h, 'commander', mod.create_invite, { incidentId: w.incidentId, codeHash: live.codeHash, role: 'executive', ttlMinutes: 30 });
+    runSweep(w, internal());
+    const left = [...w.h.db.invite.iter()];
+    expect(left.length).toBe(1);
+    expect(left[0].role).toBe('executive');
+    expect([...w.h.db.join_attempt.iter()].length).toBe(0);
+    // the live invite still redeems
+    const keys = await generateDeviceKeys();
+    const hex = identityHex(w.h, 'late');
+    const joinTag = await computeJoinTag(live.secret, { incidentId: w.incidentId, identityHex: hex, displayName: 'Late', signPub: keys.signPub, ecdhPub: keys.ecdhPub });
+    call(w.h, 'late', mod.redeem_invite, { incidentId: w.incidentId, code: live.code, displayName: 'Late', signPub: keys.signPub, ecdhPub: keys.ecdhPub, joinTag });
+    expect([...w.h.db.member.iter()].some((m) => m.displayName === 'Late')).toBe(true);
+  });
+});
+
 describe('append-only surface (T14)', () => {
   it('the module exports no reducer that updates or deletes events, edits roles, or debugs', () => {
     const exported = Object.keys(mod).filter((k) => k !== 'default');
     expect(exported.sort()).toEqual(
       [
-        'admit_member', 'append_event', 'create_incident', 'create_invite', 'my_channels', 'my_envelopes', 'my_events', 'my_incidents',
-        'my_invites', 'my_join_attempts', 'my_members', 'my_status', 'redeem_invite', 'revoke_member',
+        'admit_member', 'append_event', 'create_incident', 'create_invite', 'my_channels', 'my_checkpoints', 'my_envelopes', 'my_events',
+        'my_incidents', 'my_invites', 'my_join_attempts', 'my_members', 'my_status', 'post_checkpoint', 'redeem_invite', 'revoke_member',
+        'sweep_invites',
       ].sort(),
     );
     for (const name of exported) expect(name).not.toMatch(/delete|update|edit|debug|seed|tamper|reset|set_role/i);

@@ -1,8 +1,8 @@
-# ZeroHour: Devpost project description
+# HAVEN: Devpost project description
 
 > Draft written before the build. Before submitting, delete or soften every line that did not ship, and keep it consistent with `docs/THREAT_MODEL.md`.
 
-**Name:** ZeroHour
+**Name:** HAVEN
 
 **Tagline:** The incident war room that still works when the attacker owns everything else.
 
@@ -19,7 +19,7 @@ When ransomware hits, communication is the first casualty. Email, Slack and sing
 - **Spin up in seconds.** The incident commander creates an incident and invites responders by one-time link or QR code, each with a role: Commander, Counsel, Technical or Executive. Nobody gets in until the commander confirms them with a 12-digit safety code.
 - **One live incident record,** organized by NIST SP 800-61 phases and tagged with NIST CSF 2.0 response categories: timeline, status, severity and tasks, updated on every screen in real time.
 - **A blast-radius board** for every affected system and data store: suspected, encrypted, exfiltrated, contained or restored, with data types, record counts and affected states.
-- **A legal clock.** When counsel records the discovery time and the scope shows whose data was exposed, ZeroHour lists the notification deadlines that apply, each with its statute citation, and counts them down with an owner.
+- **A legal clock.** When counsel records the discovery time and the scope shows whose data was exposed, HAVEN lists the notification deadlines that apply, each with its statute citation, and counts them down with an owner.
 - **Encrypted channels:** #command for everyone, #technical for the forensics work, and an attorney-client #privileged channel that technical staff cannot decrypt even with database access.
 - **One-click revoke.** A compromised account is cut off instantly and every channel it could read gets a new key.
 - **Proof, not promises.** An integrity panel re-verifies every signature and the full hash chain, and the after-action report ends with a cryptographic attestation of the record.
@@ -47,7 +47,7 @@ God mode on our own production database shows nothing but ciphertext. Changing a
 
 Spacetime's views make row-level authorization feel natural. An end-to-end encrypted web app has to treat its own server as an untrusted mailbox. And lawyers think in deadlines, so the product should too.
 
-## What's next for ZeroHour
+## What's next for HAVEN
 
 Hardware-backed keys with passkeys, a second commander so the root of trust can't be lost, a signed desktop build so the client code itself is verifiable, more jurisdictions in the rules engine, an offline evidence-bundle verifier, and a pilot with Winstead.
 

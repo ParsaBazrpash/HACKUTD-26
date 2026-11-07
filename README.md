@@ -1,6 +1,6 @@
-# ZeroHour
+# HAVEN
 
-Sealed incident-response war room for the first 72 hours after a ransomware attack. The Next.js app renders in the browser. SpacetimeDB will be the only backend. This foundation does not encrypt yet, and it does not pretend to.
+Sealed incident-response war room for the first 72 hours after a ransomware attack. The Next.js app renders in the browser, and SpacetimeDB is the only backend. The real client seals and signs incident content in the browser before storage. The screens in this tree still show the in-memory prototype: fixture slots are labels, and integrity on those screens stays unknown.
 
 ## Commands
 

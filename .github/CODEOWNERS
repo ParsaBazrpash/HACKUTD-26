@@ -28,6 +28,9 @@
 # Lane A (Mehrad): trust core and shared config
 /spacetimedb/               @theMehrad
 /src/module_bindings/       @theMehrad
+/tests/support/             @theMehrad
+/live/                      @theMehrad
+/vitest.live.config.mts     @theMehrad
 /lib/crypto/                @theMehrad
 /lib/client/fold.ts         @theMehrad
 /lib/client/backend.ts      @theMehrad

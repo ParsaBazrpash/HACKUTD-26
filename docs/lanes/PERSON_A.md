@@ -36,6 +36,7 @@ For Mehrad and his coding agents. Read it with `AGENTS.md` and `docs/PLAN.md`. P
 | Area | Paths | Owner |
 | --- | --- | --- |
 | Spacetime module and its tests | `spacetimedb/**` | Mehrad |
+| Module test harness and live Maincloud tests | `tests/support/**`, `live/**`, `vitest.live.config.mts` | Mehrad |
 | Generated bindings | `src/module_bindings/**` (only after a publish, same PR) | Mehrad |
 | Crypto | `lib/crypto/**` | Mehrad |
 | Real client and the shared fold | `lib/client/real.ts`, `lib/client/backend.ts`, `lib/client/fold.ts` | Mehrad (Parsa reviews `fold.ts` changes) |
@@ -46,7 +47,7 @@ For Mehrad and his coding agents. Read it with `AGENTS.md` and `docs/PLAN.md`. P
 | Screens and hooks | `components/**`, `hooks/**` | Parsa |
 | Mock side of the client | `lib/client/index.ts`, `lib/client/mock.ts`, `lib/scenario/**` | Parsa |
 | Legal clock, report, time helpers | `lib/legal/**`, `lib/report/**`, `lib/time.ts` | Parsa |
-| Parsa's tests | `tests/**`, `e2e/**`, `playwright.config.ts` | Parsa |
+| Parsa's tests | `tests/**` (except `tests/support/**`), `e2e/**`, `playwright.config.ts` | Parsa |
 | Judge-facing docs and assets | `README.md`, `docs/DEVPOST.md`, `docs/PRODUCT.md`, `public/**` | Parsa |
 | CI | `.github/workflows/**` | Parsa |
 | Lane plans and code owners | `docs/lanes/**`, `.github/CODEOWNERS` | Both, changed only at a stop point |

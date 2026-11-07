@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { HarnessHub } from '@/tests/support/harness-backend';
 import { IncidentStore, useStoreForTests as makeTestStore } from '@/lib/crypto/store';
 import { b64urlEncode } from '@/lib/crypto/b64url';
+import { parseInviteFragment } from '@/lib/crypto/invite';
 import { RealIncidentClient } from './real';
 
 let n = 0;
@@ -439,5 +440,39 @@ describe('resume after a reload', () => {
       await settle();
       expect(client.getState().incident).toBeNull();
     }
+  });
+});
+
+describe('the invite secret stays in the browser (T18)', () => {
+  it('redeeming sends the join tag and the public code, never the invite secret', async () => {
+    const hub = new HarnessHub();
+    const { cmd } = await startIncident(hub);
+    const { url } = await cmd.client.createInvite({ role: 'counsel' });
+    const fragment = fragmentOf(url);
+    const secret = parseInviteFragment(fragment)!.secret;
+
+    const joiner = browser(hub, 'Dana');
+    const sent: Uint8Array[] = [];
+    const original = joiner.backend.redeemInvite.bind(joiner.backend);
+    joiner.backend.redeemInvite = (a) => {
+      for (const v of Object.values(a)) if (v instanceof Uint8Array) sent.push(v);
+      return original(a);
+    };
+    await joiner.client.redeemInvite({ fragment, displayName: 'Dana' });
+    await settle();
+
+    expect(sent.length).toBeGreaterThanOrEqual(4);
+    const hex = (b: Uint8Array) => Buffer.from(b).toString('hex');
+    for (const v of sent) expect(hex(v)).not.toContain(hex(secret));
+
+    // Nothing stored by the module contains it either.
+    const stored = JSON.stringify(
+      [...hub.h.db.invite.iter(), ...hub.h.db.member.iter()],
+      (_k, v) => (v instanceof Uint8Array ? hex(v) : typeof v === 'bigint' ? v.toString() : v),
+    );
+    expect(stored).not.toContain(hex(secret));
+    expect(stored).not.toContain(b64urlEncode(secret));
+    // Sanity: the public code is what the module does see.
+    expect(sent.map(hex)).toContain(hex(parseInviteFragment(fragment)!.code));
   });
 });

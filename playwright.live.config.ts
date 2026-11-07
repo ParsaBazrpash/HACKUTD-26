@@ -2,6 +2,10 @@ import { defineConfig, devices } from "@playwright/test";
 
 // Browser run against Maincloud through the real screens (no mock).
 // Start with: npm run test:live:browser
+// Production CSP (no 'unsafe-eval'), as served on Vercel:
+//   PW_PROD=1 npm run test:live:browser
+// The default runs `next dev`, whose CSP allows eval and so cannot catch code
+// that needs it. The page-error check in the test fails on any CSP violation.
 export default defineConfig({
   testDir: "./live/browser",
   testMatch: "**/*.pw.ts",
@@ -16,10 +20,10 @@ export default defineConfig({
     trace: "off",
   },
   webServer: {
-    command: "npx next dev -p 3100",
+    command: process.env.PW_PROD ? "npm run build && npx next start -p 3100" : "npx next dev -p 3100",
     url: "http://localhost:3100",
     reuseExistingServer: false,
-    timeout: 180_000,
+    timeout: process.env.PW_PROD ? 420_000 : 180_000,
     env: {
       NEXT_PUBLIC_ZH_MOCK: "0",
     },

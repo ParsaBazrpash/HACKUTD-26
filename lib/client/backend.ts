@@ -68,6 +68,14 @@ export interface AttemptRow {
   atMicros: bigint;
 }
 
+export interface CheckpointRow {
+  incidentId: string;
+  kind: string;
+  seq: bigint;
+  hash: Uint8Array;
+  signature: Uint8Array;
+}
+
 export type EventRow = RawEvent & { incidentId: string };
 
 export interface BackendRows {
@@ -80,6 +88,7 @@ export interface BackendRows {
   events: EventRow[];
   invites: InviteRow[];
   joinAttempts: AttemptRow[];
+  checkpoints: CheckpointRow[];
 }
 
 export type ConnectionState = 'connecting' | 'ready' | 'offline' | 'error';
@@ -135,4 +144,5 @@ export interface IncidentBackend {
     ciphertext: Uint8Array;
     signature: Uint8Array;
   }): Promise<void>;
+  postCheckpoint(a: { incidentId: string; kind: string; seq: bigint; signature: Uint8Array }): Promise<void>;
 }

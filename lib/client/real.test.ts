@@ -324,3 +324,62 @@ describe('tamper detection', () => {
     }
   });
 });
+
+describe('checkpoints (PLAN 4.10)', () => {
+  it('the commander can sign a checkpoint; every reader verifies it; others cannot sign', async () => {
+    const hub = new HarnessHub();
+    const { cmd, incidentId } = await startIncident(hub);
+    const dana = await joinAndAdmit(hub, cmd, 'counsel', 'Dana');
+    await cmd.client.postMessage('privileged', { text: 'one', mentions: [] });
+    await settle();
+    await expect(dana.client.signCheckpoint()).rejects.toThrow('Only the commander');
+    await cmd.client.signCheckpoint();
+    await settle();
+    expect(hub.h.db.checkpoint.count()).toBeGreaterThan(0n);
+    for (const b of [cmd, dana]) {
+      const r = await b.client.verifyAll();
+      expect(r.ok).toBe(true);
+      expect(r.channels.privileged!.latestCheckpoint).toMatchObject({ seq: 1n, verified: true });
+      expect(r.channels.record!.latestCheckpoint?.verified).toBe(true);
+    }
+    // Nothing new since: a second call posts nothing and does not fail.
+    await cmd.client.signCheckpoint();
+    const rows = [...hub.h.db.checkpoint.iter()].filter((c) => c.incidentId === incidentId);
+    expect(new Set(rows.map((c) => `${c.kind}/${c.seq}`)).size).toBe(rows.length);
+  });
+
+  it('the commander client checkpoints automatically every 10 events', async () => {
+    const hub = new HarnessHub();
+    const { cmd } = await startIncident(hub);
+    expect(hub.h.db.checkpoint.count()).toBe(0n);
+    for (let i = 0; i < 11; i++) await cmd.client.postMessage('command', { text: `msg ${i}`, mentions: [] });
+    await settle();
+    await settle();
+    const rows = [...hub.h.db.checkpoint.iter()].filter((c) => c.kind === 'command');
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows[0].seq).toBeGreaterThanOrEqual(10n);
+    expect((await cmd.client.verifyAll()).channels.command!.latestCheckpoint?.verified).toBe(true);
+  });
+
+  it('removing events the commander has checkpointed turns readers red, even if the head is rewound', async () => {
+    const hub = new HarnessHub();
+    const { cmd, incidentId } = await startIncident(hub);
+    const dana = await joinAndAdmit(hub, cmd, 'counsel', 'Dana');
+    for (const t of ['a', 'b', 'c']) await cmd.client.postMessage('privileged', { text: t, mentions: [] });
+    await cmd.client.signCheckpoint();
+    await settle();
+    const ch = [...hub.h.db.channel.iter()].find((c) => c.incidentId === incidentId && c.kind === 'privileged')!;
+    const evs = [...hub.h.db.event.iter()].filter((e) => e.channelId === ch.id).sort((a, b) => Number(a.seq - b.seq));
+    const last = evs[evs.length - 1];
+    const prev = evs[evs.length - 2];
+    (hub.h.db.event.id as any).delete(last.id);
+    (hub.h.db.channel.id as any).update({ ...ch, headSeq: prev.seq, headHash: prev.hash });
+    hub.notify();
+    await settle();
+    for (const b of [cmd, dana]) {
+      const r = await b.client.verifyAll();
+      expect(r.ok).toBe(false);
+      expect(r.channels.privileged!.failures.some((f) => f.reason === 'history_rewritten' && f.seq === 3n)).toBe(true);
+    }
+  });
+});

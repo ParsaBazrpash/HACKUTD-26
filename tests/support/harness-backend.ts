@@ -12,6 +12,7 @@ import type {
   AttemptRow,
   BackendRows,
   ChannelRow,
+  CheckpointRow,
   ConnectionState,
   EnvelopeRow,
   EventRow,
@@ -170,6 +171,9 @@ export class HarnessBackend implements IncidentBackend {
       joinAttempts: this.view(mod.my_join_attempts).map(
         (a): AttemptRow => ({ incidentId: a.incidentId, ok: a.ok, atMicros: micros(a.at) }),
       ),
+      checkpoints: this.view(mod.my_checkpoints).map(
+        (c): CheckpointRow => ({ incidentId: c.incidentId, kind: c.kind, seq: c.seq, hash: c.hash, signature: c.signature }),
+      ),
     };
   }
 
@@ -212,5 +216,8 @@ export class HarnessBackend implements IncidentBackend {
   }
   appendEvent(a: Parameters<IncidentBackend['appendEvent']>[0]) {
     return this.call(mod.append_event, a);
+  }
+  postCheckpoint(a: Parameters<IncidentBackend['postCheckpoint']>[0]) {
+    return this.call(mod.post_checkpoint, a);
   }
 }

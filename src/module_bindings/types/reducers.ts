@@ -10,6 +10,7 @@ import AdmitMemberReducer from "../admit_member_reducer";
 import AppendEventReducer from "../append_event_reducer";
 import CreateIncidentReducer from "../create_incident_reducer";
 import CreateInviteReducer from "../create_invite_reducer";
+import PostCheckpointReducer from "../post_checkpoint_reducer";
 import RedeemInviteReducer from "../redeem_invite_reducer";
 import RevokeMemberReducer from "../revoke_member_reducer";
 
@@ -17,6 +18,7 @@ export type AdmitMemberParams = __Infer<typeof AdmitMemberReducer>;
 export type AppendEventParams = __Infer<typeof AppendEventReducer>;
 export type CreateIncidentParams = __Infer<typeof CreateIncidentReducer>;
 export type CreateInviteParams = __Infer<typeof CreateInviteReducer>;
+export type PostCheckpointParams = __Infer<typeof PostCheckpointReducer>;
 export type RedeemInviteParams = __Infer<typeof RedeemInviteReducer>;
 export type RevokeMemberParams = __Infer<typeof RevokeMemberReducer>;
 

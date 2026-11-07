@@ -38,6 +38,7 @@ import AdmitMemberReducer from "./admit_member_reducer";
 import AppendEventReducer from "./append_event_reducer";
 import CreateIncidentReducer from "./create_incident_reducer";
 import CreateInviteReducer from "./create_invite_reducer";
+import PostCheckpointReducer from "./post_checkpoint_reducer";
 import RedeemInviteReducer from "./redeem_invite_reducer";
 import RevokeMemberReducer from "./revoke_member_reducer";
 
@@ -45,6 +46,7 @@ import RevokeMemberReducer from "./revoke_member_reducer";
 
 // Import all table schema definitions
 import MyChannelsRow from "./my_channels_table";
+import MyCheckpointsRow from "./my_checkpoints_table";
 import MyEnvelopesRow from "./my_envelopes_table";
 import MyEventsRow from "./my_events_table";
 import MyIncidentsRow from "./my_incidents_table";
@@ -64,6 +66,13 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, MyChannelsRow),
+  myCheckpoints: __table({
+    name: 'my_checkpoints',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyCheckpointsRow),
   myEnvelopes: __table({
     name: 'my_envelopes',
     indexes: [
@@ -121,6 +130,7 @@ const reducersSchema = __reducers(
   __reducerSchema("append_event", AppendEventReducer),
   __reducerSchema("create_incident", CreateIncidentReducer),
   __reducerSchema("create_invite", CreateInviteReducer),
+  __reducerSchema("post_checkpoint", PostCheckpointReducer),
   __reducerSchema("redeem_invite", RedeemInviteReducer),
   __reducerSchema("revoke_member", RevokeMemberReducer),
 );
@@ -133,6 +143,8 @@ type __SchemaWithTableAccessorAliases = Omit<typeof tablesSchema.schemaType, "ta
   tables: typeof tablesSchema.schemaType.tables & {
     /** @deprecated Use `myChannels` instead. This alias will be removed in the next major version. */
     readonly "my_channels": Omit<typeof tablesSchema.schemaType.tables["myChannels"], "accessorName"> & { readonly accessorName: "my_channels" };
+    /** @deprecated Use `myCheckpoints` instead. This alias will be removed in the next major version. */
+    readonly "my_checkpoints": Omit<typeof tablesSchema.schemaType.tables["myCheckpoints"], "accessorName"> & { readonly accessorName: "my_checkpoints" };
     /** @deprecated Use `myEnvelopes` instead. This alias will be removed in the next major version. */
     readonly "my_envelopes": Omit<typeof tablesSchema.schemaType.tables["myEnvelopes"], "accessorName"> & { readonly accessorName: "my_envelopes" };
     /** @deprecated Use `myEvents` instead. This alias will be removed in the next major version. */
@@ -166,6 +178,7 @@ const REMOTE_MODULE = {
 
 const tableAccessorAliases = {
   "my_channels": "myChannels",
+  "my_checkpoints": "myCheckpoints",
   "my_envelopes": "myEnvelopes",
   "my_events": "myEvents",
   "my_incidents": "myIncidents",
@@ -195,6 +208,8 @@ type __DbViewBase = __DbConnectionImpl<typeof REMOTE_MODULE>["db"];
 export type DbView = __DbViewBase & {
   /** @deprecated Use `myChannels` instead. This alias will be removed in the next major version. */
   readonly "my_channels": __DbViewBase["myChannels"];
+  /** @deprecated Use `myCheckpoints` instead. This alias will be removed in the next major version. */
+  readonly "my_checkpoints": __DbViewBase["myCheckpoints"];
   /** @deprecated Use `myEnvelopes` instead. This alias will be removed in the next major version. */
   readonly "my_envelopes": __DbViewBase["myEnvelopes"];
   /** @deprecated Use `myEvents` instead. This alias will be removed in the next major version. */
@@ -215,6 +230,8 @@ type __TablesBase = __QueryBuilder<typeof tablesSchema.schemaType>;
 export type Tables = __TablesBase & {
   /** @deprecated Use `myChannels` instead. This alias will be removed in the next major version. */
   readonly "my_channels": __TablesBase["myChannels"];
+  /** @deprecated Use `myCheckpoints` instead. This alias will be removed in the next major version. */
+  readonly "my_checkpoints": __TablesBase["myCheckpoints"];
   /** @deprecated Use `myEnvelopes` instead. This alias will be removed in the next major version. */
   readonly "my_envelopes": __TablesBase["myEnvelopes"];
   /** @deprecated Use `myEvents` instead. This alias will be removed in the next major version. */

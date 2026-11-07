@@ -274,6 +274,69 @@ describe('verifyIncident: tamper cases', () => {
   });
 });
 
+describe('verifyIncident: checkpoints (PLAN 4.10)', () => {
+  it('a valid commander checkpoint is reported as verified and keeps the report green', async () => {
+    const { t } = await baseline();
+    const input = t.input('commander');
+    input.checkpoints = [await t.checkpoint('record', 2n), await t.checkpoint('record', 3n)];
+    const r = await verifyIncident(input);
+    expect(r.report.ok).toBe(true);
+    expect(r.report.channels.record!.latestCheckpoint).toEqual({
+      seq: 3n,
+      hashHex: expect.any(String),
+      verified: true,
+    });
+  });
+
+  it('a fresh device (no pinned head) still catches a rewritten history via the checkpoint', async () => {
+    const { t } = await baseline();
+    const cp = await t.checkpoint('record', 2n);
+    const ev = t.cloneEvents();
+    ev.record[1].ciphertext[0] ^= 1;
+    ev.record[1].hash = t.rehash(ev.record[1]);
+    ev.record[2].prevHash = ev.record[1].hash;
+    ev.record[2].hash = t.rehash(ev.record[2]);
+    const input = t.input('commander', ev);
+    input.checkpoints = [cp];
+    const r = await verifyIncident(input);
+    expect(reasons(r, 'record')).toContain('2:history_rewritten');
+    expect(r.report.channels.record!.latestCheckpoint?.verified).toBe(false);
+    expect(r.report.ok).toBe(false);
+    expect(r.newHeads.record?.seq).toBe(1n);
+  });
+
+  it('truncation below a signed checkpoint is caught without any pin', async () => {
+    const { t } = await baseline();
+    const cp = await t.checkpoint('record', 3n);
+    const ev = t.cloneEvents();
+    ev.record.pop();
+    const input = t.input('commander', ev);
+    input.checkpoints = [cp];
+    const r = await verifyIncident(input);
+    expect(reasons(r, 'record')).toContain('3:history_rewritten');
+    expect(r.report.ok).toBe(false);
+  });
+
+  it('a checkpoint not signed by the pinned commander is flagged, not trusted', async () => {
+    const { t, counsel } = await baseline();
+    const input = t.input('commander');
+    input.checkpoints = [await t.checkpoint('record', 2n, undefined, counsel)];
+    const r = await verifyIncident(input);
+    expect(reasons(r, 'record')).toContain('2:history_rewritten');
+    expect(r.report.channels.record!.latestCheckpoint?.verified).toBe(false);
+    expect(r.report.ok).toBe(false);
+  });
+
+  it('a checkpoint over a different hash than the delivered event is flagged on that event', async () => {
+    const { t } = await baseline();
+    const input = t.input('commander');
+    input.checkpoints = [await t.checkpoint('record', 2n, new Uint8Array(32).fill(9))];
+    const r = await verifyIncident(input);
+    const ev = r.events.find((e) => e.channel === 'record' && e.seq === 2n)!;
+    expect(ev.verdict.failures).toContain('history_rewritten');
+  });
+});
+
 describe('verifyIncident: roster and authorization', () => {
   it('uncertified author is rejected (T5)', async () => {
     const { t } = await baseline();

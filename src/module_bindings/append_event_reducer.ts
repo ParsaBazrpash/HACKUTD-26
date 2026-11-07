@@ -10,4 +10,13 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-export default {};
+export default {
+  incidentId: __t.string(),
+  kind: __t.string(),
+  epoch: __t.u32(),
+  clientEventId: __t.string(),
+  authorCounter: __t.u64(),
+  iv: __t.byteArray(),
+  ciphertext: __t.byteArray(),
+  signature: __t.byteArray(),
+};

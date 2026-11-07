@@ -10,8 +10,15 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-export default __t.row({
-  id: __t.u64().primaryKey(),
-  sender: __t.identity(),
-  at: __t.timestamp(),
-});
+import {
+  EnvelopeAdmit,
+} from "./types";
+
+export default {
+  incidentId: __t.string(),
+  memberId: __t.u64(),
+  admitSig: __t.byteArray(),
+  get envelopes() {
+    return __t.array(EnvelopeAdmit);
+  },
+};

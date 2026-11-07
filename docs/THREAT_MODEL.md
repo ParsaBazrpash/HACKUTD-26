@@ -59,9 +59,9 @@ Message and record content (including attorney-client privileged communications)
 
 | # | Threat | Mitigation | Where | Verification | Status |
 | --- | --- | --- | --- | --- | --- |
-| T21 | Script injection via decrypted text | Text-only rendering, `react/no-danger` lint rule, http(s)-only links with `rel="noopener noreferrer"`, strict CSP | Components, `eslint.config.mjs`, `next.config.ts` | Test rendering `<img onerror>` and `javascript:` payloads as text | Planned |
+| T21 | Script injection via decrypted text | Text-only rendering, `react/no-danger` lint rule, http(s)-only links with `rel="noopener noreferrer"`, strict CSP | Components, `eslint.config.mjs`, `next.config.ts` | Test rendering `<img onerror>` and `javascript:` payloads as text (Lane B component test, still to do); `lib/security/static-scan.test.ts` already forbids innerHTML, dangerouslySetInnerHTML and `javascript:` literals | Planned |
 | T22 | Malformed or oversized payloads | zod validation of every decrypted payload, unknown kinds flagged; 12 KB plaintext and 16 KB ciphertext caps in client and module | `events.ts`, `limits.ts`, `append_event` | `events.test.ts`, module size test | Done |
-| T23 | SQL or command injection | Module uses typed table APIs only; subscriptions are fixed view names in code | Module, `real.ts` | Code review | Planned |
+| T23 | SQL or command injection | Module uses typed table APIs only; subscriptions are fixed view names in code | Module, `real.ts` | `lib/security/static-scan.test.ts` (no raw SQL, eval, innerHTML sinks; fixed subscription handles) | Done |
 | T24 | Spreadsheet formula injection in exports | Report is HTML/PDF; any CSV export escapes cells starting with `= + - @` | `lib/report/` | `report.test.ts` | Planned |
 | T25 | Clickjacking | `frame-ancestors 'none'` and `X-Frame-Options: DENY` | `lib/security/headers.ts`, `next.config.ts` | `headers.test.ts` | Done |
 | T26 | Flooding or storage exhaustion | Token-bucket rate limit on accepted appends (burst 30, refill 3 per second per identity), size caps, member and invite caps, incident cap per identity; strangers can only redeem invites; the invite sweep removes dead invites and old join attempts. Limit: rejected calls roll back, so only accepted appends consume tokens | `limits.ts`, `takeAppendToken`, reducers | Module tests: rate bucket, caps, sweep | Done |
@@ -75,7 +75,7 @@ Message and record content (including attorney-client privileged communications)
 | T29 | Nonce reuse or homemade crypto | Fresh random 96-bit IV per encryption; keys rotate per epoch; Web Crypto plus audited `@noble` only; domain-separated canonical encoding for every hash, signature, HMAC and KDF | `encoding.ts`, `lib/crypto/` | Unit tests and shared vectors | Done |
 | T30 | Server lies about time | Author-signed `sentAt` shown beside `serverTs`, drift over 5 minutes flagged; legal clocks start from signed human decisions (`legal.discovery`, `legal.materiality`) | `verify.ts`, `lib/legal/` | `legal.test.ts`, `verify.test.ts` drift case | Planned |
 | T31 | Network eavesdropping or MITM | TLS (wss, https, HSTS on Vercel); E2EE as a second layer | Hosting | Config | Planned |
-| T32 | Secrets or vulnerable dependencies in the repo | No secrets required; `.env*` ignored; gitleaks and `npm audit` in CI; lockfile; short dependency allowlist | `.github/workflows/ci.yml`, `docs/PLAN.md` | CI run | Planned |
+| T32 | Secrets or vulnerable dependencies in the repo | No secrets required; `.env*` ignored; gitleaks and `npm audit` in CI; lockfile; short dependency allowlist | `.github/workflows/ci.yml`, `docs/PLAN.md` | CI run (workflow is Lane B). Checked by hand 2026-11-07: `npm audit --audit-level=high` clean, 0 production vulnerabilities (8 moderate, all dev-only lint tooling via minimatch); pattern scan of tracked files found no secrets | Planned |
 
 ### Legal and process
 

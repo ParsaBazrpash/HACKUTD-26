@@ -65,6 +65,7 @@ import { sign } from '@/lib/crypto/sign';
 import { IncidentStore, type PinnedCommander } from '@/lib/crypto/store';
 import { type HeadPin, type RawEvent, type RosterMember, verifyIncident } from '@/lib/crypto/verify';
 import { unwrapChannelKey, wrapChannelKey } from '@/lib/crypto/wrap';
+import { createStore, get as idbGet, set as idbSet, type UseStore } from 'idb-keyval';
 import type { IncidentBackend, MemberRow } from './backend';
 import { foldEvents } from './fold';
 import { SpacetimeBackend } from './spacetime-backend';
@@ -104,6 +105,15 @@ export interface RealClientOptions {
   now?: () => number;
   /** How long to wait for the server to reflect a write. Default 5000. */
   waitMs?: number;
+  /**
+   * Remembers which incident this browser last opened, so a reload or a new tab
+   * on any page comes back to the same room. It holds an incident id only,
+   * never keys. Omit it for no resume.
+   */
+  lastIncident?: {
+    get: () => Promise<string | null>;
+    set: (incidentId: string) => Promise<void>;
+  };
 }
 
 const micros = (m: bigint): Date => new Date(Number(m / 1000n));
@@ -155,6 +165,21 @@ export class RealIncidentClient implements IncidentClient {
     this.waitMs = opts.waitMs ?? 5000;
     this.state = emptyState(backend.connection(), new Date(this.now()));
     this.unsubscribe = backend.subscribe(() => void this.refresh());
+    if (opts.lastIncident) void this.resumeLast(opts.lastIncident);
+  }
+
+  /** Reopens the last incident of this browser unless the page already chose one. */
+  private async resumeLast(last: NonNullable<RealClientOptions['lastIncident']>): Promise<void> {
+    try {
+      const id = await last.get();
+      if (!id || !isUuidV4(id)) return;
+      await this.exclusive(async () => {
+        if (this.incidentId) return;
+        await this.activate(id, this.openStore(id));
+      });
+    } catch {
+      // Resume is a convenience. A failure leaves the client with no open incident.
+    }
   }
 
   dispose(): void {
@@ -234,6 +259,7 @@ export class RealIncidentClient implements IncidentClient {
     this.failedEnvelopes.clear();
     this.certified = new Map();
     this.wiped = false;
+    void this.opts.lastIncident?.set(incidentId).catch(() => undefined);
     await this.refresh();
   }
 
@@ -918,8 +944,17 @@ export class RealIncidentClient implements IncidentClient {
  * Browser entry point: connects to Maincloud (public host and database name
  * from NEXT_PUBLIC_* env vars) and returns the real client.
  */
+let sessionDb: UseStore | undefined;
+const sessionStore = (): UseStore => (sessionDb ??= createStore('haven-session', 'kv'));
+
 export function createRealIncidentClient(): IncidentClient {
   const host = process.env.NEXT_PUBLIC_SPACETIMEDB_HOST || 'wss://maincloud.spacetimedb.com';
   const dbName = process.env.NEXT_PUBLIC_SPACETIMEDB_DB_NAME || 'zerohour-hackutd26';
-  return new RealIncidentClient(new SpacetimeBackend(host, dbName), { origin: window.location.origin });
+  return new RealIncidentClient(new SpacetimeBackend(host, dbName), {
+    origin: window.location.origin,
+    lastIncident: {
+      get: async () => (await idbGet<string>('last-incident', sessionStore())) ?? null,
+      set: (id) => idbSet('last-incident', id, sessionStore()),
+    },
+  });
 }

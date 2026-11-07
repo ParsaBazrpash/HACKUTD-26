@@ -48,8 +48,9 @@ test("commander invites counsel, counsel joins, commander admits, they exchange 
 
   // 4. Commander sees the pending member, the link check passes, and admits.
   await expect(commander.getByText("Counsel Test").first()).toBeVisible();
-  await expect(commander.getByText("Link verified")).toBeVisible();
-  const admit = commander.getByRole("button", { name: "Admit" });
+  const waiting = commander.getByRole("region", { name: "WAITING FOR ADMISSION" });
+  await expect(waiting.getByText("Link verified", { exact: true })).toBeVisible();
+  const admit = waiting.getByRole("button", { name: "Admit" });
   await expect(admit).toBeEnabled();
   await admit.click();
   await expect(commander.getByText("Admitted Counsel Test.")).toBeVisible();
@@ -61,12 +62,12 @@ test("commander invites counsel, counsel joins, commander admits, they exchange 
   const composer = counsel.getByRole("form", { name: /Message .*privileged/i });
   await composer.getByRole("textbox").fill(secret);
   await composer.getByRole("button", { name: "Send" }).click();
-  await expect(counsel.getByText(secret)).toBeVisible();
-  await expect(commander.getByText(secret)).toBeVisible();
+  await expect(counsel.getByText(secret).first()).toBeVisible();
+  await expect(commander.getByText(secret).first()).toBeVisible();
 
   // 6. Both screens report integrity, and the invite is gone from the page.
-  await expect(commander.getByText("Integrity checked")).toBeVisible();
-  await expect(counsel.getByText("Integrity checked")).toBeVisible();
+  await expect(commander.getByText("Integrity checked").first()).toBeVisible();
+  await expect(counsel.getByText("Integrity checked").first()).toBeVisible();
   expect(pageErrors).toEqual([]);
 
   await commanderCtx.close();

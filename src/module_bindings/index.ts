@@ -143,7 +143,7 @@ type __SchemaWithTableAccessorAliases = Omit<typeof tablesSchema.schemaType, "ta
   tables: typeof tablesSchema.schemaType.tables & {
     /** @deprecated Use `myChannels` instead. This alias will be removed in the next major version. */
     readonly "my_channels": Omit<typeof tablesSchema.schemaType.tables["myChannels"], "accessorName"> & { readonly accessorName: "my_channels" };
-    /** @deprecated Use `myEnvelopes` instead. This alias will be removed in the next major version. */
+    /** @deprecated Use `myCheckpoints` instead. This alias will be removed in the next major version. */
     readonly "my_checkpoints": Omit<typeof tablesSchema.schemaType.tables["myCheckpoints"], "accessorName"> & { readonly accessorName: "my_checkpoints" };
     /** @deprecated Use `myEnvelopes` instead. This alias will be removed in the next major version. */
     readonly "my_envelopes": Omit<typeof tablesSchema.schemaType.tables["myEnvelopes"], "accessorName"> & { readonly accessorName: "my_envelopes" };
@@ -208,7 +208,7 @@ type __DbViewBase = __DbConnectionImpl<typeof REMOTE_MODULE>["db"];
 export type DbView = __DbViewBase & {
   /** @deprecated Use `myChannels` instead. This alias will be removed in the next major version. */
   readonly "my_channels": __DbViewBase["myChannels"];
-  /** @deprecated Use `myEnvelopes` instead. This alias will be removed in the next major version. */
+  /** @deprecated Use `myCheckpoints` instead. This alias will be removed in the next major version. */
   readonly "my_checkpoints": __DbViewBase["myCheckpoints"];
   /** @deprecated Use `myEnvelopes` instead. This alias will be removed in the next major version. */
   readonly "my_envelopes": __DbViewBase["myEnvelopes"];
@@ -230,7 +230,7 @@ type __TablesBase = __QueryBuilder<typeof tablesSchema.schemaType>;
 export type Tables = __TablesBase & {
   /** @deprecated Use `myChannels` instead. This alias will be removed in the next major version. */
   readonly "my_channels": __TablesBase["myChannels"];
-  /** @deprecated Use `myEnvelopes` instead. This alias will be removed in the next major version. */
+  /** @deprecated Use `myCheckpoints` instead. This alias will be removed in the next major version. */
   readonly "my_checkpoints": __TablesBase["myCheckpoints"];
   /** @deprecated Use `myEnvelopes` instead. This alias will be removed in the next major version. */
   readonly "my_envelopes": __TablesBase["myEnvelopes"];

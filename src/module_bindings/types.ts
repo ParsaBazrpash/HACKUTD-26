@@ -88,6 +88,12 @@ export const Invite = __t.object("Invite", {
 });
 export type Invite = __Infer<typeof Invite>;
 
+export const InviteSweep = __t.object("InviteSweep", {
+  scheduledId: __t.u64(),
+  scheduledAt: __t.scheduleAt(),
+});
+export type InviteSweep = __Infer<typeof InviteSweep>;
+
 export const JoinAttempt = __t.object("JoinAttempt", {
   id: __t.u64(),
   identity: __t.identity(),
@@ -155,6 +161,13 @@ export type MyMembers = __Infer<typeof MyMembers>;
 
 export const MyStatus = __t.object("MyStatus", {});
 export type MyStatus = __Infer<typeof MyStatus>;
+
+export const RateBucket = __t.object("RateBucket", {
+  identity: __t.identity(),
+  milliTokens: __t.u64(),
+  updatedAtMicros: __t.u64(),
+});
+export type RateBucket = __Infer<typeof RateBucket>;
 
 export const Rotation = __t.object("Rotation", {
   kind: __t.string(),

@@ -20,6 +20,15 @@ const fieldClass =
 const primaryButtonClass =
   "inline-flex min-h-11 items-center justify-center rounded-lg bg-signal px-4 py-2 text-sm font-medium text-signal-ink hover:bg-signal-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal";
 
+function httpInviteHref(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 type IssuedInvite = {
   url: string;
   expiresAt: Date;
@@ -88,7 +97,10 @@ export function InviteControls() {
         Choose counsel, technical, or executive. The link carries that role. This page cannot make someone a commander.
       </p>
       {mock ? (
-        <p className="mt-2 text-sm text-muted">Demo invite. It is a tab-local token, not a cryptographic link.</p>
+        <p className="mt-2 text-sm text-muted">
+          Demo invite. It stays in this browser, and it is not a cryptographic link. Open it in another tab so this
+          one stays the commander.
+        </p>
       ) : null}
       <form onSubmit={create} className="mt-4 grid gap-4 sm:grid-cols-2">
         <label className="grid gap-2 text-sm" htmlFor="invite-role">
@@ -140,9 +152,22 @@ export function InviteControls() {
           <p className="text-sm text-muted">
             Copy this link before you create another. It will not be shown again. Expires {formatTimestamp(invite.expiresAt)}.
           </p>
-          <p id="invite-url" translate="no" className="break-all font-mono text-xs text-foreground select-all">
-            {invite.url}
-          </p>
+          {httpInviteHref(invite.url) ? (
+            <a
+              id="invite-url"
+              href={invite.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              translate="no"
+              className="break-all font-mono text-xs text-signal underline decoration-line underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+            >
+              {invite.url}
+            </a>
+          ) : (
+            <p id="invite-url" translate="no" className="break-all font-mono text-xs text-foreground select-all">
+              {invite.url}
+            </p>
+          )}
           <button type="button" onClick={() => void copyLink()} className={primaryButtonClass + " w-fit"}>
             {copied ? "Copied" : "Copy link"}
           </button>

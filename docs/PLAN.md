@@ -411,7 +411,7 @@ Deadlines are not stored state: the UI calls `computeDeadlines(state, now)` from
 
 ### 6.3 `MockIncidentClient` (Lane B, P0)
 
-In-memory, seeded from `lib/scenario/clinic.ts`: "Ransomware at Lakeside Family Clinic (300 staff)", detected 2:13 am. Includes members (Commander, Counsel, Technical, Executive), a status, ~12 timeline entries across phases, 6 scope items (file server encrypted; HR database exfiltrated, 12,400 records, SSN, affected TX 9,800 and CA 2,600; EHR suspected PHI; backups contained; email tenant suspected; VPN appliance eradicated), 6 tasks, chat in three channels, one pending invitee. Actions append events and notify listeners. Enabled only when `NEXT_PUBLIC_ZH_MOCK=1`; never set on Vercel.
+Seeded from `lib/scenario/clinic.ts`: "Ransomware at Lakeside Family Clinic (300 staff)", detected 2:13 am. Demo invites and later edits are copied into this browser's localStorage so a second tab can redeem a link. That copy is plaintext and is used only while `NEXT_PUBLIC_ZH_MOCK=1`. Includes members (Commander, Counsel, Technical, Executive), a status, ~12 timeline entries across phases, 6 scope items (file server encrypted; HR database exfiltrated, 12,400 records, SSN, affected TX 9,800 and CA 2,600; EHR suspected PHI; backups contained; email tenant suspected; VPN appliance eradicated), 6 tasks, chat in three channels, one pending invitee. Actions append events and notify listeners. Enabled only when `NEXT_PUBLIC_ZH_MOCK=1`; never set on Vercel.
 
 ### 6.4 `RealIncidentClient` (Lane A, P0)
 

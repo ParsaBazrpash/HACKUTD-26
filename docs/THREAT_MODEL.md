@@ -93,11 +93,13 @@ Message and record content (including attorney-client privileged communications)
 - **T19 and T20 sessions and devices:** a stolen token or seized unlocked laptop is handled by revocation and key rotation, not prevented.
 - **T35 metadata:** the server sees who is in an incident, their roles and handles, and when and how much they write.
 - **T36 root of trust:** the commander's device is a single point of trust in v1.
+- **Demo ledger:** when `NEXT_PUBLIC_ZH_MOCK=1`, the incident record and invite tokens are copied into this browser's localStorage so another tab can join. That copy is plaintext, stays on the device, and the live client does not read it. Clear site data to wipe it.
 
 ## Progress notes
 
 - 2026-11-07 (Lane A): the client crypto library and its negative tests are in (`lib/crypto/*.test.ts`: seal, sign, wrap, invite, chain, verify, store). T7 is Done.
 - 2026-11-07 (Lane A): the module and its 34 tests are in (`spacetimedb/src/module.test.ts`), including a test that the client verifier accepts the module's hash chain. T6, T11, T12, T14, T17 and T22 are Done. T13 waits for the revoke demo, T16 and T18 for the join UI, and T2 to T5 for the two-browser demo and module-side signature checks (P1).
+- 2026-11-07 (Lane B): demo invites are stored in browser localStorage (`lib/client/demo-ledger.ts`) so a second tab can redeem them. Live mode does not use that store.
 
 ## Downgrades taken
 

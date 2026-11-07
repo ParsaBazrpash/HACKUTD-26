@@ -114,7 +114,7 @@ export function JoinForm() {
         <p className="text-sm text-alert">This is a demo link. It cannot be redeemed by the live client.</p>
       ) : null}
       {mock && kind === "demo" ? (
-        <p className="text-sm text-muted">Demo invite. It is a tab-local token, not a cryptographic link.</p>
+        <p className="text-sm text-muted">Demo invite. It stays in this browser, and it is not a cryptographic link.</p>
       ) : null}
 
       {joined ? null : (

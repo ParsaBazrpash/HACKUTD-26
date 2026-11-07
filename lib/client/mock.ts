@@ -2,12 +2,25 @@
 //
 // The story is built by foldEvents, the same pure fold the real client uses.
 // This file does not seal, sign, hash, or check admission certificates.
-// Invite links are demo tokens stored in this tab. They are not cryptographic
-// invites, and a live invite fragment is rejected.
+// Invite links are demo tokens kept in this browser so another tab can redeem
+// them. They are not cryptographic invites, and a live invite fragment is rejected.
 //
 // getState() filters with the shared role policy. The heap still holds every
 // channel because this process is the whole demo, not a security boundary.
 
+import {
+  browserDemoLedger,
+  browserDemoSession,
+  parseDemoLedger,
+  parseDemoSession,
+  serializeDemoLedger,
+  serializeDemoSession,
+  type DemoLedgerPort,
+  type DemoSessionPort,
+  type LedgerEvent,
+  type LedgerMember,
+  type LedgerWorld,
+} from "@/lib/client/demo-ledger";
 import { foldEvents } from "@/lib/client/fold";
 import {
   EMPTY_PROFILE,
@@ -64,6 +77,13 @@ export interface MockClientOptions {
   origin?: string;
   /** Who this tab is inside the seeded clinic. Defaults to the commander. */
   viewer?: MockViewer;
+  /**
+   * Shared demo record. Undefined uses localStorage in the browser.
+   * Null keeps this client private to the process.
+   */
+  ledger?: DemoLedgerPort | null;
+  /** Which member this tab is. Undefined uses sessionStorage in the browser. */
+  session?: DemoSessionPort | null;
 }
 
 interface DemoInvite {
@@ -84,6 +104,12 @@ interface World {
   events: VerifiedEvent[];
   invites: DemoInvite[];
   nextMemberId: bigint;
+}
+
+function memberStateRank(state: RosterEntry["state"]): number {
+  if (state === "revoked") return 2;
+  if (state === "active") return 1;
+  return 0;
 }
 
 const PLACEHOLDER_HEAD = "0".repeat(64);
@@ -174,6 +200,10 @@ class MockIncidentClient implements IncidentClient {
   private readonly worlds = new Map<string, World>();
   private readonly now: () => number;
   private readonly options: MockClientOptions;
+  private readonly ledger: DemoLedgerPort | null;
+  private readonly session: DemoSessionPort | null;
+  private ledgerBlocked = false;
+  private applyingLedger = false;
   private viewer = "";
   private currentId: string | null = null;
   private nextIdentity = 6;
@@ -181,6 +211,8 @@ class MockIncidentClient implements IncidentClient {
 
   constructor(options: MockClientOptions = {}) {
     this.options = options;
+    this.ledger = options.ledger === undefined ? browserDemoLedger() : options.ledger;
+    this.session = options.session === undefined ? browserDemoSession() : options.session;
     this.now = options.now ?? Date.now;
     const clinic = createClinicFixture();
     const world: World = {
@@ -194,8 +226,11 @@ class MockIncidentClient implements IncidentClient {
     this.worlds.set(world.id, world);
     this.viewer = this.viewerFor(world, options.viewer ?? "commander");
     this.currentId = world.id;
+    this.pull();
+    if (!options.viewer) this.restoreSession();
     this.state = freezeDeep(blank("connecting", new Date(this.now())));
     this.publish();
+    this.ledger?.subscribe?.(() => this.onRemoteLedger());
   }
 
   getState = (): IncidentState => this.state;
@@ -287,7 +322,9 @@ class MockIncidentClient implements IncidentClient {
       if (!parsed) throw new Error("This demo invite link is not valid.");
       const world = this.worlds.get(parsed.incidentId);
       const invite = world?.invites.find((item) => item.token === parsed.token);
-      if (!world || !invite) throw new Error("This demo invite link is not valid.");
+      if (!world || !invite) {
+        throw new Error("This demo invite is not in this browser. Create a new link from the commander tab.");
+      }
       if (invite.role !== parsed.role) throw new Error("This demo invite does not match the role on the link.");
       if (invite.used) throw new Error("This demo invite was already used.");
       if (invite.expiresAt <= this.now()) throw new Error("This demo invite has expired.");
@@ -412,12 +449,236 @@ class MockIncidentClient implements IncidentClient {
   }
 
   private run<T>(fn: () => T): Promise<T> {
-    const run = this.tail.then(fn, fn);
+    const run = this.tail.then(
+      () => this.transact(fn),
+      () => this.transact(fn),
+    );
     this.tail = run.then(
       () => undefined,
       () => undefined,
     );
     return run;
+  }
+
+  private transact<T>(fn: () => T): T {
+    this.pull();
+    const result = fn();
+    this.saveLedger();
+    this.saveSession();
+    return result;
+  }
+
+  private onRemoteLedger(): void {
+    if (this.applyingLedger) return;
+    try {
+      this.pull();
+      this.publish();
+    } catch {
+      // A bad ledger must not take down the tab that already has the record.
+    }
+  }
+
+  private pull(): void {
+    if (!this.ledger) return;
+    let raw: string | null;
+    try {
+      raw = this.ledger.read();
+    } catch {
+      this.ledgerBlocked = true;
+      return;
+    }
+    if (!raw) {
+      this.ledgerBlocked = false;
+      return;
+    }
+    const file = parseDemoLedger(raw);
+    if (!file) {
+      this.ledgerBlocked = true;
+      return;
+    }
+    this.ledgerBlocked = false;
+    if (file.nextIdentity > this.nextIdentity) this.nextIdentity = file.nextIdentity;
+    for (const world of file.worlds) this.mergeStoredWorld(world);
+  }
+
+  private saveLedger(): void {
+    if (!this.ledger || this.ledgerBlocked) return;
+    this.applyingLedger = true;
+    try {
+      this.ledger.write(
+        serializeDemoLedger({
+          v: 1,
+          nextIdentity: this.nextIdentity,
+          worlds: [...this.worlds.values()].map((world) => this.snapshotWorld(world)),
+        }),
+      );
+    } catch {
+      this.ledgerBlocked = true;
+    } finally {
+      this.applyingLedger = false;
+    }
+  }
+
+  private saveSession(): void {
+    if (!this.session || !this.currentId || !this.viewer) return;
+    try {
+      this.session.write(serializeDemoSession({ v: 1, identity: this.viewer, currentId: this.currentId }));
+    } catch {
+      // The ledger still holds the record. This tab can rejoin from the link.
+    }
+  }
+
+  private restoreSession(): void {
+    if (!this.session) return;
+    let raw: string | null;
+    try {
+      raw = this.session.read();
+    } catch {
+      return;
+    }
+    if (!raw) return;
+    const session = parseDemoSession(raw);
+    if (!session) return;
+    const world = this.worlds.get(session.currentId);
+    if (!world?.members.some((member) => member.identity === session.identity)) return;
+    this.viewer = session.identity;
+    this.currentId = session.currentId;
+  }
+
+  private snapshotWorld(world: World): LedgerWorld {
+    return {
+      id: world.id,
+      createdAt: world.createdAt.toISOString(),
+      nextMemberId: world.nextMemberId.toString(),
+      members: world.members.map((member) => this.snapshotMember(member)),
+      invites: world.invites.map((invite) => ({ ...invite })),
+      events: world.events.map((event) => ({
+        channel: event.channel,
+        seq: event.seq.toString(),
+        eventId: event.eventId,
+        author: event.author ? { ...event.author } : null,
+        serverTs: event.serverTs.toISOString(),
+        sentAt: event.sentAt ? event.sentAt.toISOString() : null,
+        payload: event.payload,
+        verdict: {
+          ok: event.verdict.ok,
+          failures: [...event.verdict.failures],
+          warnings: [...event.verdict.warnings],
+        },
+      })),
+    };
+  }
+
+  private snapshotMember(member: RosterEntry): LedgerMember {
+    return {
+      memberId: member.memberId.toString(),
+      identity: member.identity,
+      displayName: member.displayName,
+      role: member.role,
+      state: member.state,
+      fingerprint: member.fingerprint,
+      safetyCode: member.safetyCode,
+      joinedAt: member.joinedAt.toISOString(),
+      ...(member.admittedAt ? { admittedAt: member.admittedAt.toISOString() } : {}),
+      ...(member.revokedAt ? { revokedAt: member.revokedAt.toISOString() } : {}),
+      demoLinkMatched: member.demoLinkMatched,
+    };
+  }
+
+  private mergeStoredWorld(stored: LedgerWorld): void {
+    const existing = this.worlds.get(stored.id);
+    if (!existing) {
+      if (this.worlds.size >= MAX_INCIDENTS_PER_IDENTITY) return;
+      const created = this.worldFromLedger(stored);
+      if (created) this.worlds.set(stored.id, created);
+      return;
+    }
+    const nextMemberId = BigInt(stored.nextMemberId);
+    if (nextMemberId > existing.nextMemberId) existing.nextMemberId = nextMemberId;
+    const createdAt = new Date(stored.createdAt);
+    if (createdAt < existing.createdAt) existing.createdAt = createdAt;
+    for (const invite of stored.invites) {
+      const found = existing.invites.find((item) => item.token === invite.token);
+      if (!found) {
+        existing.invites.push({ ...invite });
+        continue;
+      }
+      found.used = found.used || invite.used;
+      if (invite.expiresAt > found.expiresAt) found.expiresAt = invite.expiresAt;
+    }
+    for (const member of stored.members) {
+      const parsed = this.memberFromLedger(member);
+      const found = existing.members.find((item) => item.memberId === parsed.memberId);
+      if (!found) {
+        if (existing.members.length >= MAX_MEMBERS) continue;
+        existing.members.push(parsed);
+        continue;
+      }
+      this.mergeMember(found, parsed);
+    }
+    for (const event of stored.events) {
+      if (existing.events.some((item) => item.eventId === event.eventId)) continue;
+      const parsed = this.eventFromLedger(event);
+      if (parsed) existing.events.push(parsed);
+    }
+  }
+
+  private worldFromLedger(stored: LedgerWorld): World | null {
+    const members = stored.members.map((member) => this.memberFromLedger(member));
+    if (members.length === 0) return null;
+    const events = stored.events.flatMap((event) => {
+      const parsed = this.eventFromLedger(event);
+      return parsed ? [parsed] : [];
+    });
+    return {
+      id: stored.id,
+      createdAt: new Date(stored.createdAt),
+      members,
+      events,
+      invites: stored.invites.map((invite) => ({ ...invite })),
+      nextMemberId: BigInt(stored.nextMemberId),
+    };
+  }
+
+  private memberFromLedger(member: LedgerMember): RosterEntry {
+    return {
+      memberId: BigInt(member.memberId),
+      identity: member.identity,
+      displayName: member.displayName,
+      role: member.role,
+      state: member.state,
+      fingerprint: member.fingerprint,
+      safetyCode: member.safetyCode,
+      joinedAt: new Date(member.joinedAt),
+      ...(member.admittedAt ? { admittedAt: new Date(member.admittedAt) } : {}),
+      ...(member.revokedAt ? { revokedAt: new Date(member.revokedAt) } : {}),
+      demoLinkMatched: member.demoLinkMatched,
+    };
+  }
+
+  private mergeMember(target: RosterEntry, incoming: RosterEntry): void {
+    if (incoming.demoLinkMatched) target.demoLinkMatched = true;
+    if (memberStateRank(incoming.state) <= memberStateRank(target.state)) return;
+    target.state = incoming.state;
+    if (incoming.admittedAt) target.admittedAt = incoming.admittedAt;
+    if (incoming.revokedAt) target.revokedAt = incoming.revokedAt;
+  }
+
+  private eventFromLedger(event: LedgerEvent): VerifiedEvent | null {
+    return {
+      channel: event.channel,
+      seq: BigInt(event.seq),
+      eventId: event.eventId,
+      author: event.author ? { ...event.author } : null,
+      serverTs: new Date(event.serverTs),
+      sentAt: event.sentAt ? new Date(event.sentAt) : null,
+      payload: event.payload,
+      verdict: {
+        ok: event.verdict.ok,
+        failures: [...event.verdict.failures],
+        warnings: [...event.verdict.warnings],
+      },
+    };
   }
 
   private origin(): string {

@@ -16,20 +16,28 @@ import type {
 
 const TOKEN_KEY = 'zh-spacetime-token';
 
-function readToken(): string | undefined {
-  try {
-    return localStorage.getItem(TOKEN_KEY) ?? undefined;
-  } catch {
-    return undefined;
-  }
+/** Where the Spacetime auth token lives. Defaults to localStorage. */
+export interface TokenStore {
+  read(): string | undefined;
+  write(token: string): void;
 }
-function saveToken(token: string): void {
-  try {
-    localStorage.setItem(TOKEN_KEY, token);
-  } catch {
-    /* storage may be unavailable (private window); the session still works */
-  }
-}
+
+export const localTokenStore: TokenStore = {
+  read() {
+    try {
+      return localStorage.getItem(TOKEN_KEY) ?? undefined;
+    } catch {
+      return undefined;
+    }
+  },
+  write(token) {
+    try {
+      localStorage.setItem(TOKEN_KEY, token);
+    } catch {
+      /* storage may be unavailable (private window); the session still works */
+    }
+  },
+};
 
 const micros = (t: { microsSinceUnixEpoch: bigint }) => t.microsSinceUnixEpoch;
 
@@ -44,6 +52,7 @@ export class SpacetimeBackend implements IncidentBackend {
   constructor(
     private readonly host: string,
     private readonly dbName: string,
+    private readonly tokens: TokenStore = localTokenStore,
   ) {
     this.connect();
   }
@@ -52,9 +61,9 @@ export class SpacetimeBackend implements IncidentBackend {
     this.conn = DbConnection.builder()
       .withUri(this.host)
       .withDatabaseName(this.dbName)
-      .withToken(readToken())
+      .withToken(this.tokens.read())
       .onConnect((conn, identity, token) => {
-        saveToken(token);
+        this.tokens.write(token);
         this.identity = identity.toHexString();
         for (const t of [
           conn.db.myStatus,

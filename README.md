@@ -1,36 +1,33 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ZeroHour
 
-## Getting Started
+Sealed incident-response war room for the first 72 hours after a ransomware attack. The Next.js app renders in the browser. SpacetimeDB will be the only backend. This foundation does not encrypt yet, and it does not pretend to.
 
-First, run the development server:
+## Commands
 
 ```bash
+npm install
+cp .env.example .env.local
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Next.js dev server |
+| `npm run lint` | ESLint |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm run test` | Vitest unit tests |
+| `npm run test:watch` | Vitest in watch mode |
+| `npm run build` | Production build |
+| `npm start` | Serve the production build |
+| `npx playwright install chromium` | Install the browser used by end-to-end tests |
+| `npm run test:e2e` | Playwright against the dev server |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Leave `NEXT_PUBLIC_DATA_CLIENT=mock` until a SpacetimeDB module is published. The mock keeps sealed shells in browser memory. Setting `spacetimedb` constructs the client and then refuses every call, so no incident data is sent.
 
-## Learn More
+## Stack
 
-To learn more about Next.js, take a look at the following resources:
+Next.js 16.4.5, React 19.3.0, Tailwind CSS 4.3.5, TypeScript 5.9.3, Zod 4.6.7, Lucide React 1.70.0, Vitest 3.2.7, Playwright 1.65.0.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Read [docs/PLAN.md](docs/PLAN.md) for the build phases and [AGENTS.md](AGENTS.md) for the security rules.

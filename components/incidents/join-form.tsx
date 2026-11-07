@@ -1,155 +1,163 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { useState, type FormEvent } from "react";
-import { useIncidentList } from "@/hooks/use-incident-data";
-import { SpacetimeModuleNotReadyError, UnknownIncidentError } from "@/lib/data";
-import { ROLE_LABELS, roleSchema, type Role } from "@/types/common";
-import type { JoinIncidentInput, MemberShell } from "@/types/shells";
+import { useCallback, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
+import { DemoBanner } from "@/components/incidents/demo-banner";
+import { ROLE_LABELS } from "@/components/incidents/labels";
+import { getIncidentClient, isMockIncidentClient } from "@/lib/client";
+import { clientErrorMessage } from "@/lib/client/errors";
+import type { Role } from "@/spacetimedb/src/shared/policy";
+
+const fieldClass =
+  "rounded-xl border border-line bg-panel px-3 py-2 text-foreground placeholder:text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal";
+
+function fragmentKind(fragment: string): "demo" | "live" | "unknown" {
+  const params = new URLSearchParams(fragment.replace(/^#/, ""));
+  if (params.has("c") || params.has("s") || params.has("f")) return "live";
+  if (params.get("demo") === "1") return "demo";
+  return "unknown";
+}
+
+function inviteRoleLabel(fragment: string): string | null {
+  const role = new URLSearchParams(fragment.replace(/^#/, "")).get("r");
+  if (role === "counsel" || role === "technical" || role === "executive") return ROLE_LABELS[role];
+  return null;
+}
+
+function emptyInviteFragment(): null {
+  return null;
+}
+
+/**
+ * Reads the invite fragment once, then removes it from the address bar.
+ * The first snapshot is null so server render and hydration match.
+ */
+function useInviteFragment(): string | null {
+  const box = useRef({
+    value: null as string | null,
+    ready: false,
+    listeners: new Set<() => void>(),
+  });
+  const subscribe = useCallback((listener: () => void) => {
+    const current = box.current;
+    current.listeners.add(listener);
+    if (!current.ready) {
+      current.ready = true;
+      const hash = window.location.hash;
+      current.value = hash.length > 1 ? hash : "";
+      if (hash.length > 1) window.history.replaceState(null, "", "/join");
+      queueMicrotask(() => {
+        for (const item of current.listeners) item();
+      });
+    }
+    return () => {
+      current.listeners.delete(listener);
+    };
+  }, []);
+  const getSnapshot = useCallback(() => box.current.value, []);
+  return useSyncExternalStore(subscribe, getSnapshot, emptyInviteFragment);
+}
 
 export function JoinForm() {
-  const params = useSearchParams();
-  const { incidents, client, error: clientError, mode } = useIncidentList();
-  const requested = params.get("incident");
-  const preferredId =
-    incidents.find((incident) => incident.id === requested)?.id ?? incidents[0]?.id ?? "";
-  const [chosenId, setChosenId] = useState<string | null>(null);
-  const incidentId = chosenId ?? preferredId;
-  const [role, setRole] = useState<Role | "">("");
-  const [localName, setLocalName] = useState("");
+  const mock = isMockIncidentClient();
+  const fragment = useInviteFragment();
+  const [displayName, setDisplayName] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [member, setMember] = useState<MemberShell | null>(null);
-
-  if (clientError || mode === "unavailable") {
-    return (
-      <p role="alert" className="text-sm text-alert">
-        {clientError ?? "The incident client is unavailable."}
-      </p>
-    );
-  }
-
-  if (mode !== "mock" || !client) {
-    return (
-      <p className="rounded-xl border border-line bg-panel px-4 py-3 text-sm text-muted">
-        SpacetimeDB is selected, and the module is not connected. Join was not sent.
-      </p>
-    );
-  }
+  const [joined, setJoined] = useState<{ role: Role; name: string; incidentId: string } | null>(null);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!client || !role || !incidentId) return;
-
-    const input: JoinIncidentInput = { incidentId, role };
+    if (!fragment) return;
     setPending(true);
     setError(null);
     try {
-      const joined = await client.joinIncident(input);
-      setMember(joined);
-    } catch (cause) {
-      if (cause instanceof UnknownIncidentError || cause instanceof SpacetimeModuleNotReadyError) {
-        setError(cause.message);
-      } else {
-        setError("The room could not be joined.");
+      const client = getIncidentClient();
+      await client.redeemInvite({ fragment, displayName });
+      const next = client.getState();
+      if (next.me && next.incident) {
+        setJoined({ role: next.me.role, name: next.me.displayName, incidentId: next.incident.id });
       }
+    } catch (cause) {
+      setError(clientErrorMessage(cause));
     } finally {
       setPending(false);
     }
   }
 
+  const role = fragment ? inviteRoleLabel(fragment) : null;
+  const kind = fragment ? fragmentKind(fragment) : null;
+
   return (
-    <form onSubmit={submit} className="grid max-w-xl gap-5">
-      <label className="grid gap-2 text-sm" htmlFor="incident-id">
-        Incident
-        <select
-          id="incident-id"
-          name="incident"
-          value={incidentId}
-          onChange={(event) => setChosenId(event.target.value)}
-          className="rounded-xl border border-line bg-panel px-3 py-2 text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
-        >
-          <option value="" disabled>
-            Select a room
-          </option>
-          {incidents.map((incident) => (
-            <option key={incident.id} value={incident.id}>
-              {incident.id}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className="grid gap-2 text-sm" htmlFor="role">
-        Role
-        <select
-          id="role"
-          name="role"
-          value={role}
-          required
-          onChange={(event) => {
-            const parsed = roleSchema.safeParse(event.target.value);
-            setRole(parsed.success ? parsed.data : "");
-          }}
-          className="rounded-xl border border-line bg-panel px-3 py-2 text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
-        >
-          <option value="" disabled>
-            Select a role
-          </option>
-          {roleSchema.options.map((option) => (
-            <option key={option} value={option}>
-              {ROLE_LABELS[option]}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className="grid gap-2 text-sm" htmlFor="local-name">
-        Local label
-        <input
-          id="local-name"
-          name="local-name"
-          value={localName}
-          maxLength={80}
-          autoComplete="off"
-          onChange={(event) => setLocalName(event.target.value)}
-          placeholder="Optional, this tab only"
-          className="rounded-xl border border-line bg-panel px-3 py-2 text-foreground placeholder:text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
-        />
-        <span className="text-xs leading-5 text-muted">
-          Kept in this tab. It is not passed to the data client, and no key is generated.
-        </span>
-      </label>
-
-      {error ? (
-        <p role="alert" className="text-sm text-alert">
-          {error}
+    <div className="grid max-w-xl gap-5">
+      <DemoBanner />
+      {fragment === null ? <p className="text-sm text-muted">Reading the invite link…</p> : null}
+      {fragment === "" && !joined ? (
+        <p className="text-sm leading-6 text-muted">
+          No invite link is loaded. Open the link from your commander. This page cannot assign a role.
         </p>
       ) : null}
+      {fragment && role ? (
+        <p className="text-sm text-foreground">
+          Role from the invite: {role}. This page cannot change it.
+        </p>
+      ) : null}
+      {fragment && !role ? (
+        <p className="text-sm text-muted">The role stays on the invite. This page cannot choose one.</p>
+      ) : null}
+      {mock && kind === "live" ? (
+        <p className="text-sm text-alert">Demo mode cannot open a live invite link.</p>
+      ) : null}
+      {!mock && kind === "demo" ? (
+        <p className="text-sm text-alert">This is a demo link. It cannot be redeemed by the live client.</p>
+      ) : null}
+      {mock && kind === "demo" ? (
+        <p className="text-sm text-muted">Demo invite. It is a tab-local token, not a cryptographic link.</p>
+      ) : null}
 
-      <button
-        type="submit"
-        disabled={pending || !incidentId || !role}
-        className="inline-flex w-fit items-center justify-center rounded-lg bg-signal px-4 py-2 text-sm font-medium text-signal-ink hover:bg-signal-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
-      >
-        {pending ? "Joining…" : "Join room"}
-      </button>
+      {joined ? null : (
+        <form onSubmit={submit} className="grid gap-5">
+          <label className="grid gap-2 text-sm" htmlFor="display-name">
+            Display name
+            <input
+              id="display-name"
+              name="display-name"
+              value={displayName}
+              required
+              maxLength={40}
+              autoComplete="off"
+              onChange={(event) => setDisplayName(event.target.value)}
+              className={fieldClass}
+            />
+          </label>
+          {error ? (
+            <p role="alert" className="text-sm text-alert">
+              {error}
+            </p>
+          ) : null}
+          <button
+            type="submit"
+            disabled={pending || !fragment || !displayName.trim()}
+            className="inline-flex w-fit items-center justify-center rounded-lg bg-signal px-4 py-2 text-sm font-medium text-signal-ink hover:bg-signal-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+          >
+            {pending ? "Joining…" : "Redeem invite"}
+          </button>
+        </form>
+      )}
 
-      {member ? (
+      {joined ? (
         <div role="status" className="rounded-xl border border-line bg-panel px-4 py-3 text-sm">
           <p>
-            Joined as {ROLE_LABELS[member.role]}. Member {member.id}.
+            Waiting as {ROLE_LABELS[joined.role]}. {joined.name}.
           </p>
-          {localName.trim() ? <p className="mt-2 text-muted">Local label: {localName.trim()}</p> : null}
           <Link
-            href={`/incidents/${member.incidentId}`}
+            href={`/incidents/${joined.incidentId}`}
             className="mt-3 inline-flex text-signal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
           >
             Open this room
           </Link>
         </div>
       ) : null}
-    </form>
+    </div>
   );
 }

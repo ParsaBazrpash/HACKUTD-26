@@ -14,7 +14,7 @@ export default function IncidentDetailPage({
         fallback={
           <div>
             <p className="font-mono text-[11px] tracking-[0.18em] text-muted">OPENING</p>
-            <h1 className="mt-3 text-3xl font-medium tracking-tight">Opening the local shell…</h1>
+            <h1 className="mt-3 text-3xl font-medium tracking-tight">Opening the incident…</h1>
           </div>
         }
       >
@@ -30,5 +30,5 @@ async function IncidentDetailLoader({
   params: Promise<{ incidentId: string }>;
 }) {
   const { incidentId } = await params;
-  return <IncidentDetail incidentId={incidentId} />;
+  return <IncidentDetail key={incidentId} incidentId={incidentId} />;
 }

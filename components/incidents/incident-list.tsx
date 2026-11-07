@@ -1,73 +1,140 @@
 "use client";
 
 import Link from "next/link";
-import { useIncidentList } from "@/hooks/use-incident-data";
+import { useRouter } from "next/navigation";
+import { useState, type FormEvent } from "react";
+import { DemoBanner } from "@/components/incidents/demo-banner";
+import { CHANNEL_LABELS, phaseLabel } from "@/components/incidents/labels";
+import { getIncidentClient, isMockIncidentClient } from "@/lib/client";
+import { clientErrorMessage } from "@/lib/client/errors";
 import { formatTimestamp } from "@/lib/time";
-import { CHANNEL_KIND_LABELS, INCIDENT_STATUS_LABELS } from "@/types/common";
-import type { IncidentStatus } from "@/types/common";
+import { useIncident } from "@/hooks/use-incident";
 
-function statusClass(status: IncidentStatus): string {
-  if (status === "active") return "text-signal";
-  if (status === "contained") return "text-verified";
-  return "text-muted";
-}
+const fieldClass =
+  "rounded-xl border border-line bg-panel px-3 py-2 text-foreground placeholder:text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal";
 
 export function IncidentList() {
-  const { incidents, client, error, mode } = useIncidentList();
+  const state = useIncident();
+  const mock = isMockIncidentClient();
+  const router = useRouter();
+  const [title, setTitle] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  if (error || mode === "unavailable") {
-    return (
-      <p role="alert" className="rounded-xl border border-line bg-panel px-4 py-3 text-sm text-alert">
-        {error ?? "The incident client is unavailable."}
-      </p>
-    );
+  async function create(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending(true);
+    setError(null);
+    try {
+      const created = await getIncidentClient().createIncident({ title, displayName });
+      router.push(`/incidents/${created.incidentId}`);
+    } catch (cause) {
+      setError(clientErrorMessage(cause));
+    } finally {
+      setPending(false);
+    }
   }
 
-  if (mode === "spacetimedb") {
-    return (
-      <p className="rounded-xl border border-line bg-panel px-4 py-3 text-sm text-muted">
-        SpacetimeDB is selected, and the module is not connected. No incident data was requested.
-      </p>
-    );
-  }
+  const incident = state.incident;
+  const channelNames = [
+    ...(state.me?.state === "active" ? ["Record log"] : []),
+    ...state.channels.map((channel) => CHANNEL_LABELS[channel.kind]),
+  ];
 
   return (
-    <div>
-      <p className="rounded-xl border border-line bg-panel-raised px-4 py-3 text-sm text-muted">
-        In-memory prototype. Nothing on this page is subscribed to SpacetimeDB, and no narrative is stored.
-      </p>
-      {incidents.length === 0 ? (
-        <p className="mt-8 text-sm text-muted">No shells are loaded on this client.</p>
-      ) : (
-        <ul className="mt-6 border-t border-line">
-          {incidents.map((incident) => {
-            const snapshot = client?.getSnapshot(incident.id);
-            const channels = snapshot?.channels.map((channel) => CHANNEL_KIND_LABELS[channel.kind]) ?? [];
-            return (
-              <li key={incident.id} className="border-b border-line">
-                <Link
-                  href={`/incidents/${incident.id}`}
-                  className="grid gap-2 px-1 py-4 transition-colors hover:bg-panel focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal sm:grid-cols-[7.5rem_10rem_1fr_auto] sm:items-center"
-                >
-                  <span className={`font-mono text-xs tracking-[0.14em] uppercase ${statusClass(incident.status)}`}>
-                    {INCIDENT_STATUS_LABELS[incident.status]}
-                  </span>
-                  <span className="font-mono text-sm">{incident.id}</span>
-                  <span className="text-sm text-muted">
-                    {formatTimestamp(incident.startedAt)}
-                    <span className="mt-1 block text-foreground sm:mt-0 sm:ml-3 sm:inline">
-                      {channels.join(" · ")}
-                    </span>
-                  </span>
-                  <span className="font-mono text-xs text-muted">
-                    {snapshot?.members.length ?? 0} members
-                  </span>
-                </Link>
-              </li>
-            );
-          })}
+    <div className="grid gap-8">
+      <DemoBanner />
+      {state.connection === "connecting" ? (
+        <p className="text-sm text-muted">Opening the incident client…</p>
+      ) : null}
+      {state.connection === "offline" ? (
+        <p className="rounded-xl border border-line bg-panel px-4 py-3 text-sm text-muted">
+          The connection dropped. Showing the last update held in this tab.
+        </p>
+      ) : null}
+      {state.connection === "error" ? (
+        <p role="alert" className="rounded-xl border border-line bg-panel px-4 py-3 text-sm text-alert">
+          {state.error ?? "The incident client hit an error."}
+        </p>
+      ) : null}
+      {state.me?.state === "revoked" ? (
+        <p className="text-sm text-foreground">Your access to this incident was revoked.</p>
+      ) : null}
+
+      {incident && state.me?.state !== "revoked" ? (
+        <ul className="border-t border-line">
+          <li className="border-b border-line">
+            <Link
+              href={`/incidents/${incident.id}`}
+              className="grid gap-2 px-1 py-4 transition-colors hover:bg-panel focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal sm:grid-cols-[7.5rem_1fr_auto] sm:items-center"
+            >
+              <span className="font-mono text-xs tracking-[0.14em] text-signal uppercase">
+                {state.status ? state.status.severity : "Open"}
+              </span>
+              <span>
+                <span className="block text-sm text-foreground">
+                  {incident.title || "Untitled incident"}
+                </span>
+                <span className="mt-1 block text-sm text-muted">
+                  {state.status ? phaseLabel(state.status.phase) : "No status yet"}
+                  {" · "}
+                  {formatTimestamp(incident.createdAt)}
+                  {channelNames.length > 0 ? ` · ${channelNames.join(" · ")}` : ""}
+                </span>
+              </span>
+              <span className="font-mono text-xs text-muted">{state.members.length} members</span>
+            </Link>
+          </li>
         </ul>
-      )}
+      ) : state.connection !== "connecting" && state.me?.state !== "revoked" ? (
+        <p className="text-sm text-muted">No incident is open in this tab.</p>
+      ) : null}
+
+      <form onSubmit={create} className="grid max-w-xl gap-5">
+        <h2 className="font-mono text-[11px] tracking-[0.18em] text-muted">CREATE AN INCIDENT</h2>
+        <p className="text-sm leading-6 text-muted">
+          You become the commander. Everyone else receives a role from an invite, and this form cannot assign one.
+          {mock ? " Creating an incident replaces the open demo story in this tab." : ""}
+        </p>
+        <label className="grid gap-2 text-sm" htmlFor="incident-title">
+          Title
+          <input
+            id="incident-title"
+            name="title"
+            value={title}
+            required
+            maxLength={120}
+            onChange={(event) => setTitle(event.target.value)}
+            className={fieldClass}
+          />
+        </label>
+        <label className="grid gap-2 text-sm" htmlFor="commander-name">
+          Your display name
+          <input
+            id="commander-name"
+            name="display-name"
+            value={displayName}
+            required
+            maxLength={40}
+            autoComplete="off"
+            onChange={(event) => setDisplayName(event.target.value)}
+            className={fieldClass}
+          />
+        </label>
+        {error ? (
+          <p role="alert" className="text-sm text-alert">
+            {error}
+          </p>
+        ) : null}
+        <button
+          type="submit"
+          disabled={pending}
+          className="inline-flex w-fit items-center justify-center rounded-lg bg-signal px-4 py-2 text-sm font-medium text-signal-ink hover:bg-signal-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+        >
+          {pending ? "Creating…" : "Create incident"}
+        </button>
+      </form>
     </div>
   );
 }

@@ -1,12 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { CryptoNotImplementedError, createIncidentCrypto } from "@/lib/crypto";
-import {
-  InvalidSpacetimeTargetError,
-  SpacetimeModuleNotReadyError,
-  createIncidentDataClient,
-  readPublicEnv,
-} from "@/lib/data";
-import { SpacetimeDbIncidentClient } from "@/lib/data/spacetimedb-client";
 import { findPlaintextColumns } from "@/spacetimedb/tables";
 import { formatDuration, formatTimestamp } from "@/lib/time";
 
@@ -38,42 +31,6 @@ describe("crypto boundary", () => {
   });
 });
 
-describe("client selection", () => {
-  test("defaults to the in-memory prototype", () => {
-    expect(readPublicEnv({}).dataClient).toBe("mock");
-    expect(
-      createIncidentDataClient({
-        dataClient: "mock",
-        spacetimedbUri: "",
-        spacetimedbDatabase: "",
-      }).mode,
-    ).toBe("mock");
-  });
-
-  test("rejects an invalid data client name", () => {
-    expect(() => readPublicEnv({ NEXT_PUBLIC_DATA_CLIENT: "firebase" })).toThrow();
-  });
-
-  test("constructs a SpacetimeDB client that refuses every call", async () => {
-    expect(
-      () => new SpacetimeDbIncidentClient({ uri: "https://example.com", database: "zerohour" }),
-    ).toThrow(InvalidSpacetimeTargetError);
-
-    const client = createIncidentDataClient({
-      dataClient: "spacetimedb",
-      spacetimedbUri: "wss://example.invalid",
-      spacetimedbDatabase: "zerohour",
-    });
-    expect(client.mode).toBe("spacetimedb");
-    expect(() => client.getIncidentList()).toThrow(SpacetimeModuleNotReadyError);
-    expect(() => client.getSnapshot("inc_harbor")).toThrow(SpacetimeModuleNotReadyError);
-    expect(() => client.subscribe(() => {})).toThrow(SpacetimeModuleNotReadyError);
-    await expect(
-      client.joinIncident({ incidentId: "inc_harbor", role: "responder" }),
-    ).rejects.toBeInstanceOf(SpacetimeModuleNotReadyError);
-  });
-});
-
 describe("module outline and clocks", () => {
   test("SpacetimeDB columns have no plaintext class", () => {
     expect(findPlaintextColumns()).toEqual([]);
@@ -85,5 +42,6 @@ describe("module outline and clocks", () => {
     expect(formatDuration(-1000)).toBe("-00:00:01");
     expect(formatDuration(72 * 60 * 60 * 1000)).toBe("72:00:00");
     expect(formatTimestamp("2026-11-07T14:12:00.000Z")).toBe("07 Nov 14:12 UTC");
+    expect(formatTimestamp(new Date("2026-11-07T14:12:00.000Z"))).toBe("07 Nov 14:12 UTC");
   });
 });

@@ -383,3 +383,61 @@ describe('checkpoints (PLAN 4.10)', () => {
     }
   });
 });
+
+describe('resume after a reload', () => {
+  function memoryLast() {
+    let id: string | null = null;
+    return {
+      get: async () => id,
+      set: async (v: string) => {
+        id = v;
+      },
+    };
+  }
+
+  it('a new client on the same device reopens the last incident without being told which', async () => {
+    const hub = new HarnessHub();
+    const last = memoryLast();
+    const db = makeTestStore(`resume-${++n}`);
+    // A reload keeps the browser's server identity and its IndexedDB.
+    const backend = hub.backend('resumer');
+    const open = () => {
+      const client = new RealIncidentClient(backend, {
+        origin: 'https://zerohour.test',
+        storeFor: (id) => new IncidentStore(id, db),
+        now: () => Number(hub.h.clock.now().microsSinceUnixEpoch / 1000n),
+        waitMs: 200,
+        lastIncident: last,
+      });
+      all.push({ client });
+      return client;
+    };
+    const first = open();
+    const { incidentId } = await first.createIncident({ title: 'Ransomware at Lakeside', displayName: 'Casey' });
+    await settle();
+
+    const reloaded = open();
+    await settle();
+    await new Promise((r) => setTimeout(r, 20));
+    await settle();
+    expect(reloaded.getState().incident?.id).toBe(incidentId);
+    expect(reloaded.getState().me?.role).toBe('commander');
+    expect(reloaded.getState().integrity.ok).toBe(true);
+  });
+
+  it('does nothing when no incident was remembered, and ignores a malformed id', async () => {
+    const hub = new HarnessHub();
+    const db = makeTestStore(`resume-${++n}`);
+    for (const stored of [null, 'not-a-uuid', '<img src=x onerror=alert(1)>']) {
+      const client = new RealIncidentClient(hub.backend('nobody'), {
+        origin: 'https://zerohour.test',
+        storeFor: (id) => new IncidentStore(id, db),
+        waitMs: 200,
+        lastIncident: { get: async () => stored, set: async () => undefined },
+      });
+      all.push({ client });
+      await settle();
+      expect(client.getState().incident).toBeNull();
+    }
+  });
+});

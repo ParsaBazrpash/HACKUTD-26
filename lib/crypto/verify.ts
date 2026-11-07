@@ -8,6 +8,7 @@ import {
   admitStatement,
   bytesEqual,
   bytesToHex,
+  checkpointStatement,
   eventSigInput,
   revokeStatement,
 } from '@/spacetimedb/src/shared/encoding';
@@ -62,6 +63,14 @@ export interface HeadPin {
   hash: Uint8Array;
 }
 
+/** A commander-signed attestation of a channel head (PLAN 4.10). */
+export interface RawCheckpoint {
+  channel: ChannelKind;
+  seq: bigint;
+  hash: Uint8Array;
+  signature: Uint8Array;
+}
+
 export interface VerifyInput {
   incidentId: string;
   /** Commander keys pinned from the invite fingerprint (or created locally by the commander). */
@@ -70,6 +79,8 @@ export interface VerifyInput {
   channels: Partial<Record<ChannelKind, { events: RawEvent[]; serverHead?: HeadPin }>>;
   getChannelKey: (channel: ChannelKind, epoch: number) => CryptoKey | undefined;
   pinnedHeads: Partial<Record<ChannelKind, HeadPin>>;
+  /** Checkpoints as the server presents them; every one is verified here. */
+  checkpoints?: RawCheckpoint[];
 }
 
 export interface CertifiedMember {
@@ -171,6 +182,12 @@ const fail = (w: Work, r: FailureReason, detail?: string) => {
 export async function verifyIncident(input: VerifyInput): Promise<VerifyOutput> {
   const { incidentId } = input;
   const { roster, failures: rosterFailures } = await verifyRoster(incidentId, input.pinnedCommander, input.members);
+  let commanderKey: CryptoKey | null = null;
+  try {
+    commanderKey = await importSignPub(input.pinnedCommander.signPub);
+  } catch {
+    commanderKey = null; // already reported by verifyRoster
+  }
   const keyCache = new Map<string, CryptoKey | null>();
   const signKeyFor = async (hex: string): Promise<CryptoKey | null> => {
     if (keyCache.has(hex)) return keyCache.get(hex) ?? null;
@@ -350,6 +367,32 @@ export async function verifyIncident(input: VerifyInput): Promise<VerifyOutput> 
       }
     }
 
+    // Checkpoints: the commander signed this exact hash at this seq. A different hash,
+    // a missing event (truncation) or a bad signature all mean the history was altered.
+    let latestCheckpoint: ChannelIntegrity['latestCheckpoint'];
+    const cps = (input.checkpoints ?? []).filter((c) => c.channel === channel).sort((a, b) => (a.seq < b.seq ? -1 : a.seq > b.seq ? 1 : 0));
+    for (const cp of cps) {
+      const sigOkCp =
+        commanderKey !== null &&
+        cp.signature.length === 64 &&
+        (await verifySig(commanderKey, checkpointStatement(incidentId, channel, cp.seq, cp.hash), cp.signature));
+      let good = sigOkCp;
+      if (!sigOkCp) {
+        channelFailures.push({ seq: cp.seq, reason: 'history_rewritten', detail: 'checkpoint signature does not verify under the commander key' });
+      } else {
+        const at = list.find((w) => w.raw.seq === cp.seq);
+        if (!at) {
+          good = false;
+          channelFailures.push({ seq: cp.seq, reason: 'history_rewritten', detail: 'events before a signed checkpoint are missing (truncation)' });
+        } else if (!bytesEqual(at.raw.hash, cp.hash)) {
+          good = false;
+          fail(at, 'history_rewritten', 'event hash differs from the commander-signed checkpoint');
+          channelFailures.push({ seq: cp.seq, reason: 'history_rewritten', detail: 'event hash differs from the commander-signed checkpoint' });
+        }
+      }
+      latestCheckpoint = { seq: cp.seq, hashHex: bytesToHex(cp.hash), verified: good };
+    }
+
     // Safe new pin: end of the longest prefix with no failures at all.
     let safe: RawEvent | null = null;
     if (pinnedOk) {
@@ -367,6 +410,7 @@ export async function verifyIncident(input: VerifyInput): Promise<VerifyOutput> 
       head: last ? { seq: last.seq, hashHex: bytesToHex(last.hash) } : null,
       pinnedOk,
       waitingForKeys: list.some((w) => w.warnings.has('waiting_for_keys')),
+      ...(latestCheckpoint ? { latestCheckpoint } : {}),
     };
   }
 

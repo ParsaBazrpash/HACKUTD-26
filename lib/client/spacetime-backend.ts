@@ -74,6 +74,7 @@ export class SpacetimeBackend implements IncidentBackend {
           conn.db.myEvents,
           conn.db.myInvites,
           conn.db.myJoinAttempts,
+          conn.db.myCheckpoints,
         ]) {
           t.onInsert(() => this.changed());
           t.onDelete(() => this.changed());
@@ -98,6 +99,7 @@ export class SpacetimeBackend implements IncidentBackend {
             tables.myEvents,
             tables.myInvites,
             tables.myJoinAttempts,
+            tables.myCheckpoints,
           ]);
       })
       .onConnectError(() => {
@@ -176,7 +178,7 @@ export class SpacetimeBackend implements IncidentBackend {
     if (this.cache) return this.cache;
     const db = this.conn?.db;
     if (!db) {
-      return { status: [], incidents: [], members: [], channels: [], envelopes: [], events: [], invites: [], joinAttempts: [] };
+      return { status: [], incidents: [], members: [], channels: [], envelopes: [], events: [], invites: [], joinAttempts: [], checkpoints: [] };
     }
     const out: BackendRows = {
       status: [...db.myStatus.iter()].map((m) => this.memberRow(m)),
@@ -233,6 +235,13 @@ export class SpacetimeBackend implements IncidentBackend {
         ok: a.ok,
         atMicros: micros(a.at),
       })),
+      checkpoints: [...db.myCheckpoints.iter()].map((c) => ({
+        incidentId: c.incidentId,
+        kind: c.kind,
+        seq: c.seq,
+        hash: c.hash,
+        signature: c.signature,
+      })),
     };
     this.cache = out;
     return out;
@@ -270,5 +279,8 @@ export class SpacetimeBackend implements IncidentBackend {
   }
   appendEvent(a: Parameters<IncidentBackend['appendEvent']>[0]) {
     return this.reducers().appendEvent(a);
+  }
+  postCheckpoint(a: Parameters<IncidentBackend['postCheckpoint']>[0]) {
+    return this.reducers().postCheckpoint(a);
   }
 }

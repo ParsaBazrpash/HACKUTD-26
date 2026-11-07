@@ -20,6 +20,17 @@ export const Channel = __t.object("Channel", {
 });
 export type Channel = __Infer<typeof Channel>;
 
+export const Checkpoint = __t.object("Checkpoint", {
+  id: __t.u64(),
+  incidentId: __t.string(),
+  kind: __t.string(),
+  seq: __t.u64(),
+  hash: __t.byteArray(),
+  signature: __t.byteArray(),
+  createdAt: __t.timestamp(),
+});
+export type Checkpoint = __Infer<typeof Checkpoint>;
+
 export const EnvelopeAdmit = __t.object("EnvelopeAdmit", {
   kind: __t.string(),
   epoch: __t.u32(),
@@ -120,6 +131,9 @@ export type Member = __Infer<typeof Member>;
 
 export const MyChannels = __t.object("MyChannels", {});
 export type MyChannels = __Infer<typeof MyChannels>;
+
+export const MyCheckpoints = __t.object("MyCheckpoints", {});
+export type MyCheckpoints = __Infer<typeof MyCheckpoints>;
 
 export const MyEnvelopes = __t.object("MyEnvelopes", {});
 export type MyEnvelopes = __Infer<typeof MyEnvelopes>;

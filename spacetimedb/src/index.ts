@@ -12,6 +12,7 @@
 // - Logs contain ids and reasons only, never payload bytes.
 
 import { schema, table, t, SenderError } from 'spacetimedb/server';
+import { ScheduleAt } from 'spacetimedb/server';
 import type { InferSchema, ReducerCtx, ViewCtx } from 'spacetimedb/server';
 import { Timestamp } from 'spacetimedb';
 import { sha256 } from '@noble/hashes/sha2.js';
@@ -19,6 +20,7 @@ import { p256 } from '@noble/curves/nist.js';
 import {
   admitStatement,
   chainInput,
+  checkpointStatement,
   eventSigInput,
   genesisInput,
   bytesToHex,
@@ -26,6 +28,8 @@ import {
   revokeStatement,
 } from './shared/encoding';
 import {
+  APPEND_BURST,
+  APPEND_REFILL_PER_SEC,
   HASH_LEN,
   INVITE_CODE_LEN,
   INVITE_TTL_MAX_MIN,
@@ -170,7 +174,41 @@ const join_attempt = table(
   },
 );
 
-const spacetimedb = schema({ incident, member, invite, channel, key_envelope, event, join_attempt });
+// Commander-signed attestation of a channel head (PLAN 4.10). The server only
+// stores it after verifying the signature; clients verify it again.
+const checkpoint = table(
+  {},
+  {
+    id: t.u64().primaryKey().autoInc(),
+    incidentId: t.string().index('btree'),
+    kind: t.string(),
+    seq: t.u64(),
+    hash: t.byteArray(),
+    signature: t.byteArray(),
+    createdAt: t.timestamp(),
+  },
+);
+
+// Token bucket per identity for accepted appends (milli-tokens, so refill is integer math).
+const rate_bucket = table(
+  {},
+  {
+    identity: t.identity().primaryKey(),
+    milliTokens: t.u64(),
+    updatedAtMicros: t.u64(),
+  },
+);
+
+// Housekeeping schedule. One row, repeating; sweep_invites refuses any caller but the scheduler.
+const invite_sweep = table(
+  {},
+  {
+    scheduledId: t.u64().primaryKey().autoInc(),
+    scheduledAt: t.scheduleAt(),
+  },
+);
+
+const spacetimedb = schema({ incident, member, invite, channel, key_envelope, event, join_attempt, checkpoint, rate_bucket, invite_sweep });
 export default spacetimedb;
 
 type S = InferSchema<typeof spacetimedb>;
@@ -255,6 +293,38 @@ function nameTaken(ctx: Ctx, incidentId: string, name: string): boolean {
 }
 
 const micros = (ts: { microsSinceUnixEpoch: bigint }) => ts.microsSinceUnixEpoch;
+
+const SWEEP_EVERY_MIN = 5n;
+/** Used and expired invites are kept this long (for the commander's view) before they are swept. */
+const INVITE_KEEP_MICROS = 60n * MICROS_PER_MIN;
+
+/** Makes sure the repeating housekeeping job exists (databases published before it existed have none). */
+function ensureSweepScheduled(ctx: Ctx) {
+  for (const _ of ctx.db.invite_sweep.iter()) return;
+  ctx.db.invite_sweep.insert({ scheduledId: 0n, scheduledAt: ScheduleAt.interval(SWEEP_EVERY_MIN * MICROS_PER_MIN) });
+}
+
+/**
+ * Per-identity token bucket on accepted appends: burst APPEND_BURST, refill
+ * APPEND_REFILL_PER_SEC. Bounds how fast a member (or a stolen session) can grow
+ * the ledger. Throws when empty. A throwing reducer rolls back, so only accepted
+ * appends are counted; rejected ones never store anything.
+ */
+function takeAppendToken(ctx: Ctx) {
+  const now = micros(ctx.timestamp);
+  const cap = BigInt(APPEND_BURST) * 1000n;
+  const row = ctx.db.rate_bucket.identity.find(ctx.sender);
+  let milli = cap;
+  if (row) {
+    const elapsed = now > row.updatedAtMicros ? now - row.updatedAtMicros : 0n;
+    milli = row.milliTokens + (elapsed * BigInt(APPEND_REFILL_PER_SEC)) / 1000n;
+    if (milli > cap) milli = cap;
+  }
+  if (milli < 1000n) throw new SenderError('slow down');
+  const next = { identity: ctx.sender, milliTokens: milli - 1000n, updatedAtMicros: now };
+  if (row) ctx.db.rate_bucket.identity.update(next);
+  else ctx.db.rate_bucket.insert(next);
+}
 
 // ---------------------------------------------------------------------------
 // Reducers
@@ -369,6 +439,7 @@ export const create_invite = spacetimedb.reducer(
       if (!i.used && micros(i.expiresAt) > now) open++;
     }
     if (open >= MAX_OPEN_INVITES) throw invalid();
+    ensureSweepScheduled(ctx);
 
     ctx.db.invite.insert({
       id: 0n,
@@ -611,6 +682,7 @@ export const append_event = spacetimedb.reducer(
     if (epoch !== ch.currentEpoch) throw invalid();
     if (authorCounter <= me.lastCounter) throw invalid();
     if (ctx.db.event.clientEventId.find(clientEventId)) throw invalid();
+    takeAppendToken(ctx);
 
     const author = me.identity.toHexString();
     // A stolen Spacetime session is not enough to post: the device key must have signed it.
@@ -659,6 +731,48 @@ export const append_event = spacetimedb.reducer(
     });
     ctx.db.channel.id.update({ ...ch, headSeq: seq, headHash: hash });
     ctx.db.member.id.update({ ...me, lastCounter: authorCounter });
+  },
+);
+
+export const post_checkpoint = spacetimedb.reducer(
+  { incidentId: t.string(), kind: t.string(), seq: t.u64(), signature: t.byteArray() },
+  (ctx, { incidentId, kind, seq, signature }) => {
+    const { incident: inc } = activeCommander(ctx, incidentId);
+    if (!isChannel(kind) || !bytesLen(signature, SIG_LEN)) throw invalid();
+    const ch = channelsOf(ctx, incidentId).find((c) => c.kind === kind);
+    if (!ch || seq < 1n || seq > ch.headSeq) throw invalid();
+    let ev;
+    for (const e of ctx.db.event.channelId.filter(ch.id)) {
+      if (e.seq === seq) ev = e;
+    }
+    if (!ev) throw invalid();
+    // Checkpoints only move forward, so the log of them is bounded by the number of events.
+    for (const c of ctx.db.checkpoint.incidentId.filter(incidentId)) {
+      if (c.kind === kind && c.seq >= seq) throw invalid();
+    }
+    // The signature covers the hash the module holds, so a commander who sees a different
+    // chain than the module cannot be made to attest to the module's version.
+    if (!sigOk(inc.commanderSignPub, checkpointStatement(incidentId, kind, seq, ev.hash), signature)) throw invalid();
+    ctx.db.checkpoint.insert({ id: 0n, incidentId, kind, seq, hash: ev.hash, signature, createdAt: ctx.timestamp });
+  },
+);
+
+/** Scheduled housekeeping. Only the scheduler may run it; a client call is refused. */
+export const sweep_invites = spacetimedb.reducer(
+  { onSchedule: invite_sweep },
+  { arg: invite_sweep.rowType },
+  (ctx) => {
+    if (!ctx.senderAuth.isInternal) throw notAuthorized();
+    const now = micros(ctx.timestamp);
+    // Invites that can no longer be redeemed and are past the keep window: remove the code hash.
+    for (const i of [...ctx.db.invite.iter()]) {
+      const dead = i.used ? micros(i.usedAt) : micros(i.expiresAt);
+      if (dead + INVITE_KEEP_MICROS < now) ctx.db.invite.id.delete(i.id);
+    }
+    // Join attempts only matter inside the rate window.
+    for (const a of [...ctx.db.join_attempt.iter()]) {
+      if (micros(a.at) + INVITE_KEEP_MICROS < now) ctx.db.join_attempt.id.delete(a.id);
+    }
   },
 );
 
@@ -730,6 +844,17 @@ export const my_events = spacetimedb.view({ name: 'my_events', public: true }, t
     for (const ch of ctx.db.channel.incidentId.filter(mine.incidentId)) {
       if (!isChannel(ch.kind) || !canRead(mine.role, ch.kind)) continue;
       for (const e of ctx.db.event.channelId.filter(ch.id)) out.push(e);
+    }
+  }
+  return out;
+});
+
+export const my_checkpoints = spacetimedb.view({ name: 'my_checkpoints', public: true }, t.array(checkpoint.rowType), (ctx) => {
+  const out = [];
+  for (const mine of ctx.db.member.identity.filter(ctx.sender)) {
+    if (mine.state !== 'active' || !isRole(mine.role)) continue;
+    for (const c of ctx.db.checkpoint.incidentId.filter(mine.incidentId)) {
+      if (isChannel(c.kind) && canRead(mine.role, c.kind)) out.push(c);
     }
   }
   return out;

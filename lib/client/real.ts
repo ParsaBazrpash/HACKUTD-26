@@ -18,6 +18,7 @@ import {
   admitStatement,
   bytesEqual,
   bytesToHex,
+  checkpointStatement,
   revokeStatement,
 } from '@/spacetimedb/src/shared/encoding';
 import {
@@ -85,6 +86,9 @@ import {
 } from './types';
 
 /** Known, user-presentable failure. Anything else becomes a generic message. */
+/** Events between automatic commander checkpoints (PLAN 4.10). */
+const CHECKPOINT_EVERY = 10n;
+
 export class ClientError extends Error {
   constructor(message: string) {
     super(message);
@@ -254,6 +258,7 @@ export class RealIncidentClient implements IncidentClient {
               next = emptyState('error', new Date(this.now()), msg);
             }
             this.setState(next);
+            this.maybeAutoCheckpoint(next);
           }
         } finally {
           this.running = null;
@@ -261,6 +266,38 @@ export class RealIncidentClient implements IncidentClient {
       })();
     }
     return this.running;
+  }
+
+  /** The commander's client attests to a verified channel head every CHECKPOINT_EVERY events. */
+  private autoCheckpointing = false;
+  private maybeAutoCheckpoint(s: IncidentState): void {
+    if (this.autoCheckpointing || s.connection !== 'ready' || s.me?.role !== 'commander' || s.me.state !== 'active') return;
+    const due = Object.values(s.integrity.channels).some(
+      (c) => c && c.ok && c.pinnedOk && c.head && c.head.seq - (c.latestCheckpoint?.seq ?? 0n) >= CHECKPOINT_EVERY,
+    );
+    if (!due) return;
+    this.autoCheckpointing = true;
+    void this.exclusive(() => this.postCheckpoints())
+      .catch(() => undefined)
+      .finally(() => {
+        this.autoCheckpointing = false;
+      });
+  }
+
+  /** Signs and posts a checkpoint for every readable channel whose verified head is past its last checkpoint. */
+  private async postCheckpoints(): Promise<number> {
+    const c = await this.commanderCtx();
+    let posted = 0;
+    for (const [kind, ch] of Object.entries(this.state.integrity.channels)) {
+      if (!ch || !isChannel(kind) || !ch.ok || !ch.pinnedOk || !ch.head) continue;
+      if (ch.head.seq <= (ch.latestCheckpoint?.seq ?? 0n)) continue;
+      const ev = c.rows.events.find((e) => e.incidentId === c.id && e.channel === kind && e.seq === ch.head!.seq);
+      if (!ev) continue;
+      const signature = await sign(c.device.signPriv, checkpointStatement(c.id, kind, ev.seq, ev.hash));
+      await this.backend.postCheckpoint({ incidentId: c.id, kind, seq: ev.seq, signature });
+      posted++;
+    }
+    return posted;
   }
 
   private async loadDevice(mine: MemberRow, store: IncidentStore): Promise<DeviceKeys> {
@@ -427,6 +464,11 @@ export class RealIncidentClient implements IncidentClient {
       channels,
       getChannelKey: (c, e) => this.keys.get(keyOf(c, e)),
       pinnedHeads,
+      checkpoints: rows.checkpoints.flatMap((c) =>
+        c.incidentId === id && isChannel(c.kind) && readable.includes(c.kind)
+          ? [{ channel: c.kind, seq: c.seq, hash: c.hash, signature: c.signature }]
+          : [],
+      ),
     });
     for (const [kind, head] of Object.entries(out.newHeads)) {
       if (head && isChannel(kind)) await store.advanceHead(kind, head);
@@ -861,7 +903,14 @@ export class RealIncidentClient implements IncidentClient {
   }
 
   async signCheckpoint(): Promise<void> {
-    throw new ClientError('Checkpoints are not enabled yet');
+    await this.exclusive(async () => {
+      try {
+        await this.postCheckpoints();
+      } catch (e) {
+        if (e instanceof ClientError) throw e;
+        throw new ClientError('Could not sign a checkpoint');
+      }
+    });
   }
 }
 

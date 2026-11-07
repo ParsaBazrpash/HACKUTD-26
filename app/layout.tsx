@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { SiteFooter } from "@/components/shell/site-footer";
@@ -33,7 +34,15 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <a className="skip-link" href="#content">
           Skip to content
         </a>
-        <SiteHeader />
+        <Suspense
+          fallback={
+            <header className="border-b border-line bg-background" aria-hidden="true">
+              <div className="mx-auto h-[4.25rem] w-full max-w-6xl" />
+            </header>
+          }
+        >
+          <SiteHeader />
+        </Suspense>
         {children}
         <SiteFooter />
       </body>

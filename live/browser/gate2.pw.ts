@@ -16,9 +16,13 @@ test("commander invites counsel, counsel joins, commander admits, they exchange 
   const commander = await commanderCtx.newPage();
   const counsel = await counselCtx.newPage();
 
+  // Page errors, and any Content-Security-Policy refusal (the production CSP forbids eval).
   const pageErrors: string[] = [];
   for (const page of [commander, counsel]) {
     page.on("pageerror", (error) => pageErrors.push(error.message));
+    page.on("console", (message) => {
+      if (/content security policy|violates the following/i.test(message.text())) pageErrors.push(message.text());
+    });
   }
 
   // 1. Commander creates the incident.

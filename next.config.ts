@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { securityHeaders } from "./lib/security/headers";
 
 const nextConfig: NextConfig = {
   /* config options here */
@@ -7,6 +8,17 @@ const nextConfig: NextConfig = {
   },
   cacheComponents: true,
   partialPrefetching: true,
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: securityHeaders({
+          spacetimeHost: process.env.NEXT_PUBLIC_SPACETIMEDB_HOST || "wss://maincloud.spacetimedb.com",
+          dev: process.env.NODE_ENV !== "production",
+        }),
+      },
+    ];
+  },
   turbopack: {
     rules: {
       "*.css": {

@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "spacetime:publish": "spacetime publish --module-path spacetimedb --server maincloud zerohour-hackutd26",
+    "spacetime:publish": "spacetime publish --module-path spacetimedb --server maincloud zerohour-hackutd26 -y",
     "spacetime:generate": "spacetime generate --lang typescript --out-dir src/module_bindings --module-path spacetimedb",
     "test:live": "vitest run --config vitest.live.config.mts"
   },

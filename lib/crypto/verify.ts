@@ -128,7 +128,9 @@ export async function verifyRoster(
         );
       }
     }
-    if ((m.state === 'active' || m.state === 'revoked') && !certified) {
+    // A pending member who was revoked before admission never had a certificate.
+    const neverAdmitted = m.state === 'revoked' && m.admitSig.length === 0;
+    if ((m.state === 'active' || m.state === 'revoked') && !certified && !neverAdmitted) {
       failures.push({ identity: m.identityHex, reason: 'missing or invalid admission certificate' });
     }
     let revokedAtMicros: bigint | undefined;
@@ -339,9 +341,11 @@ export async function verifyIncident(input: VerifyInput): Promise<VerifyOutput> 
     }
     const serverHead = input.channels[channel]?.serverHead;
     if (serverHead) {
-      if (!last || serverHead.seq > last.seq) {
+      const lastSeq = last ? last.seq : 0n;
+      const lastHash = last ? last.hash : genesisHash(incidentId, channel);
+      if (serverHead.seq > lastSeq) {
         channelFailures.push({ seq: serverHead.seq, reason: 'gap', detail: 'server reports events that were not delivered' });
-      } else if (serverHead.seq === last.seq && !bytesEqual(serverHead.hash, last.hash)) {
+      } else if (serverHead.seq === lastSeq && !bytesEqual(serverHead.hash, lastHash)) {
         channelFailures.push({ seq: serverHead.seq, reason: 'chain_broken', detail: 'channel head hash mismatch' });
       }
     }

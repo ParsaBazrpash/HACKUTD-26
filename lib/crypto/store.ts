@@ -63,6 +63,14 @@ export class IncidentStore {
     return set(k(this.incidentId, 'commander'), v, this.store);
   }
 
+  // --- fingerprint the joiner expects the commander to have (from the invite link)
+  getExpectedFingerprint(): Promise<Uint8Array | undefined> {
+    return get<Uint8Array>(k(this.incidentId, 'expected-fp'), this.store);
+  }
+  setExpectedFingerprint(fp: Uint8Array): Promise<void> {
+    return set(k(this.incidentId, 'expected-fp'), fp, this.store);
+  }
+
   // --- channel keys (non-extractable CryptoKey, one per channel and epoch)
   getChannelKey(kind: ChannelKind, epoch: number): Promise<CryptoKey | undefined> {
     return get<CryptoKey>(k(this.incidentId, `ck/${kind}/${epoch}`), this.store);

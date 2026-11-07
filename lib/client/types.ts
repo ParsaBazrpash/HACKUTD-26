@@ -211,8 +211,11 @@ export interface IncidentState {
   error?: string;
 }
 
-/** Fold output before the client adds connection and identity fields. */
-export type FoldedState = Omit<IncidentState, 'connection' | 'me' | 'members' | 'integrity' | 'error'>;
+/** Fold output; the client adds connection, identity, roster, incident row and integrity. */
+export type FoldedState = Omit<IncidentState, 'connection' | 'me' | 'incident' | 'members' | 'integrity' | 'error'> & {
+  /** Latest `incident.title` from a verified event, or null. */
+  title: string | null;
+};
 
 export const EMPTY_PROFILE: ProfileBody = {
   publicCompany: false,

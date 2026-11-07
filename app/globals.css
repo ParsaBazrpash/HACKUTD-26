@@ -2,17 +2,17 @@
 
 :root {
   color-scheme: dark;
-  --background: #090b10;
-  --foreground: #ebe7df;
-  --muted: #b7c0d0;
-  --panel: #121722;
-  --panel-raised: #1a2130;
-  --line: #31384a;
-  --signal: #ffb020;
-  --signal-ink: #1c1404;
-  --verified: #5ee0c5;
-  --alert: #ff6b6b;
-  --legal: #d4c4ff;
+  --background: #080a09;
+  --foreground: #f5f5f3;
+  --muted: #9a9f9b;
+  --panel: #141716;
+  --panel-raised: #1c201d;
+  --line: #292d2a;
+  --signal: #d8ff65;
+  --signal-hover: #c8f24f;
+  --signal-ink: #080a09;
+  --verified: #a8c47a;
+  --alert: #c97a74;
 }
 
 @theme inline {
@@ -23,19 +23,16 @@
   --color-panel-raised: var(--panel-raised);
   --color-line: var(--line);
   --color-signal: var(--signal);
+  --color-signal-hover: var(--signal-hover);
   --color-signal-ink: var(--signal-ink);
   --color-verified: var(--verified);
   --color-alert: var(--alert);
-  --color-legal: var(--legal);
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
 }
 
 body {
-  background:
-    radial-gradient(920px 420px at 0% -10%, rgba(255, 176, 32, 0.16), transparent 56%),
-    radial-gradient(720px 380px at 100% 0%, rgba(94, 224, 197, 0.08), transparent 50%),
-    var(--background);
+  background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
 }
@@ -51,7 +48,7 @@ body {
   top: 1rem;
   z-index: 50;
   transform: translateY(-160%);
-  border-radius: 999px;
+  border-radius: 0.5rem;
   background: var(--signal);
   color: var(--signal-ink);
   padding: 0.5rem 1rem;
@@ -63,12 +60,4 @@ body {
   transform: none;
   outline: 2px solid var(--foreground);
   outline-offset: 2px;
-}
-
-.war-grid {
-  background-image:
-    linear-gradient(to right, rgba(235, 231, 223, 0.05) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(235, 231, 223, 0.05) 1px, transparent 1px);
-  background-size: 56px 56px;
-  mask-image: linear-gradient(to bottom, black 15%, transparent 88%);
 }

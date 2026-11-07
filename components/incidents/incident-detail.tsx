@@ -68,7 +68,7 @@ function NoticeClocks({
                 </p>
               </div>
               <div>
-                <p className="text-sm font-medium text-legal">{deadline.citation}</p>
+                <p className="text-sm font-medium text-foreground">{deadline.citation}</p>
                 <p className="mt-1 text-sm leading-6 text-muted">{deadline.obligation}</p>
                 {deadline.scheduleNote ? (
                   <p className="mt-2 text-sm text-foreground">{deadline.scheduleNote}</p>
@@ -123,7 +123,7 @@ export function IncidentDetail({ incidentId }: { incidentId: string }) {
 
   return (
     <div>
-      <p className="font-mono text-[11px] tracking-[0.18em] text-signal">SEALED SHELL</p>
+      <p className="font-mono text-[11px] tracking-[0.18em] text-muted">SEALED SHELL</p>
       <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="font-mono text-3xl tracking-tight sm:text-4xl">{incident.id}</h1>
@@ -135,7 +135,7 @@ export function IncidentDetail({ incidentId }: { incidentId: string }) {
         </div>
         <Link
           href={`/join?incident=${incident.id}`}
-          className="inline-flex items-center justify-center rounded-full border border-line bg-panel px-4 py-2 text-sm font-medium hover:border-signal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+          className="inline-flex items-center justify-center rounded-lg border border-line bg-panel px-4 py-2 text-sm font-medium hover:border-signal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
         >
           Join this room
         </Link>
@@ -169,7 +169,7 @@ export function IncidentDetail({ incidentId }: { incidentId: string }) {
       <NoticeClocks incidentId={incident.id} awarenessAt={incident.startedAt} />
 
       <div className="mt-8 grid gap-4 lg:grid-cols-2">
-        <section className="rounded-2xl border border-line px-5 py-4" aria-labelledby="channels-heading">
+        <section className="rounded-2xl border border-line bg-panel px-5 py-4" aria-labelledby="channels-heading">
           <h2 id="channels-heading" className="font-mono text-[11px] tracking-[0.18em] text-muted">
             CHANNELS
           </h2>
@@ -183,7 +183,7 @@ export function IncidentDetail({ incidentId }: { incidentId: string }) {
           </ul>
         </section>
 
-        <section className="rounded-2xl border border-line px-5 py-4" aria-labelledby="events-heading">
+        <section className="rounded-2xl border border-line bg-panel px-5 py-4" aria-labelledby="events-heading">
           <h2 id="events-heading" className="font-mono text-[11px] tracking-[0.18em] text-muted">
             EVENTS
           </h2>
@@ -207,7 +207,7 @@ export function IncidentDetail({ incidentId }: { incidentId: string }) {
           )}
         </section>
 
-        <section className="rounded-2xl border border-line px-5 py-4" aria-labelledby="tasks-heading">
+        <section className="rounded-2xl border border-line bg-panel px-5 py-4" aria-labelledby="tasks-heading">
           <h2 id="tasks-heading" className="font-mono text-[11px] tracking-[0.18em] text-muted">
             TASKS
           </h2>
@@ -227,7 +227,7 @@ export function IncidentDetail({ incidentId }: { incidentId: string }) {
           </ul>
         </section>
 
-        <section className="rounded-2xl border border-line px-5 py-4" aria-labelledby="assets-heading">
+        <section className="rounded-2xl border border-line bg-panel px-5 py-4" aria-labelledby="assets-heading">
           <h2 id="assets-heading" className="font-mono text-[11px] tracking-[0.18em] text-muted">
             AFFECTED ASSETS
           </h2>

@@ -131,7 +131,7 @@ export function JoinForm() {
       <button
         type="submit"
         disabled={pending || !incidentId || !role}
-        className="inline-flex w-fit items-center justify-center rounded-full bg-signal px-4 py-2 text-sm font-medium text-signal-ink disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+        className="inline-flex w-fit items-center justify-center rounded-lg bg-signal px-4 py-2 text-sm font-medium text-signal-ink hover:bg-signal-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
       >
         {pending ? "Joining…" : "Join room"}
       </button>

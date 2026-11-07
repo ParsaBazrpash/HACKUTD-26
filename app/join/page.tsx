@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 export default function JoinPage() {
   return (
     <Main>
-      <p className="font-mono text-[11px] tracking-[0.18em] text-signal">MEMBERSHIP</p>
+      <p className="font-mono text-[11px] tracking-[0.18em] text-muted">MEMBERSHIP</p>
       <h1 className="mt-3 text-4xl font-medium tracking-tight">Join a sealed room.</h1>
       <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">
         Choose a shell and a role. Your label stays in this tab. Identity keys are not created yet.

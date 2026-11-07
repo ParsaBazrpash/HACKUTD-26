@@ -30,7 +30,7 @@ Message and record content (including attorney-client privileged communications)
 | T4 | Rewrites the whole history consistently, or rolls it back | Clients pin the last verified `{seq, hash}` per channel in IndexedDB and re-check it; commander-signed checkpoints (P1); head hashes printed in the report | `verify.ts` step 8, `post_checkpoint`, report | `verify.test.ts` rewritten-history and rollback cases | Planned |
 | T5 | Injects a fake member or swaps a member's public key to intercept channel keys | Commander-signed admission certificate binds identity, role, name and both public keys; joiner proves knowledge of the invite secret via HMAC; 12-digit safety code read aloud; commander key pinned from the invite fingerprint | `lib/crypto/invite.ts`, `keys.ts`, `admit_member` | `invite.test.ts` wrong tag; `verify.test.ts` uncertified author ignored; fingerprint mismatch screen | Planned |
 | T6 | Replays or duplicates an old message | Unique client event id and strictly increasing per-author counter, both inside the signed input; module and clients reject repeats | `append_event`, `verify.ts` step 7 | Module test duplicate id and stale counter; `verify.test.ts` replay | Planned |
-| T7 | Moves a ciphertext to another channel, epoch or incident | AES-GCM associated data binds incident, channel, epoch, author, event id and counter | `seal.ts` | `seal.test.ts` wrong-AAD cases fail | Planned |
+| T7 | Moves a ciphertext to another channel, epoch or incident | AES-GCM associated data binds incident, channel, epoch, author, event id and counter | `seal.ts` | `seal.test.ts` wrong-AAD cases fail | Done |
 | T8 | Withholds rows or key envelopes | Cannot be prevented by an untrusted server; clients detect seq gaps and missing keys and show them | `verify.ts` steps 1 and 5 | `verify.test.ts` gap case | Accepted (detect only) |
 | T9 | Publishes a malicious module version | Confidentiality and integrity never depend on module logic (all checks repeated client-side); publish rights limited to one owner identity whose token stays off the demo machine | Process | README note | Planned |
 | T10 | Serves tampered client JavaScript | Client hosted separately from the database; commit hash shown in the footer; lockfile and `npm ci`; production answer is a signed desktop build | `next.config.ts`, footer | Manual check | Accepted (documented) |
@@ -93,6 +93,10 @@ Message and record content (including attorney-client privileged communications)
 - **T19 and T20 sessions and devices:** a stolen token or seized unlocked laptop is handled by revocation and key rotation, not prevented.
 - **T35 metadata:** the server sees who is in an incident, their roles and handles, and when and how much they write.
 - **T36 root of trust:** the commander's device is a single point of trust in v1.
+
+## Progress notes
+
+- 2026-11-07 (Lane A): the client crypto library and its negative tests are in (`lib/crypto/*.test.ts`: seal, sign, wrap, invite, chain, verify, store). T7 is Done. Rows that also depend on the module (T2, T3, T4, T5, T6, T11 to T13, T16 to T18) stay Planned until the module tests and the two-browser demo exist.
 
 ## Downgrades taken
 

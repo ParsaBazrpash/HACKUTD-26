@@ -1,6 +1,6 @@
 // One incident client per browser tab (docs/PLAN.md seam 4).
 //
-// NEXT_PUBLIC_ZH_MOCK=1 selects the in-memory demo. Any other value selects
+// NEXT_PUBLIC_ZH_MOCK=1 selects the browser demo. Any other value selects
 // the real client. This module does not construct either client on the server.
 
 import { createMockIncidentClient } from "@/lib/client/mock";

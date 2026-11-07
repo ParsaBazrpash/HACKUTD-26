@@ -3,26 +3,19 @@
 import Link from "next/link";
 import { useCallback, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { DemoBanner } from "@/components/incidents/demo-banner";
+import {
+  applyInviteHash,
+  fragmentKind,
+  inviteRoleFromFragment,
+  membershipStatusCopy,
+} from "@/components/incidents/join-link";
 import { ROLE_LABELS } from "@/components/incidents/labels";
 import { getIncidentClient, isMockIncidentClient } from "@/lib/client";
 import { clientErrorMessage } from "@/lib/client/errors";
-import type { Role } from "@/spacetimedb/src/shared/policy";
+import type { MemberStateName, Role } from "@/spacetimedb/src/shared/policy";
 
 const fieldClass =
   "rounded-xl border border-line bg-panel px-3 py-2 text-foreground placeholder:text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal";
-
-function fragmentKind(fragment: string): "demo" | "live" | "unknown" {
-  const params = new URLSearchParams(fragment.replace(/^#/, ""));
-  if (params.has("c") || params.has("s") || params.has("f")) return "live";
-  if (params.get("demo") === "1") return "demo";
-  return "unknown";
-}
-
-function inviteRoleLabel(fragment: string): string | null {
-  const role = new URLSearchParams(fragment.replace(/^#/, "")).get("r");
-  if (role === "counsel" || role === "technical" || role === "executive") return ROLE_LABELS[role];
-  return null;
-}
 
 function emptyInviteFragment(): null {
   return null;
@@ -43,9 +36,9 @@ function useInviteFragment(): string | null {
     current.listeners.add(listener);
     if (!current.ready) {
       current.ready = true;
-      const hash = window.location.hash;
-      current.value = hash.length > 1 ? hash : "";
-      if (hash.length > 1) window.history.replaceState(null, "", "/join");
+      current.value = applyInviteHash(window.location.hash, (url) => {
+        window.history.replaceState(null, "", url);
+      });
       queueMicrotask(() => {
         for (const item of current.listeners) item();
       });
@@ -64,7 +57,12 @@ export function JoinForm() {
   const [displayName, setDisplayName] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [joined, setJoined] = useState<{ role: Role; name: string; incidentId: string } | null>(null);
+  const [joined, setJoined] = useState<{
+    role: Role | null;
+    name: string;
+    incidentId: string | null;
+    state: MemberStateName;
+  } | null>(null);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -75,9 +73,12 @@ export function JoinForm() {
       const client = getIncidentClient();
       await client.redeemInvite({ fragment, displayName });
       const next = client.getState();
-      if (next.me && next.incident) {
-        setJoined({ role: next.me.role, name: next.me.displayName, incidentId: next.incident.id });
-      }
+      setJoined({
+        role: next.me?.role ?? inviteRoleFromFragment(fragment),
+        name: next.me?.displayName ?? displayName.trim(),
+        incidentId: next.incident?.id ?? null,
+        state: next.me?.state ?? "pending",
+      });
     } catch (cause) {
       setError(clientErrorMessage(cause));
     } finally {
@@ -85,7 +86,8 @@ export function JoinForm() {
     }
   }
 
-  const role = fragment ? inviteRoleLabel(fragment) : null;
+  const invitedRole = fragment ? inviteRoleFromFragment(fragment) : null;
+  const role = invitedRole ? ROLE_LABELS[invitedRole] : null;
   const kind = fragment ? fragmentKind(fragment) : null;
 
   return (
@@ -112,7 +114,7 @@ export function JoinForm() {
         <p className="text-sm text-alert">This is a demo link. It cannot be redeemed by the live client.</p>
       ) : null}
       {mock && kind === "demo" ? (
-        <p className="text-sm text-muted">Demo invite. It is a tab-local token, not a cryptographic link.</p>
+        <p className="text-sm text-muted">Demo invite. It stays in this browser, and it is not a cryptographic link.</p>
       ) : null}
 
       {joined ? null : (
@@ -147,15 +149,15 @@ export function JoinForm() {
 
       {joined ? (
         <div role="status" className="rounded-xl border border-line bg-panel px-4 py-3 text-sm">
-          <p>
-            Waiting as {ROLE_LABELS[joined.role]}. {joined.name}.
-          </p>
-          <Link
-            href={`/incidents/${joined.incidentId}`}
-            className="mt-3 inline-flex text-signal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
-          >
-            Open this room
-          </Link>
+          <p>{membershipStatusCopy(joined)}</p>
+          {joined.incidentId ? (
+            <Link
+              href={`/incidents/${joined.incidentId}`}
+              className="mt-3 inline-flex text-signal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+            >
+              Open this room
+            </Link>
+          ) : null}
         </div>
       ) : null}
     </div>

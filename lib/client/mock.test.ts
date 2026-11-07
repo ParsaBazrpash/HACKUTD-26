@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { createMemoryLedger, createMemorySession, parseDemoLedger } from "@/lib/client/demo-ledger";
 import { createMockIncidentClient } from "@/lib/client/mock";
 import { projectLegalDeadlines } from "@/lib/legal";
 import { isKindAllowed, PayloadSchema } from "@/lib/protocol/events";
@@ -202,6 +203,71 @@ describe("mock incident client", () => {
     await expect(
       client.redeemInvite({ fragment: new URL(invite.url).hash, displayName: "Second Guest" }),
     ).rejects.toThrow(/used/i);
+  });
+
+  test("redeems a demo invite from another tab and keeps the commander tab", async () => {
+    const ledger = createMemoryLedger();
+    const origin = "http://localhost:3001";
+    const commanderSession = createMemorySession();
+    const commander = createMockIncidentClient({
+      origin,
+      ledger,
+      session: commanderSession,
+    });
+    const invite = await commander.createInvite({ role: "counsel", ttlMinutes: 15 });
+    await commander.setStatus({
+      severity: "SEV2",
+      phase: "containment",
+      summary: "Ledger round trip.",
+    });
+
+    const joinerSession = createMemorySession();
+    const joiner = createMockIncidentClient({ origin, ledger, session: joinerSession });
+    await joiner.redeemInvite({ fragment: new URL(invite.url).hash, displayName: "Alex Jahani" });
+    expect(joiner.getState().me).toMatchObject({
+      displayName: "Alex Jahani",
+      role: "counsel",
+      state: "pending",
+    });
+    const pending = commander.getState().members.find((member) => member.displayName === "Alex Jahani");
+    expect(pending).toMatchObject({ role: "counsel", state: "pending", linkVerified: true });
+
+    const params = new URLSearchParams(new URL(invite.url).hash.slice(1));
+    params.set("r", "executive");
+    await expect(
+      joiner.redeemInvite({ fragment: `#${params.toString()}`, displayName: "Pat Lee" }),
+    ).rejects.toThrow(/role/i);
+
+    const reloaded = createMockIncidentClient({ origin, ledger, session: joinerSession });
+    expect(reloaded.getState().me?.displayName).toBe("Alex Jahani");
+    const commanderAgain = createMockIncidentClient({ origin, ledger, session: commanderSession });
+    expect(commanderAgain.getState().me?.role).toBe("commander");
+    expect(commanderAgain.getState().status?.summary).toBe("Ledger round trip.");
+
+    await commander.admitMember(pending?.memberId ?? 0n);
+    expect(reloaded.getState().me?.state).toBe("active");
+
+    const stranger = createMockIncidentClient({
+      origin,
+      ledger: createMemoryLedger(),
+      session: createMemorySession(),
+    });
+    await expect(
+      stranger.redeemInvite({ fragment: new URL(invite.url).hash, displayName: "Someone Else" }),
+    ).rejects.toThrow(/not in this browser/i);
+  });
+
+  test("a corrupt demo ledger is left in place", async () => {
+    const ledger = createMemoryLedger();
+    ledger.write("{not json");
+    const client = createMockIncidentClient({
+      origin: "http://localhost:3001",
+      ledger,
+      session: createMemorySession(),
+    });
+    await client.createInvite({ role: "technical" });
+    expect(ledger.read()).toBe("{not json");
+    expect(parseDemoLedger("{not json")).toBeNull();
   });
 
   test("expires a demo invite", async () => {

@@ -15,7 +15,16 @@ import { schema, table, t, SenderError } from 'spacetimedb/server';
 import type { InferSchema, ReducerCtx, ViewCtx } from 'spacetimedb/server';
 import { Timestamp } from 'spacetimedb';
 import { sha256 } from '@noble/hashes/sha2.js';
-import { chainInput, genesisInput, bytesToHex, inviteInput } from './shared/encoding';
+import { p256 } from '@noble/curves/nist.js';
+import {
+  admitStatement,
+  chainInput,
+  eventSigInput,
+  genesisInput,
+  bytesToHex,
+  inviteInput,
+  revokeStatement,
+} from './shared/encoding';
 import {
   HASH_LEN,
   INVITE_CODE_LEN,
@@ -177,6 +186,19 @@ const MICROS_PER_MIN = 60_000_000n;
 const notAuthorized = () => new SenderError('not authorized');
 const invalid = () => new SenderError('invalid request');
 
+/**
+ * ECDSA P-256 / SHA-256 over `msg` (defense in depth: clients verify everything
+ * again). Never throws; any malformed input is simply invalid. Signatures are
+ * Web Crypto r||s, which may be high-S, so lowS is not required.
+ */
+function sigOk(pub: Uint8Array, msg: Uint8Array, sig: Uint8Array): boolean {
+  try {
+    return p256.verify(sig, msg, pub, { lowS: false, prehash: true });
+  } catch {
+    return false;
+  }
+}
+
 const bytesLen = (b: Uint8Array, n: number) => b instanceof Uint8Array && b.length === n;
 const validPub = (b: Uint8Array) => bytesLen(b, PUBKEY_LEN) && b[0] === 0x04;
 
@@ -258,6 +280,10 @@ export const create_incident = spacetimedb.reducer(
     if (!validPub(signPub) || !validPub(ecdhPub) || !bytesLen(admitSig, SIG_LEN)) throw invalid();
     const name = validName(displayName);
     if (ctx.db.incident.id.find(incidentId)) throw invalid();
+    // The commander self-certifies: the certificate must verify under the key it presents.
+    if (!sigOk(signPub, admitStatement(incidentId, ctx.sender.toHexString(), 'commander', name, signPub, ecdhPub), admitSig)) {
+      throw invalid();
+    }
 
     let owned = 0;
     for (const _i of ctx.db.incident.commander.filter(ctx.sender)) {
@@ -435,10 +461,20 @@ const EnvelopeAdmit = t.object('EnvelopeAdmit', {
 export const admit_member = spacetimedb.reducer(
   { incidentId: t.string(), memberId: t.u64(), admitSig: t.byteArray(), envelopes: t.array(EnvelopeAdmit) },
   (ctx, { incidentId, memberId, admitSig, envelopes }) => {
-    activeCommander(ctx, incidentId);
+    const { incident: inc } = activeCommander(ctx, incidentId);
     if (!bytesLen(admitSig, SIG_LEN)) throw invalid();
     const target = ctx.db.member.id.find(memberId);
     if (!target || target.incidentId !== incidentId || target.state !== 'pending' || !isRole(target.role)) {
+      throw invalid();
+    }
+    // The certificate must be the commander's signature over exactly this member.
+    if (
+      !sigOk(
+        inc.commanderSignPub,
+        admitStatement(incidentId, target.identity.toHexString(), target.role, target.displayName, target.signPub, target.ecdhPub),
+        admitSig,
+      )
+    ) {
       throw invalid();
     }
 
@@ -487,11 +523,12 @@ const Rotation = t.object('Rotation', {
 export const revoke_member = spacetimedb.reducer(
   { incidentId: t.string(), memberId: t.u64(), revokeSig: t.byteArray(), rotations: t.array(Rotation) },
   (ctx, { incidentId, memberId, revokeSig, rotations }) => {
-    activeCommander(ctx, incidentId);
+    const { incident: inc } = activeCommander(ctx, incidentId);
     if (!bytesLen(revokeSig, SIG_LEN)) throw invalid();
     const target = ctx.db.member.id.find(memberId);
     if (!target || target.incidentId !== incidentId || !isRole(target.role)) throw invalid();
     if (target.role === 'commander') throw invalid();
+    if (!sigOk(inc.commanderSignPub, revokeStatement(incidentId, target.identity.toHexString()), revokeSig)) throw invalid();
     if (target.state !== 'pending' && target.state !== 'active') throw invalid();
 
     const channels = channelsOf(ctx, incidentId);
@@ -575,8 +612,18 @@ export const append_event = spacetimedb.reducer(
     if (authorCounter <= me.lastCounter) throw invalid();
     if (ctx.db.event.clientEventId.find(clientEventId)) throw invalid();
 
-    const seq = ch.headSeq + 1n;
     const author = me.identity.toHexString();
+    // A stolen Spacetime session is not enough to post: the device key must have signed it.
+    if (
+      !sigOk(
+        me.signPub,
+        eventSigInput({ incidentId, channel: kind, epoch, author, clientEventId, authorCounter, iv, ciphertext }),
+        signature,
+      )
+    ) {
+      throw invalid();
+    }
+    const seq = ch.headSeq + 1n;
     const hash = sha256(
       chainInput({
         incidentId,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ChannelKind } from '@/spacetimedb/src/shared/policy';
 import type { FailureReason } from '@/lib/client/types';
+import { genesisHash } from './chain';
 import { chat, TestIncident, timeline } from './testkit';
 import { verifyIncident, type RawEvent } from './verify';
 
@@ -187,6 +188,27 @@ describe('verifyIncident: tamper cases', () => {
     input.channels.record!.serverHead = head;
     const r = await verifyIncident(input);
     expect(reasons(r, 'record')).toContain('3:gap');
+  });
+
+  it('an empty channel whose server head is the genesis head is clean', async () => {
+    const t = await TestIncident.create();
+    const input = t.input('commander');
+    input.channels.command!.serverHead = { seq: 0n, hash: genesisHash(t.incidentId, 'command') };
+    const r = await verifyIncident(input);
+    expect(r.report.ok).toBe(true);
+    // A server claiming a different head for an empty channel is caught.
+    input.channels.command!.serverHead = { seq: 0n, hash: new Uint8Array(32) };
+    const bad = await verifyIncident(input);
+    expect(reasons(bad, 'command')).toContain('0:chain_broken');
+  });
+
+  it('a pending member revoked before admission is not a roster failure', async () => {
+    const t = await TestIncident.create();
+    const p = await t.addMember('technical', 'Tom', 'pending');
+    await t.revoke(p, 1_800_000_500_000_000n);
+    const r = await verifyIncident(t.input('commander'));
+    expect(r.report.rosterFailures).toEqual([]);
+    expect(r.report.ok).toBe(true);
   });
 
   it('replayed event id is flagged (T6)', async () => {

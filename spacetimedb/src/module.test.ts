@@ -12,7 +12,7 @@ import { createSealedEvent } from '@/lib/crypto/event';
 import { newInvite } from '@/lib/crypto/invite';
 import { computeJoinTag } from '@/lib/crypto/invite';
 import { sign } from '@/lib/crypto/sign';
-import { admitStatement, revokeStatement } from './shared/encoding';
+import { admitStatement, eventSigInput, revokeStatement } from './shared/encoding';
 import { genesisHash } from '@/lib/crypto/chain';
 import { verifyIncident, type RawEvent, type RosterMember } from '@/lib/crypto/verify';
 import { chat, timeline } from '@/lib/crypto/testkit';
@@ -41,6 +41,14 @@ const call = (h: Harness, who: string, reducer: unknown, args: object) =>
 const view = (h: Harness, who: string, v: unknown) =>
   (v as (c: unknown) => any[])(h.viewContext(authFor(who)));
 const identityHex = (h: Harness, who: string) => tx(h, who, (ctx) => ctx.sender.toHexString() as string);
+/** Valid create_incident arguments for `who` (real self-certificate; envelope bytes are placeholders). */
+async function createArgs(h: Harness, who: string, displayName: string, keys?: DeviceKeys, incidentId = crypto.randomUUID()) {
+  const k = keys ?? (await generateDeviceKeys());
+  const hex = identityHex(h, who);
+  const admitSig = await sign(k.signPriv, admitStatement(incidentId, hex, 'commander', displayName, k.signPub, k.ecdhPub));
+  const envelopes = CHANNELS.map((kind) => ({ kind, wrapped: new Uint8Array(48), iv: new Uint8Array(12) }));
+  return { incidentId, signPub: k.signPub, ecdhPub: k.ecdhPub, displayName, admitSig, envelopes };
+}
 const advanceMin = (h: Harness, min: number) =>
   h.clock.set(new Timestamp(h.clock.now().microsSinceUnixEpoch + BigInt(min) * 60_000_000n));
 const expectThrows = (fn: () => unknown, msg?: string) => {
@@ -219,9 +227,8 @@ describe('create_incident', () => {
   it('rejects bad ids, keys, signatures, names and envelope sets', async () => {
     const w = await World.create();
     const keys = await generateDeviceKeys();
-    const sig = new Uint8Array(64);
-    const env = CHANNELS.map((kind) => ({ kind, wrapped: new Uint8Array(48), iv: new Uint8Array(12) }));
-    const ok = { incidentId: crypto.randomUUID(), signPub: keys.signPub, ecdhPub: keys.ecdhPub, displayName: 'Dana', admitSig: sig, envelopes: env };
+    const ok = await createArgs(w.h, 'other', 'Dana', keys);
+    const env = ok.envelopes;
     const bad = (patch: object) => expectThrows(() => call(w.h, 'other', mod.create_incident, { ...ok, ...patch }));
     bad({ incidentId: 'nope' });
     bad({ incidentId: w.incidentId }); // duplicate id
@@ -235,15 +242,36 @@ describe('create_incident', () => {
     bad({ envelopes: env.map((e, i) => (i === 0 ? { ...e, wrapped: new Uint8Array(47) } : e)) });
     bad({ envelopes: env.map((e, i) => (i === 0 ? { ...e, kind: 'debug' } : e)) });
     expect(w.h.db.incident.count()).toBe(1n); // nothing was created by the failures
+    call(w.h, 'other', mod.create_incident, ok); // the unmodified request is accepted
+    expect(w.h.db.incident.count()).toBe(2n);
+  });
+
+  it('admitSig must verify under the presented key, for this identity, name and incident (module-side check)', async () => {
+    const w = await World.create();
+    const keys = await generateDeviceKeys();
+    const ok = await createArgs(w.h, 'other', 'Dana', keys);
+    const bad = (patch: object) => expectThrows(() => call(w.h, 'other', mod.create_incident, { ...ok, ...patch }));
+    bad({ admitSig: new Uint8Array(64) });
+    const stranger = await generateDeviceKeys();
+    const sigByOther = await sign(stranger.signPriv, admitStatement(ok.incidentId, identityHex(w.h, 'other'), 'commander', 'Dana', keys.signPub, keys.ecdhPub));
+    bad({ admitSig: sigByOther });
+    const forName = await sign(keys.signPriv, admitStatement(ok.incidentId, identityHex(w.h, 'other'), 'commander', 'Mallory', keys.signPub, keys.ecdhPub));
+    bad({ admitSig: forName });
+    const forRole = await sign(keys.signPriv, admitStatement(ok.incidentId, identityHex(w.h, 'other'), 'counsel', 'Dana', keys.signPub, keys.ecdhPub));
+    bad({ admitSig: forRole });
+    const forOtherIdentity = await sign(keys.signPriv, admitStatement(ok.incidentId, identityHex(w.h, 'someone-else'), 'commander', 'Dana', keys.signPub, keys.ecdhPub));
+    bad({ admitSig: forOtherIdentity });
+    const forOtherIncident = await sign(keys.signPriv, admitStatement(crypto.randomUUID(), identityHex(w.h, 'other'), 'commander', 'Dana', keys.signPub, keys.ecdhPub));
+    bad({ admitSig: forOtherIncident });
+    call(w.h, 'other', mod.create_incident, ok);
   });
 
   it('caps incidents per identity at 5', async () => {
     const w = await World.create(); // 1 for 'commander'
     const keys = await generateDeviceKeys();
-    const env = CHANNELS.map((kind) => ({ kind, wrapped: new Uint8Array(48), iv: new Uint8Array(12) }));
-    const mk = () => ({ incidentId: crypto.randomUUID(), signPub: keys.signPub, ecdhPub: keys.ecdhPub, displayName: 'Casey', admitSig: new Uint8Array(64), envelopes: env });
-    for (let i = 0; i < 4; i++) call(w.h, 'commander', mod.create_incident, mk());
-    expectThrows(() => call(w.h, 'commander', mod.create_incident, mk()));
+    for (let i = 0; i < 4; i++) call(w.h, 'commander', mod.create_incident, await createArgs(w.h, 'commander', 'Casey', keys));
+    const fifth = await createArgs(w.h, 'commander', 'Casey', keys);
+    expectThrows(() => call(w.h, 'commander', mod.create_incident, fifth));
   });
 });
 
@@ -402,9 +430,16 @@ describe('admit_member', () => {
       const wr = await wrapChannelKey(w.cmd.keys.ecdhPriv, tech.keys.ecdhPub, { incidentId: w.incidentId, kind, epoch, recipientIdentityHex: tech.hex }, w.raw.get(`${kind}/0`)!);
       return { kind, epoch, wrapped: wr.wrapped, iv: wr.iv };
     };
-    const sig = new Uint8Array(64);
+    const sig = await sign(w.cmd.keys.signPriv, admitStatement(w.incidentId, tech.hex, 'technical', 'sam', tech.keys.signPub, tech.keys.ecdhPub));
     const base = { incidentId: w.incidentId, memberId: row.id, admitSig: sig };
     const good = [await mk('record'), await mk('command'), await mk('technical')];
+    // The certificate itself is checked by the module: wrong signer, role or name is refused.
+    const selfSigned = await sign(tech.keys.signPriv, admitStatement(w.incidentId, tech.hex, 'technical', 'sam', tech.keys.signPub, tech.keys.ecdhPub));
+    const wrongRole = await sign(w.cmd.keys.signPriv, admitStatement(w.incidentId, tech.hex, 'counsel', 'sam', tech.keys.signPub, tech.keys.ecdhPub));
+    const wrongName = await sign(w.cmd.keys.signPriv, admitStatement(w.incidentId, tech.hex, 'technical', 'Sam Q', tech.keys.signPub, tech.keys.ecdhPub));
+    for (const admitSig of [new Uint8Array(64), selfSigned, wrongRole, wrongName]) {
+      expectThrows(() => call(w.h, 'commander', mod.admit_member, { ...base, admitSig, envelopes: good }));
+    }
     // technical must not receive #privileged
     const priv = await mk('privileged');
     const rec3 = await mk('record', 3);
@@ -429,10 +464,8 @@ describe('admit_member', () => {
     const p = await w1.join('dana', 'counsel');
     void p;
     // a second incident in the same database
-    const keys = await generateDeviceKeys();
     const otherId = crypto.randomUUID();
-    const env = CHANNELS.map((kind) => ({ kind, wrapped: new Uint8Array(48), iv: new Uint8Array(12) }));
-    call(w1.h, 'other-commander', mod.create_incident, { incidentId: otherId, signPub: keys.signPub, ecdhPub: keys.ecdhPub, displayName: 'Other', admitSig: new Uint8Array(64), envelopes: env });
+    call(w1.h, 'other-commander', mod.create_incident, await createArgs(w1.h, 'other-commander', 'Other', undefined, otherId));
     const row = w1.memberRow('dana');
     expectThrows(() => call(w1.h, 'other-commander', mod.admit_member, { incidentId: otherId, memberId: row.id, admitSig: new Uint8Array(64), envelopes: [] }));
     expect(w1.memberRow('dana').state).toBe('pending');
@@ -543,22 +576,19 @@ describe('append_event', () => {
 
   it('rejects malformed fields and oversized ciphertext', async () => {
     const w = await World.create();
-    const base = async () => {
-      const s = await createSealedEvent(
-        { incidentId: w.incidentId, channel: 'record', epoch: 0, author: w.cmd.hex, clientEventId: crypto.randomUUID(), authorCounter: 1n },
-        serializePayload(timeline('x')),
-        w.keys.get('record/0')!,
-        w.cmd.keys.signPriv,
-      );
-      return { incidentId: w.incidentId, kind: 'record', epoch: 0, clientEventId: crypto.randomUUID(), authorCounter: 1n, iv: s.iv, ciphertext: s.ciphertext, signature: s.signature };
-    };
-    const b = await base();
+    const clientEventId = crypto.randomUUID();
+    const core = { incidentId: w.incidentId, channel: 'record' as const, epoch: 0, author: w.cmd.hex, clientEventId, authorCounter: 1n };
+    const s = await createSealedEvent(core, serializePayload(timeline('x')), w.keys.get('record/0')!, w.cmd.keys.signPriv);
+    const b = { incidentId: w.incidentId, kind: 'record', epoch: 0, clientEventId, authorCounter: 1n, iv: s.iv, ciphertext: s.ciphertext, signature: s.signature };
     expectThrows(() => call(w.h, 'commander', mod.append_event, { ...b, clientEventId: 'nope' }));
     expectThrows(() => call(w.h, 'commander', mod.append_event, { ...b, iv: new Uint8Array(11) }));
     expectThrows(() => call(w.h, 'commander', mod.append_event, { ...b, signature: new Uint8Array(63) }));
     expectThrows(() => call(w.h, 'commander', mod.append_event, { ...b, ciphertext: new Uint8Array(16) }));
     expectThrows(() => call(w.h, 'commander', mod.append_event, { ...b, ciphertext: new Uint8Array(16401) }));
-    call(w.h, 'commander', mod.append_event, { ...b, ciphertext: new Uint8Array(16400) }); // boundary is allowed
+    // The boundary size is allowed when the signature covers it.
+    const big = new Uint8Array(16400).fill(5);
+    const bigSig = await sign(w.cmd.keys.signPriv, eventSigInput({ ...core, iv: s.iv, ciphertext: big }));
+    call(w.h, 'commander', mod.append_event, { ...b, ciphertext: big, signature: bigSig });
     expect(w.events().length).toBe(1);
   });
 
@@ -604,12 +634,20 @@ describe('revoke_member (T13)', () => {
     await w.joinAndAdmit('dana', 'counsel');
     await w.joinAndAdmit('sam', 'technical');
     const sam = w.memberRow('sam');
-    const base = { incidentId: w.incidentId, memberId: sam.id, revokeSig: new Uint8Array(64) };
+    const samP = w.people.get('sam')!;
+    const revokeSig = await sign(w.cmd.keys.signPriv, revokeStatement(w.incidentId, samP.hex));
+    const base = { incidentId: w.incidentId, memberId: sam.id, revokeSig };
     expectThrows(() => call(w.h, 'dana', mod.revoke_member, { ...base, rotations: [] }), 'not authorized');
     expectThrows(() => call(w.h, 'sam', mod.revoke_member, { ...base, rotations: [] }), 'not authorized');
     expectThrows(() => call(w.h, 'commander', mod.revoke_member, { ...base, memberId: w.memberRow('commander').id, rotations: [] }));
     expectThrows(() => call(w.h, 'commander', mod.revoke_member, { ...base, rotations: [] })); // active target needs rotations
     expectThrows(() => call(w.h, 'commander', mod.revoke_member, { ...base, revokeSig: new Uint8Array(5), rotations: [] }));
+    // A signature for a different member, or by another key, is refused even with valid rotations.
+    const forDana = await sign(w.cmd.keys.signPriv, revokeStatement(w.incidentId, w.people.get('dana')!.hex));
+    const byOther = await sign(samP.keys.signPriv, revokeStatement(w.incidentId, samP.hex));
+    for (const bad of [forDana, byOther, new Uint8Array(64)]) {
+      expectThrows(() => call(w.h, 'commander', mod.revoke_member, { ...base, revokeSig: bad, rotations: [] }));
+    }
     expect(w.memberRow('sam').state).toBe('active');
     const dana = w.people.get('dana')!;
     const sealedRot = async (kind: ChannelKind, recipients: { identity: unknown; person: Person }[], newEpoch = 1) => {
@@ -744,9 +782,7 @@ describe('views filter by role and membership (T11)', () => {
 
   it('incidents are isolated from each other', async () => {
     const w = await scene();
-    const keys = await generateDeviceKeys();
-    const env = CHANNELS.map((kind) => ({ kind, wrapped: new Uint8Array(48), iv: new Uint8Array(12) }));
-    call(w.h, 'rival', mod.create_incident, { incidentId: crypto.randomUUID(), signPub: keys.signPub, ecdhPub: keys.ecdhPub, displayName: 'Rival', admitSig: new Uint8Array(64), envelopes: env });
+    call(w.h, 'rival', mod.create_incident, await createArgs(w.h, 'rival', 'Rival'));
     expect(view(w.h, 'rival', mod.my_events)).toEqual([]);
     expect(view(w.h, 'rival', mod.my_members).length).toBe(1);
     expect(view(w.h, 'rival', mod.my_incidents).length).toBe(1);

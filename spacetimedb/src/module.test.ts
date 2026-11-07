@@ -802,3 +802,15 @@ describe('append-only surface (T14)', () => {
     for (const name of exported) expect(name).not.toMatch(/delete|update|edit|debug|seed|tamper|reset|set_role/i);
   });
 });
+
+describe('no module-side secrets (T28)', () => {
+  it('the module and shared code never call a randomness source', async () => {
+    const { readFileSync, readdirSync } = await import('node:fs');
+    const dir = new URL('.', import.meta.url);
+    const files = ['index.ts', ...readdirSync(new URL('shared/', dir)).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts')).map((f) => `shared/${f}`)];
+    for (const f of files) {
+      const src = readFileSync(new URL(f, dir), 'utf8').replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+      expect(src, f).not.toMatch(/ctx\.random|Math\.random|getRandomValues|randomUUID|randomBytes/);
+    }
+  });
+});

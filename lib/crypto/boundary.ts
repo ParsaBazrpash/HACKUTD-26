@@ -1,4 +1,12 @@
-import type { CiphertextEnvelope } from "@/types/common";
+/** Shape kept local so this obsolete stub does not depend on the deleted types model. */
+interface CiphertextEnvelope {
+  version: 1;
+  algorithm: "AES-GCM";
+  provenance: "fixture" | "browser-sealed";
+  keyId: string;
+  nonce: string;
+  ciphertext: string;
+}
 
 /**
  * Browser sealing boundary.

@@ -3,7 +3,7 @@ import {
   type LegalClockStart,
   type LegalDeadline,
   type LegalDeadlineStatus,
-} from "@/types/legal";
+} from "@/lib/legal/types";
 
 export type LegalOffset =
   | { kind: "calendar_hours"; hours: number }

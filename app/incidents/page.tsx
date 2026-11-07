@@ -12,7 +12,7 @@ export default function IncidentsPage() {
       <p className="font-mono text-[11px] tracking-[0.18em] text-muted">WAR ROOM</p>
       <h1 className="mt-3 text-4xl font-medium tracking-tight">Incidents</h1>
       <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">
-        Sealed shells on this client. Titles, messages, and asset details are not on this list.
+        The incident open in this browser. Record, command, privileged, and technical stay inside the room.
       </p>
       <div className="mt-8">
         <IncidentList />

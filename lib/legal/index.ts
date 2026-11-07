@@ -6,3 +6,4 @@ export {
 } from "@/lib/legal/deadlines";
 
 export type { DeadlineProjectionInput, LegalCatalogEntry, LegalOffset } from "@/lib/legal/deadlines";
+export type { LegalDeadline, LegalDeadlineStatus } from "@/lib/legal/types";

@@ -12,9 +12,9 @@ export function formatDuration(ms: number): string {
   return negative ? `-${body}` : body;
 }
 
-export function formatTimestamp(iso: string): string {
-  const time = Date.parse(iso);
-  if (Number.isNaN(time)) return iso;
+export function formatTimestamp(value: string | Date): string {
+  const time = value instanceof Date ? value.getTime() : Date.parse(value);
+  if (Number.isNaN(time)) return value instanceof Date ? value.toISOString() : value;
 
   const parts = new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",

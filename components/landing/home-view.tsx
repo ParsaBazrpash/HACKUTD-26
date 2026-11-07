@@ -25,7 +25,7 @@ const roles = [
   {
     index: "04",
     title: "Executive",
-    copy: "Reads the record, command, and privileged channels.",
+    copy: "Reads the record, command, and privileged channels. The technical channel stays closed.",
     icon: Users,
   },
 ];
@@ -110,21 +110,20 @@ export function HomeView() {
           <li className="rounded-2xl border border-line bg-panel-raised px-4 py-4">
             <p className="font-mono text-[11px] text-muted">01</p>
             <p className="mt-3 text-sm leading-6">
-              Prototype screens keep narratives, messages, and asset details as labeled shells in memory.
-              The real client stores ciphertext after the browser seals and signs it.
+              Demo mode shows the Lakeside Family Clinic story in this tab. The live client feeds the same
+              screens after the browser decrypts.
             </p>
           </li>
           <li className="rounded-2xl border border-line bg-panel-raised px-4 py-4">
             <p className="font-mono text-[11px] text-muted">02</p>
             <p className="mt-3 text-sm leading-6">
-              Private keys and channel keys stay on the device. They stay out of source, logs, and the server.
+              Private keys stay on the device. Demo mode does not create keys.
             </p>
           </li>
           <li className="rounded-2xl border border-line bg-panel-raised px-4 py-4">
             <p className="font-mono text-[11px] text-muted">03</p>
             <p className="mt-3 text-sm leading-6">
-              The real client seals incident content in the browser before storage. These screens still
-              show the in-memory prototype: a fixture slot is a label, and integrity stays unknown.
+              Incident pages read the client in the browser. The server is not asked to render incident contents.
             </p>
           </li>
         </ol>

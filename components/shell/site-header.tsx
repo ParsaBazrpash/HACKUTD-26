@@ -3,6 +3,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { isMockIncidentClient } from "@/lib/client";
 
 const links = [
   { href: "/incidents", label: "Incidents" },
@@ -59,6 +60,7 @@ export function SiteHeader() {
             <span className="block text-sm font-semibold tracking-tight">HAVEN</span>
             <span className="block font-mono text-[10px] tracking-[0.18em] text-muted">
               FIRST 72 HOURS
+              {isMockIncidentClient() ? " · DEMO DATA" : ""}
             </span>
           </span>
         </Link>

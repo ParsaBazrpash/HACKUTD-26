@@ -1,4 +1,3 @@
-import { Suspense } from "react";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { SiteFooter } from "@/components/shell/site-footer";
@@ -17,11 +16,11 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "ZeroHour",
-    template: "%s · ZeroHour",
+    default: "HAVEN",
+    template: "%s · HAVEN",
   },
   description:
-    "A sealed incident-response war room for the first 72 hours after a ransomware attack.",
+    "HAVEN is a sealed incident-response war room for the first 72 hours after a ransomware attack.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -34,15 +33,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <a className="skip-link" href="#content">
           Skip to content
         </a>
-        <Suspense
-          fallback={
-            <header className="border-b border-line bg-background" aria-hidden="true">
-              <div className="mx-auto h-[4.25rem] w-full max-w-6xl" />
-            </header>
-          }
-        >
-          <SiteHeader />
-        </Suspense>
+        <SiteHeader />
         {children}
         <SiteFooter />
       </body>

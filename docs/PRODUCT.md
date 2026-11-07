@@ -1,6 +1,6 @@
-# ZeroHour plan
+# HAVEN plan
 
-ZeroHour is a real-time war room for the first 72 hours of a ransomware response. Commanders, counsel, forensic investigators, and executives need one room when mail, chat, and identity may already be compromised.
+HAVEN is a real-time war room for the first 72 hours of a ransomware response. Commanders, counsel, forensic investigators, and executives need one room when mail, chat, and identity may already be compromised.
 
 SpacetimeDB is the only application backend. The browser is the only place incident plaintext and channel keys exist. This document separates the foundation that exists now from the product still to build.
 

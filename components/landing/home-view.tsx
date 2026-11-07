@@ -6,26 +6,26 @@ import { describeClockStart, describeOffset, LEGAL_CATALOG } from "@/lib/legal";
 const roles = [
   {
     index: "01",
-    title: "Incident commander",
+    title: "Commander",
     copy: "Sets the sequence when the usual channels are no longer trusted.",
     icon: Radio,
   },
   {
     index: "02",
-    title: "Legal counsel",
-    copy: "Watches notice clocks and keeps counsel notes off the executive channel.",
+    title: "Counsel",
+    copy: "Watches notice clocks. Privileged notes stay with the commander, counsel, and the executive.",
     icon: Scale,
   },
   {
     index: "03",
-    title: "Forensic investigator",
-    copy: "Holds evidence descriptions in sealed slots, not in a shared inbox.",
+    title: "Technical",
+    copy: "Holds the forensics work. The privileged channel stays closed to this seat.",
     icon: Fingerprint,
   },
   {
     index: "04",
     title: "Executive",
-    copy: "Sees the decisions the room is ready to share, and nothing else.",
+    copy: "Reads the record, command, and privileged channels.",
     icon: Users,
   },
 ];
@@ -41,7 +41,7 @@ export function HomeView() {
               The first 72 hours, held in this browser.
             </h1>
             <p className="mt-6 max-w-xl text-lg leading-8 text-muted">
-              ZeroHour is a war room for the window after a ransomware attack, when mail, chat,
+              HAVEN is a war room for the window after a ransomware attack, when mail, chat,
               and the company directory may already belong to someone else.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -110,19 +110,21 @@ export function HomeView() {
           <li className="rounded-2xl border border-line bg-panel-raised px-4 py-4">
             <p className="font-mono text-[11px] text-muted">01</p>
             <p className="mt-3 text-sm leading-6">
-              Narratives, messages, and asset details are not stored. The data client accepts sealed shells only.
+              Prototype screens keep narratives, messages, and asset details as labeled shells in memory.
+              The real client stores ciphertext after the browser seals and signs it.
             </p>
           </li>
           <li className="rounded-2xl border border-line bg-panel-raised px-4 py-4">
             <p className="font-mono text-[11px] text-muted">02</p>
             <p className="mt-3 text-sm leading-6">
-              Private keys and channel keys never enter source, logs, or the server.
+              Private keys and channel keys stay on the device. They stay out of source, logs, and the server.
             </p>
           </li>
           <li className="rounded-2xl border border-line bg-panel-raised px-4 py-4">
             <p className="font-mono text-[11px] text-muted">03</p>
             <p className="mt-3 text-sm leading-6">
-              This build does not encrypt. A fixture slot is a label, not ciphertext, and integrity stays unknown.
+              The real client seals incident content in the browser before storage. These screens still
+              show the in-memory prototype: a fixture slot is a label, and integrity stays unknown.
             </p>
           </li>
         </ol>

@@ -9,6 +9,6 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['lib/**/*.test.ts', 'spacetimedb/src/**/*.test.ts', 'tests/unit/**/*.test.ts'],
+    include: ['lib/**/*.test.ts', 'spacetimedb/src/**/*.test.ts', 'tests/**/*.test.ts'],
   },
 });

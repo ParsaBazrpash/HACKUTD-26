@@ -1,0 +1,56 @@
+# Lane ownership for ZeroHour. The plans are docs/lanes/PERSON_A.md (Mehrad)
+# and docs/lanes/PERSON_B.md (Parsa). GitHub asks the owner to review when the
+# other person's PR touches these paths. Keep "Require review from Code Owners"
+# off in the ruleset: an owner cannot approve their own PR. Last match wins.
+
+# Anything not listed below: both.
+*                           @theMehrad @ParsaBazrpash
+
+# Lane B (Parsa): product
+/app/                       @ParsaBazrpash
+/components/                @ParsaBazrpash
+/hooks/                     @ParsaBazrpash
+/lib/client/index.ts        @ParsaBazrpash
+/lib/client/mock.ts         @ParsaBazrpash
+/lib/scenario/              @ParsaBazrpash
+/lib/legal/                 @ParsaBazrpash
+/lib/report/                @ParsaBazrpash
+/lib/time.ts                @ParsaBazrpash
+/tests/                     @ParsaBazrpash
+/e2e/                       @ParsaBazrpash
+/playwright.config.ts       @ParsaBazrpash
+/public/                    @ParsaBazrpash
+/README.md                  @ParsaBazrpash
+/docs/DEVPOST.md            @ParsaBazrpash
+/docs/PRODUCT.md            @ParsaBazrpash
+/.github/workflows/         @ParsaBazrpash
+
+# Lane A (Mehrad): trust core and shared config
+/spacetimedb/               @theMehrad
+/src/module_bindings/       @theMehrad
+/tests/support/             @theMehrad
+/live/                      @theMehrad
+/vitest.live.config.mts     @theMehrad
+/lib/crypto/                @theMehrad
+/lib/client/fold.ts         @theMehrad
+/lib/client/backend.ts      @theMehrad
+/lib/client/real.ts         @theMehrad
+/AGENTS.md                  @theMehrad
+/docs/PLAN.md               @theMehrad
+/docs/THREAT_MODEL.md       @theMehrad
+/package.json               @theMehrad
+/package-lock.json          @theMehrad
+/tsconfig.json              @theMehrad
+/eslint.config.mjs          @theMehrad
+/vitest.config.mts          @theMehrad
+/.env.example               @theMehrad
+/.gitignore                 @theMehrad
+/next.config.ts             @theMehrad
+/proxy.ts                   @theMehrad
+
+# Contract (frozen after Sync 1) and the lane plans: both must agree.
+/lib/client/types.ts        @theMehrad @ParsaBazrpash
+/lib/protocol/              @theMehrad @ParsaBazrpash
+/spacetimedb/src/shared/    @theMehrad @ParsaBazrpash
+/docs/lanes/                @theMehrad @ParsaBazrpash
+/.github/CODEOWNERS         @theMehrad @ParsaBazrpash

@@ -75,6 +75,7 @@ export type FailureReason =
   | 'unknown_kind'
   | 'not_permitted' // kind or role not allowed in this channel
   | 'replay' // duplicate clientEventId or non-increasing counter
+  | 'stale_epoch' // appended in an epoch older than the channel had already reached
   | 'history_rewritten'; // contradicts the pinned head
 
 export type WarningReason = 'clock_drift' | 'waiting_for_keys';

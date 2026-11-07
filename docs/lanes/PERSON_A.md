@@ -30,6 +30,7 @@ For Mehrad and his coding agents. Read it with `AGENTS.md` and `docs/PLAN.md`. P
 9. **Coding agents** get `AGENTS.md`, `docs/PLAN.md` and their own lane file, and follow these same rules. An agent never merges, never pushes to `main`, and stops for its human at every stop point.
 10. **No em dashes** in docs or UI copy (team style).
 11. **The repo goes public before judging.** Parsa does it at S1 if possible, at S4 at the latest.
+12. **Commits carry the human's identity, every single time.** Mehrad's agents commit and push as `theMehrad <98144748+theMehrad@users.noreply.github.com>`; Parsa's agents use Parsa's own GitHub identity. Never an AI author or co-author: no `Co-Authored-By` or `Claude-Session` trailers in any commit.
 
 ## Who owns which files
 

@@ -20,3 +20,15 @@ test("phone numbers must be international format", () => {
     expect(looksLikePhone(bad)).toBe(false);
   }
 });
+
+import { passkeyGateFor } from "@/components/org/use-passkey-ready";
+
+test("outside the demo only an unlocked passkey passes the gate", () => {
+  for (const status of ["off", "locked", "checking", "unsupported"] as const) {
+    const gate = passkeyGateFor(status, false);
+    expect(gate.ready, status).toBe(false);
+    expect(gate.reason, status).toBeTruthy();
+  }
+  expect(passkeyGateFor("unlocked", false).ready).toBe(true);
+  expect(passkeyGateFor("off", true).ready).toBe(true);
+});

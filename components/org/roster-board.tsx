@@ -36,6 +36,14 @@ function latestPages(pages: PageView[]): Map<bigint, PageView> {
   return map;
 }
 
+function KeyChangedAlert() {
+  return (
+    <p role="alert" className="text-sm text-alert">
+      This person&apos;s key changed. Confirm with them in person before you trust it.
+    </p>
+  );
+}
+
 function PendingCard({ member, onDone }: { member: RosterMember; onDone: (message: string) => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +81,7 @@ function PendingCard({ member, onDone }: { member: RosterMember; onDone: (messag
           {member.fingerprint}
         </p>
       </div>
+      {member.keyChanged ? <KeyChangedAlert /> : null}
       <p className="text-sm leading-6 text-muted">
         Approve only after they read this code to you on a call or in person.
       </p>
@@ -142,7 +151,15 @@ function RevokeControl({ member, onDone }: { member: RosterMember; onDone: (mess
   );
 }
 
-export function RosterBoard({ roster, pages }: { roster: RosterMember[]; pages: PageView[] }) {
+export function RosterBoard({
+  roster,
+  pages,
+  adminFingerprint,
+}: {
+  roster: RosterMember[];
+  pages: PageView[];
+  adminFingerprint: string;
+}) {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<Set<bigint>>(new Set());
@@ -165,7 +182,12 @@ export function RosterBoard({ roster, pages }: { roster: RosterMember[]; pages: 
     setBusy(true);
     setError(null);
     setNotice(null);
-    const ids = [...picked];
+    const eligible = new Set(roster.filter((m) => m.state === "active" && !m.keyChanged).map((m) => m.orgMemberId));
+    const ids = [...picked].filter((id) => eligible.has(id));
+    if (ids.length === 0) {
+      setBusy(false);
+      return;
+    }
     try {
       const client = getIncidentClient();
       if (kind === "add") {
@@ -201,10 +223,12 @@ export function RosterBoard({ roster, pages }: { roster: RosterMember[]; pages: 
             const id = member.orgMemberId.toString();
             const page = byMember.get(member.orgMemberId);
             const active = member.state === "active";
+            const pickable = active && !member.keyChanged;
+            const isAdmin = member.fingerprint === adminFingerprint;
             return (
               <li key={id} className="grid gap-2 rounded-xl border border-line px-4 py-3">
                 <div className="flex items-start gap-3">
-                  {active ? (
+                  {pickable ? (
                     <input
                       type="checkbox"
                       id={`pick-${id}`}
@@ -223,9 +247,10 @@ export function RosterBoard({ roster, pages }: { roster: RosterMember[]; pages: 
                       {member.fingerprint}
                     </p>
                     {member.keyChanged ? (
-                      <p role="alert" className="mt-1 text-sm text-alert">
-                        This person&apos;s key changed. Confirm with them in person before you trust it.
-                      </p>
+                      <div className="mt-1">
+                        <KeyChangedAlert />
+                        <p className="text-xs text-muted">They cannot be added or paged until this is resolved.</p>
+                      </div>
                     ) : null}
                     {page ? (
                       <p className="mt-1 text-xs text-muted">
@@ -256,7 +281,7 @@ export function RosterBoard({ roster, pages }: { roster: RosterMember[]; pages: 
                         <option value="executive">{ROLE_LABELS.executive}</option>
                       </select>
                     </label>
-                    <RevokeControl member={member} onDone={setNotice} />
+                    {isAdmin ? null : <RevokeControl member={member} onDone={setNotice} />}
                   </div>
                 ) : null}
               </li>

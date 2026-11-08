@@ -17,7 +17,7 @@ export function OrgView() {
           {state.error ?? "Could not connect."}
         </p>
       ) : null}
-      {org === null ? <CreateOrgForm /> : null}
+      {org === null && state.connection !== "connecting" ? <CreateOrgForm /> : null}
       {org ? (
         <>
           <section className="no-print rounded-2xl border border-line bg-panel px-4 py-4" aria-label="Org">
@@ -30,7 +30,7 @@ export function OrgView() {
           {org.myRole === "admin" ? (
             <>
               <EnrollLinkPanel />
-              <RosterBoard roster={state.roster} pages={state.pages} />
+              <RosterBoard roster={state.roster} pages={state.pages} adminFingerprint={org.adminFingerprint} />
             </>
           ) : (
             <p className="text-sm leading-6 text-muted">Only the org admin can manage the roster.</p>

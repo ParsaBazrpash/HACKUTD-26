@@ -16,7 +16,7 @@ test("live blast radius: state clocks, quick status change, and live cards in ch
   await expect(map.getByText("Demo data: no server round trip")).toBeVisible();
 
   // Texas residents on the exfiltrated HR database start both Texas clocks.
-  await map.getByRole("button", { name: /^Texas:/ }).click();
+  await map.getByLabel("Choose a state").selectOption("TX");
   await expect(map.getByText("Texas notice to the attorney general")).toBeVisible();
   await expect(map.getByText("Texas notice to individuals")).toBeVisible();
 

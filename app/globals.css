@@ -129,11 +129,30 @@ h1 {
   animation: haven-flash 1.1s ease-out 2 both;
 }
 
+@keyframes haven-globe-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.haven-globe-in {
+  transform-origin: center;
+  animation: haven-globe-in 0.7s ease-out both;
+}
+
+/* Side chat: the panel slides in from the right, new-message bits pop in. */
 @keyframes haven-slide-in {
   from {
     transform: translateX(100%);
     opacity: 0.6;
   }
+
   to {
     transform: translateX(0);
     opacity: 1;
@@ -145,10 +164,12 @@ h1 {
     transform: scale(0.85);
     opacity: 0;
   }
+
   60% {
     transform: scale(1.04);
     opacity: 1;
   }
+
   100% {
     transform: scale(1);
   }
@@ -176,7 +197,8 @@ h1 {
   }
 
   .haven-rise,
-  .haven-reveal {
+  .haven-reveal,
+  .haven-globe-in {
     animation: none;
     opacity: 1;
     transform: none;

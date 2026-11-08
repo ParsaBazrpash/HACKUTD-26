@@ -109,6 +109,8 @@ flowchart LR
 
 `spacetimedb` (2.14.x), `zod`, `@noble/hashes`, `@noble/curves`, `idb-keyval`, `qrcode` (or `qrcode.react`), dev: `vitest`, `fake-indexeddb`, `@playwright/test`. Anything else needs a human yes. No other crypto libraries. No UI kit that injects raw HTML.
 
+The exposure globe (Affected Systems) also uses `three`, `@react-three/fiber`, `@react-three/drei`, `d3-geo`, `topojson-client` and `earcut`. They run only in the browser to draw public state boundaries. They do not touch sealing, signing, or the module. Added 2026-11-08 for that map.
+
 ---
 
 ## 4. Contract (frozen at Sync 1)

@@ -17,6 +17,7 @@ const { TimelineList } = await import('@/components/incidents/timeline-list');
 const { ScopeList } = await import('@/components/incidents/scope-list');
 const { ChannelsBoard } = await import('@/components/incidents/channels-board');
 const { BlastRadius, SystemDetail } = await import('@/components/incidents/blast-radius');
+const { ExposureTooltip } = await import('@/components/incidents/exposure-map');
 const { AttachedCardChip, CardPickerList } = await import('@/components/incidents/card-attach');
 const { EMPTY_PROFILE } = await import('@/lib/client/types');
 
@@ -186,6 +187,20 @@ describe('render safety (T21, script injection via decrypted text)', () => {
     expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
     expect(html).toContain('Eve &lt;img');
     expect(html).toContain('TX');
+  });
+
+  it('the exposure tooltip renders hostile system names as escaped text', () => {
+    const html = renderToStaticMarkup(
+      createElement(ExposureTooltip, {
+        code: 'TX',
+        exposed: 10,
+        other: 0,
+        systems: [{ itemId: '00000000-0000-4000-8000-000000000031', system: HOSTILE, status: 'exfiltrated', count: 10 }],
+      }),
+    );
+    expectInert(html);
+    expect(html).toContain('Texas (TX)');
+    expect(html).toContain('Low exposure');
   });
 
   it('a live card in chat draws hostile system names as escaped text, and a failed message draws no card', () => {

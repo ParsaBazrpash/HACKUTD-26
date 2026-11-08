@@ -33,7 +33,7 @@ Message and record content (including attorney-client privileged communications)
 | T7 | Moves a ciphertext to another channel, epoch or incident | AES-GCM associated data binds incident, channel, epoch, author, event id and counter | `seal.ts` | `seal.test.ts` wrong-AAD cases fail | Done |
 | T8 | Withholds rows or key envelopes | Cannot be prevented by an untrusted server; clients detect seq gaps and missing keys and show them | `verify.ts` steps 1 and 5 | `verify.test.ts` gap case | Accepted (detect only) |
 | T9 | Publishes a malicious module version | Confidentiality and integrity never depend on module logic (all checks repeated client-side); publish rights limited to one owner identity whose token stays off the demo machine | Process | README note | Planned |
-| T10 | Serves tampered client JavaScript | Client hosted separately from the database; commit hash shown in the footer; lockfile and `npm ci`; production answer is a signed desktop build | `next.config.ts`, footer | Manual check | Accepted (documented) |
+| T10 | Serves tampered client JavaScript | Client hosted separately from the database; every deploy is tied to a Git commit in the Vercel dashboard (the site itself does not show a build hash); lockfile and `npm ci`; production answer is a signed desktop build | `next.config.ts`, Vercel deployment record | Manual check | Accepted (documented) |
 
 ### Members and accounts
 

@@ -78,7 +78,7 @@ import {
  * Created with `curl -X POST https://maincloud.spacetimedb.com/v1/identity`; the token stays in Vercel.
  * Writing it down here is safe: the identity is public, only the token can act as it.
  */
-const PAGER_IDENTITY_HEX = 'c200b6c0144130f13453965c04fef55fb4afab2f576722c8679c7ccf67ab9483';
+const PAGER_IDENTITY_HEX = 'c200c58fe42c5f75976752a3b7f4a08dd480ad3c6f74bf891404b81f1ba27db2';
 
 // ---------------------------------------------------------------------------
 // Tables (all private)

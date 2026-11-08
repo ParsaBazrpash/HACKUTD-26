@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Activity, Ban, Calendar, ClipboardList, Crosshair, Hash, Layers } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { CHANNEL_LABELS } from "@/components/incidents/labels";
+import { ReachableStrip } from "@/components/incidents/paging-status";
 import { MessageComposer } from "@/components/incidents/message-composer";
 import { authorizedChatChannels, canCompose, isChatChannel } from "@/components/incidents/room-controls";
 import { incidentSectionHref } from "@/components/incidents/sections";
@@ -280,6 +281,8 @@ export function IncidentOverview() {
           tone={urgentTone}
         />
       </dl>
+
+      <ReachableStrip />
 
       <div className="mt-3 grid items-start gap-3 lg:grid-cols-3">
         <section className={panelClass} aria-labelledby="situation-heading">

@@ -91,9 +91,12 @@ export function InviteControls() {
   return (
     <section className="rounded-2xl border border-line bg-panel px-5 py-4" aria-labelledby="invite-heading">
       <h2 id="invite-heading" className="font-mono text-[11px] tracking-[0.18em] text-muted">
-        INVITE
+        BREAK-GLASS INVITE
       </h2>
       <p className="mt-3 text-sm leading-6 text-muted">
+        For people outside your roster, like outside counsel or your forensics firm.
+      </p>
+      <p className="mt-2 text-sm leading-6 text-muted">
         Choose counsel, technical, or executive. The link carries that role. This page cannot make someone a commander.
       </p>
       {mock ? (

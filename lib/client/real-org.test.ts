@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { hmac } from '@noble/hashes/hmac.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { del as idbDel, entries as idbEntries, keys as idbKeys, type UseStore } from 'idb-keyval';
+import { Identity } from 'spacetimedb';
 import { HarnessBackend, HarnessHub } from '@/tests/support/harness-backend';
 import * as mod from '@/spacetimedb/src/index';
 import type { OrgBackend, OrgMemberRow } from './backend';
@@ -484,5 +485,123 @@ describe('roster admission and paging', () => {
     const plain = profile(hub, 'plain', pager, { passkey: false });
     await plain.client.createIncident({ title: 'Plain', displayName: 'Pat' });
     await expect(plain.client.addFromRoster([{ orgMemberId: 1n, role: 'counsel' }])).rejects.toThrow();
+  });
+});
+
+// Direct database edits, as the operator of the database could make them.
+function operator(hub: HarnessHub, p: P, fn: (ctx: any) => void) {
+  (hub.h as any).withReducerTx((p.backend as any).auth, fn);
+  hub.notify();
+}
+
+describe('operator attacks on revocation and roster state', () => {
+  it('a server that only says "revoked" (no admin signature) cannot make a device wipe its org keys', async () => {
+    const hub = new HarnessHub();
+    const pager = await newPager();
+    const { admin, orgId } = await startOrg(hub, pager);
+    const jordan = await enrollPerson(hub, pager, admin, 'Jordan');
+    const id = rosterId(admin.client, 'Jordan');
+    operator(hub, admin, (ctx) => {
+      const cur = ctx.db.org_member.id.find(id);
+      ctx.db.org_member.id.update({ ...cur, state: 'revoked', revokeSig: new Uint8Array(0) });
+    });
+    await settle();
+    expect(await new OrgStore(orgId, jordan.db).getLockedKeys()).toBeDefined();
+    // A forged signature of the right length is no better.
+    operator(hub, admin, (ctx) => {
+      const cur = ctx.db.org_member.id.find(id);
+      ctx.db.org_member.id.update({ ...cur, state: 'revoked', revokeSig: new Uint8Array(64).fill(7) });
+    });
+    await settle();
+    expect(await new OrgStore(orgId, jordan.db).getLockedKeys()).toBeDefined();
+  });
+
+  it('a person the admin revoked stays revoked here even if the operator sets the row back to active', async () => {
+    const hub = new HarnessHub();
+    const pager = await newPager();
+    const { admin, incidentId } = await startIncident(hub, pager);
+    void incidentId;
+    const id = rosterId(admin.client, 'Sam');
+    await admin.client.revokeOrgMember(id, 'lost phone');
+    await settle();
+    expect(admin.client.getState().roster.find((r) => r.displayName === 'Sam')!.state).toBe('revoked');
+    operator(hub, admin, (ctx) => {
+      const cur = ctx.db.org_member.id.find(id);
+      ctx.db.org_member.id.update({ ...cur, state: 'active', revokeSig: new Uint8Array(0), revokedAt: undefined });
+    });
+    await settle();
+    expect(admin.client.getState().roster.find((r) => r.displayName === 'Sam')!.state).toBe('revoked');
+    const before = admin.backend.rows().members.length;
+    await expect(admin.client.addFromRoster([{ orgMemberId: id, role: 'technical' }])).rejects.toThrow(/revoked/);
+    expect(admin.backend.rows().members.length).toBe(before);
+  });
+
+  it('a roster-added member refuses an incident whose commander is not a certified roster member', async () => {
+    const hub = new HarnessHub();
+    const pager = await newPager();
+    const { admin, jordan } = await startIncident(hub, pager);
+    const outsider = profile(hub, 'outsider', pager, { passkey: false });
+    const { incidentId } = await outsider.client.createIncident({ title: 'Not yours', displayName: 'Mallory' });
+    const jr = admin.backend.org.rows().roster.find((r) => r.displayName === 'Jordan')!;
+    // The operator plants a roster-marked member row for Jordan in the outsider's incident.
+    operator(hub, admin, (ctx) => {
+      ctx.db.member.insert({
+        id: 0n,
+        incidentId,
+        identity: Identity.fromString(jr.identityHex),
+        role: 'counsel',
+        state: 'active',
+        displayName: 'Jordan',
+        signPub: jr.signPub,
+        ecdhPub: jr.ecdhPub,
+        joinTag: new Uint8Array(32),
+        inviteCodeHash: `roster:${jr.orgMemberId}`,
+        admitSig: new Uint8Array(64),
+        revokeSig: new Uint8Array(0),
+        lastCounter: 0n,
+        joinedAt: ctx.timestamp,
+        admittedAt: ctx.timestamp,
+        revokedAt: undefined,
+      });
+    });
+    await jordan.client.openIncident(incidentId);
+    await settle();
+    const s = jordan.client.getState();
+    expect(s.connection).toBe('error');
+    expect(s.error).toMatch(/roster/);
+    expect(s.channels).toEqual([]);
+    expect(await new IncidentStore(incidentId, jordan.db).getCommander()).toBeUndefined();
+  });
+
+  it('createIncident never falls back to fresh keys while the device holds org keys', async () => {
+    const hub = new HarnessHub();
+    const pager = await newPager();
+    const { admin } = await startOrg(hub, pager);
+    const real = admin.backend.org.rows;
+    admin.backend.org.rows = () => ({ ...real(), orgs: [] });
+    await expect(admin.client.createIncident({ title: 'x', displayName: 'Casey' })).rejects.toThrow(/organization/);
+    admin.backend.org.rows = real;
+    await expect(admin.client.createIncident({ title: 'x', displayName: 'Casey' })).resolves.toBeDefined();
+  });
+
+  it('a locked commander can neither add from the roster nor page', async () => {
+    const hub = new HarnessHub();
+    const pager = await newPager();
+    const posts: string[] = [];
+    const { admin } = await startIncident(hub, pager, posts);
+    await admin.client.addFromRoster([{ orgMemberId: rosterId(admin.client, 'Jordan'), role: 'counsel' }]);
+    await settle();
+    admin.vault.lock();
+    await expect(admin.client.addFromRoster([{ orgMemberId: rosterId(admin.client, 'Sam'), role: 'technical' }])).rejects.toThrow();
+    await expect(admin.client.page([rosterId(admin.client, 'Jordan')])).rejects.toThrow();
+    expect(posts).toHaveLength(0);
+  });
+
+  it('a used enrollment link secret is deleted after approval', async () => {
+    const hub = new HarnessHub();
+    const pager = await newPager();
+    const { admin, orgId } = await startOrg(hub, pager);
+    await enrollPerson(hub, pager, admin, 'Jordan');
+    expect(await new OrgStore(orgId, admin.db).getLinks()).toHaveLength(0);
   });
 });

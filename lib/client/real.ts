@@ -72,6 +72,7 @@ import {
   signPageRequest,
   signRevocation,
   verifyEnrollJoinTag,
+  verifyRevocation,
   verifyEnrollment,
 } from '@/lib/crypto/org';
 import { sign } from '@/lib/crypto/sign';
@@ -178,6 +179,8 @@ interface RosterEntry {
   certified: boolean;
   /** Keys differ from the cached ones, or an active row has no valid certificate. Such a person cannot be added. */
   keyChanged: boolean;
+  /** An admin-signed revocation for this person was verified, now or earlier. It is permanent on this device. */
+  revoked: boolean;
 }
 
 interface OrgSnapshot {
@@ -194,6 +197,13 @@ interface OrgSnapshot {
 
 /** Marker the module stores in member.inviteCodeHash for people admitted through the roster. */
 const ROSTER_MARKER_PREFIX = 'roster:';
+
+/**
+ * The reason inside every org revocation signature. The module stores only the
+ * signature, not the reason, so a verifier can rebuild the signed statement
+ * only if the reason is fixed. The admin's free-text reason is only checked for length and is not sent.
+ */
+export const ORG_REVOKE_SIGNED_REASON = 'revoked by admin';
 
 const roleLabel = (r: string): string => r.charAt(0).toUpperCase() + r.slice(1);
 
@@ -763,7 +773,9 @@ export class RealIncidentClient implements IncidentClient {
     const incidentId = crypto.randomUUID();
     const store = this.openStore(incidentId);
     // An active org member starts the incident with their org keys, so roster members can verify the commander from the roster.
+    await this.refresh();
     const orgSnap = [...this.orgSnaps.values()][0];
+    if (!orgSnap) await this.refuseIfOrgKeysHeld();
     const keys = orgSnap ? await this.orgKeys(orgSnap.orgId) : await this.newDeviceKeys(store);
     await store.setCommander({
       signPub: keys.signPub,
@@ -1180,6 +1192,22 @@ export class RealIncidentClient implements IncidentClient {
     return null;
   }
 
+  /**
+   * A device that holds org keys must not quietly start an incident with fresh ones, because the roster
+   * would be unusable in it. Only a device whose enrollments are all still pending may carry on without.
+   */
+  private async refuseIfOrgKeysHeld(): Promise<void> {
+    const ids = await orgIdsOnDevice(this.keyStore);
+    if (ids.length === 0) return;
+    const own = this.backend.org?.rows().own ?? [];
+    if (ids.every((id) => own.some((r) => r.orgId === id && r.state === 'pending'))) return;
+    throw new ClientError('Your organization membership could not be verified right now. Wait a moment and try again.');
+  }
+
+  private revocationFields(orgId: string, r: OrgMemberRow) {
+    return { orgId, orgMemberId: r.orgMemberId, identityHex: r.identityHex, reason: ORG_REVOKE_SIGNED_REASON };
+  }
+
   private enrollmentFields(orgId: string, r: OrgMemberRow) {
     return {
       orgId,
@@ -1197,20 +1225,24 @@ export class RealIncidentClient implements IncidentClient {
    * works while the vault is locked.
    */
   private async computeOrg(): Promise<{ org: OrgView | null; roster: OrgRosterMember[] }> {
+    // Built completely before it replaces the old map, so a concurrent action never sees a half-filled one.
     const snaps = new Map<string, OrgSnapshot>();
-    this.orgSnaps = snaps;
     const ob = this.backend.org;
     const myHex = this.backend.identityHex();
-    if (!ob || !myHex) return { org: null, roster: [] };
+    if (!ob || !myHex) {
+      this.orgSnaps = snaps;
+      return { org: null, roster: [] };
+    }
     try {
       const rows = ob.rows();
       let org: OrgView | null = null;
       let roster: OrgRosterMember[] = [];
-      const view = (orgId: string, r: OrgMemberRow, keyChanged: boolean): OrgRosterMember => ({
+      const view = (orgId: string, r: OrgMemberRow, keyChanged: boolean, revoked = false): OrgRosterMember => ({
         orgMemberId: r.orgMemberId,
         identity: r.identityHex,
         displayName: r.displayName,
-        state: r.state === 'active' || r.state === 'revoked' ? r.state : 'pending',
+        // A revocation this device verified sticks, whatever the server shows later.
+        state: revoked || r.state === 'revoked' ? 'revoked' : r.state === 'active' ? 'active' : 'pending',
         fingerprint: formatFingerprint(fingerprintBytes(r.signPub, r.ecdhPub)),
         safetyCode: orgSafetyCode(orgId, r.identityHex, r.signPub, r.ecdhPub),
         enrolledAt: micros(r.enrolledAtMicros),
@@ -1229,6 +1261,8 @@ export class RealIncidentClient implements IncidentClient {
           await store.setPin(pin);
         }
         const cache = await store.getRoster();
+        const revokedBefore = await store.getRevoked();
+        const newlyRevoked: string[] = [];
         const fresh: Record<string, { identityHex: string; signPub: Uint8Array; ecdhPub: Uint8Array; sealedContactHash: Uint8Array }> = {};
         const members = new Map<string, RosterEntry>();
         for (const r of rows.roster) {
@@ -1250,9 +1284,15 @@ export class RealIncidentClient implements IncidentClient {
           }
           // An active row without a valid certificate is treated like a changed key: that person cannot be added.
           if (r.state === 'active' && !certified) keyChanged = true;
-          members.set(id, { row: r, certified, keyChanged });
+          // A revocation counts only with the admin's signature; once seen it is remembered for good.
+          const signedRevoked =
+            r.state === 'revoked' &&
+            (await verifyRevocation(pin.adminSignPub!, this.revocationFields(o.id, r), r.revokeSig));
+          if (signedRevoked && !revokedBefore.has(id)) newlyRevoked.push(id);
+          members.set(id, { row: r, certified, keyChanged, revoked: signedRevoked || revokedBefore.has(id) });
         }
         await store.addToRoster(fresh);
+        await store.addRevoked(newlyRevoked);
         const mine = [...members.values()].find((m) => m.row.identityHex === myHex);
         if (!mine || mine.row.state !== 'active') continue;
         snaps.set(o.id, {
@@ -1275,7 +1315,7 @@ export class RealIncidentClient implements IncidentClient {
           };
           roster = [...members.values()]
             .sort((a, b) => (a.row.orgMemberId < b.row.orgMemberId ? -1 : 1))
-            .map((m) => view(o.id, m.row, m.keyChanged));
+            .map((m) => view(o.id, m.row, m.keyChanged, m.revoked));
         }
       }
 
@@ -1284,15 +1324,19 @@ export class RealIncidentClient implements IncidentClient {
         for (const r of rows.own) {
           if (!(await this.orgStore(r.orgId).getPin())) continue;
           roster = [view(r.orgId, r, false)];
-          if (r.state === 'revoked' && !this.orgWiped.has(r.orgId)) {
-            // A revoked device wipes its org keys.
-            this.orgWiped.add(r.orgId);
-            this.orgKeyCache.delete(r.orgId);
-            await this.orgStore(r.orgId).wipe();
+          // Only an admin-signed revocation wipes the keys. A server that merely says "revoked" cannot destroy them.
+          const adminPub = (await this.orgStore(r.orgId).getPin())?.adminSignPub;
+          if (r.state === 'revoked' && adminPub && !this.orgWiped.has(r.orgId)) {
+            if (r.revokeSig.length === 64 && (await verifyRevocation(adminPub, this.revocationFields(r.orgId, r), r.revokeSig))) {
+              this.orgWiped.add(r.orgId);
+              this.orgKeyCache.delete(r.orgId);
+              await this.orgStore(r.orgId).wipe();
+            }
           }
           break;
         }
       }
+      this.orgSnaps = snaps;
       return { org, roster };
     } catch {
       return { org: null, roster: [] };
@@ -1332,6 +1376,9 @@ export class RealIncidentClient implements IncidentClient {
     const row = this.orgBackend()
       .rows()
       .roster.find((r) => r.orgId === snap.orgId && r.orgMemberId === orgMemberId);
+    if ((await this.orgStore(snap.orgId).getRevoked()).has(orgMemberId.toString())) {
+      throw new ClientError(`${row?.displayName ?? 'That person'} was revoked by the admin and cannot be added.`);
+    }
     if (!row || row.state !== 'active') throw new ClientError('That person is not an active member of the roster');
     if (row.enrollSig.length !== 64 || !(await verifyEnrollment(snap.adminSignPub, this.enrollmentFields(snap.orgId, row), row.enrollSig))) {
       throw new ClientError(`The roster entry for ${row.displayName} has no valid admin certificate. Do not add them.`);
@@ -1508,8 +1555,12 @@ export class RealIncidentClient implements IncidentClient {
       // Only approve when a link this admin made proves the request came from its holder.
       const fields = this.enrollmentFields(snap.orgId, row);
       let linkOk = false;
+      let usedLink: string | null = null;
       for (const l of await store.getLinks()) {
-        if (await verifyEnrollJoinTag(l.secret, fields, row.joinTag)) linkOk = true;
+        if (await verifyEnrollJoinTag(l.secret, fields, row.joinTag)) {
+          linkOk = true;
+          usedLink = l.codeHashHex;
+        }
       }
       if (!linkOk) throw new ClientError('Unverified: do not approve. The enrollment request does not match any link you made.');
       const enrollSig = await signEnrollment(keys.signPriv, fields);
@@ -1518,6 +1569,8 @@ export class RealIncidentClient implements IncidentClient {
       } catch {
         throw new ClientError('Could not approve that person');
       }
+      // One link enrolls one person, so its secret has done its job.
+      if (usedLink) await store.delLink(usedLink);
       await this.waitFor(() => ob.rows().roster.some((r) => r.orgMemberId === orgMemberId && r.state === 'active'));
       await this.refresh();
     });
@@ -1533,9 +1586,11 @@ export class RealIncidentClient implements IncidentClient {
       const { snap, keys } = await this.orgAdminCtx();
       const row = ob.rows().roster.find((r) => r.orgId === snap.orgId && r.orgMemberId === orgMemberId);
       if (!row || row.state === 'revoked' || row.identityHex === snap.adminHex) throw new ClientError('That person cannot be revoked');
-      const revokeSig = await signRevocation(keys.signPriv, { orgId: snap.orgId, orgMemberId, identityHex: row.identityHex, reason: why });
+      // The module keeps only the signature, so the signed reason is fixed and the free-text reason is not sent.
+      const signedReason = ORG_REVOKE_SIGNED_REASON;
+      const revokeSig = await signRevocation(keys.signPriv, { orgId: snap.orgId, orgMemberId, identityHex: row.identityHex, reason: signedReason });
       try {
-        await ob.revokeOrgMember({ orgId: snap.orgId, orgMemberId, reason: why, revokeSig });
+        await ob.revokeOrgMember({ orgId: snap.orgId, orgMemberId, reason: signedReason, revokeSig });
       } catch {
         throw new ClientError('Could not revoke that person');
       }

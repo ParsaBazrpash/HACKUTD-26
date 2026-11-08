@@ -195,6 +195,10 @@ export interface StoredEnrollLink {
   expiresAtMs: number;
 }
 
+export interface StoredEnrollLinkEntry extends StoredEnrollLink {
+  codeHashHex: string;
+}
+
 /** Org ids that have device keys in this store. */
 export async function orgIdsOnDevice(store: UseStore = db()): Promise<string[]> {
   const out: string[] = [];
@@ -248,14 +252,25 @@ export class OrgStore {
     if (changed) await set(ok(this.orgId, 'roster'), cur, this.store);
   }
 
+  /** orgMemberIds (decimal strings) whose admin-signed revocation this device has verified. Never un-revoked. */
+  async getRevoked(): Promise<Set<string>> {
+    return new Set((await get<string[]>(ok(this.orgId, 'revoked'), this.store)) ?? []);
+  }
+  async addRevoked(ids: Iterable<string>): Promise<void> {
+    const cur = await this.getRevoked();
+    const before = cur.size;
+    for (const id of ids) cur.add(id);
+    if (cur.size !== before) await set(ok(this.orgId, 'revoked'), [...cur], this.store);
+  }
+
   // --- enrollment link secrets (admin), by codeHash hex
-  async getLinks(): Promise<StoredEnrollLink[]> {
+  async getLinks(): Promise<StoredEnrollLinkEntry[]> {
     const prefix = ok(this.orgId, 'link/');
-    const out: StoredEnrollLink[] = [];
+    const out: StoredEnrollLinkEntry[] = [];
     for (const key of await idbKeys(this.store)) {
       if (typeof key !== 'string' || !key.startsWith(prefix)) continue;
       const v = await get<StoredEnrollLink>(key, this.store);
-      if (v) out.push(v);
+      if (v) out.push({ ...v, codeHashHex: key.slice(prefix.length) });
     }
     return out;
   }

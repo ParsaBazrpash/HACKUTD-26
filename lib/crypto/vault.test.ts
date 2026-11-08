@@ -136,3 +136,20 @@ describe('passkey vault (T20, T36)', () => {
     await expect(locked.setLockedDeviceKeys({ ...record, v: 2 } as unknown as LockedDeviceKeys)).rejects.toThrow();
   });
 });
+
+describe('org device keys in the vault', () => {
+  it('round-trip for the org they were made for, and never open as another org or as an incident', async () => {
+    const { generateLockedOrgKeys, openLockedOrgKeys } = await import('./vault');
+    const v = await vault();
+    const { record, keys } = await generateLockedOrgKeys(v, A);
+    expect(isLockedDeviceKeys(record)).toBe(true);
+    const back = await openLockedOrgKeys(v, record, A);
+    expect(back).not.toBeNull();
+    expect(back!.signPub).toEqual(keys.signPub);
+    expect(await openLockedOrgKeys(v, record, B)).toBeNull();
+    expect(await openLockedDeviceKeys(v, record, A)).toBeNull();
+    const inc = await generateLockedDeviceKeys(v, A);
+    expect(await openLockedOrgKeys(v, inc.record, A)).toBeNull();
+    expect(await openLockedOrgKeys(await vault(8), record, A)).toBeNull();
+  });
+});

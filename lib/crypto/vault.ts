@@ -8,6 +8,7 @@
 //   verifier = HKDF-SHA256(prf, same salt, info = enc('zh1/vault-check', vaultId))
 //   wrapped  = AES-GCM(kek, iv, pkcs8(privateKey),
 //                      aad = enc('zh1/vault-wrap', vaultId, incidentId, use, signPub, ecdhPub))
+//   (org device keys use aad = enc('zh1/vault-wrap', vaultId, 'org', orgId, use, signPub, ecdhPub))
 //
 // Private keys are generated extractable only for the moment it takes to wrap
 // them, then unwrapped again as non-extractable keys for use. Raw private key
@@ -107,9 +108,19 @@ export function verifierMatches(expected: Uint8Array, actual: Uint8Array): boole
   return isBytes(expected, VERIFIER_LEN) && isBytes(actual, VERIFIER_LEN) && bytesEqual(expected, actual);
 }
 
-function wrapAad(vaultId: Uint8Array, incidentId: string, use: KeyUse, signPub: Uint8Array, ecdhPub: Uint8Array): Uint8Array {
-  return enc(TAG.wrap, vaultId, incidentId, use, signPub, ecdhPub);
-}
+/** AAD builder for one kind of record; `scope` binds the ciphertext to whatever it belongs to. */
+type AadFn = (vaultId: Uint8Array, use: KeyUse, signPub: Uint8Array, ecdhPub: Uint8Array) => Uint8Array;
+
+const incidentAad =
+  (incidentId: string): AadFn =>
+  (vaultId, use, signPub, ecdhPub) =>
+    enc(TAG.wrap, vaultId, incidentId, use, signPub, ecdhPub);
+
+/** Org device keys: the literal 'org' and the orgId, so an org record never opens as an incident record or the reverse. */
+const orgAad =
+  (orgId: string): AadFn =>
+  (vaultId, use, signPub, ecdhPub) =>
+    enc(TAG.wrap, vaultId, 'org', orgId, use, signPub, ecdhPub);
 
 async function exportRaw(key: CryptoKey): Promise<Uint8Array> {
   return new Uint8Array(await crypto.subtle.exportKey('raw', key));
@@ -120,9 +131,24 @@ async function exportRaw(key: CryptoKey): Promise<Uint8Array> {
  * ciphertext under the vault key. Returns the record to store and the same
  * keys, non-extractable, for this session.
  */
-export async function generateLockedDeviceKeys(
+export function generateLockedDeviceKeys(
   vault: VaultKey,
   incidentId: string,
+): Promise<{ record: LockedDeviceKeys; keys: DeviceKeys }> {
+  return generateLocked(vault, incidentAad(incidentId));
+}
+
+/** Same as `generateLockedDeviceKeys`, bound to an org instead of an incident. Org keys never exist outside the vault. */
+export function generateLockedOrgKeys(
+  vault: VaultKey,
+  orgId: string,
+): Promise<{ record: LockedDeviceKeys; keys: DeviceKeys }> {
+  return generateLocked(vault, orgAad(orgId));
+}
+
+async function generateLocked(
+  vault: VaultKey,
+  aadFor: AadFn,
 ): Promise<{ record: LockedDeviceKeys; keys: DeviceKeys }> {
   const sign = (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, [
     'sign',
@@ -140,7 +166,7 @@ export async function generateLockedDeviceKeys(
       await crypto.subtle.wrapKey('pkcs8', key, vault.kek, {
         name: 'AES-GCM',
         iv: buf(iv),
-        additionalData: buf(wrapAad(vault.vaultId, incidentId, use, signPub, ecdhPub)),
+        additionalData: buf(aadFor(vault.vaultId, use, signPub, ecdhPub)),
       }),
     );
   const record: LockedDeviceKeys = {
@@ -154,7 +180,7 @@ export async function generateLockedDeviceKeys(
     ecdhIv,
   };
   // Hand back non-extractable copies; the extractable originals go out of scope here.
-  const keys = await openLockedDeviceKeys(vault, record, incidentId);
+  const keys = await openLocked(vault, record, aadFor);
   if (!keys) throw new Error('vault round trip failed');
   return { record, keys };
 }
@@ -180,11 +206,20 @@ export function isLockedDeviceKeys(x: unknown): x is LockedDeviceKeys {
  * the record does not authenticate under this vault key for this incident
  * (wrong passkey, another incident's record, swapped or edited fields).
  */
-export async function openLockedDeviceKeys(
+export function openLockedDeviceKeys(
   vault: VaultKey,
   record: LockedDeviceKeys,
   incidentId: string,
 ): Promise<DeviceKeys | null> {
+  return openLocked(vault, record, incidentAad(incidentId));
+}
+
+/** Unwraps an org record. Returns null for a record that was not made for this org under this vault key. */
+export function openLockedOrgKeys(vault: VaultKey, record: LockedDeviceKeys, orgId: string): Promise<DeviceKeys | null> {
+  return openLocked(vault, record, orgAad(orgId));
+}
+
+async function openLocked(vault: VaultKey, record: LockedDeviceKeys, aadFor: AadFn): Promise<DeviceKeys | null> {
   if (!isLockedDeviceKeys(record) || !bytesEqual(record.vaultId, vault.vaultId)) return null;
   const unwrap = (wrapped: Uint8Array, iv: Uint8Array, use: KeyUse) =>
     crypto.subtle.unwrapKey(
@@ -194,7 +229,7 @@ export async function openLockedDeviceKeys(
       {
         name: 'AES-GCM',
         iv: buf(iv),
-        additionalData: buf(wrapAad(record.vaultId, incidentId, use, record.signPub, record.ecdhPub)),
+        additionalData: buf(aadFor(record.vaultId, use, record.signPub, record.ecdhPub)),
       },
       use === 'sign' ? { name: 'ECDSA', namedCurve: 'P-256' } : { name: 'ECDH', namedCurve: 'P-256' },
       false,

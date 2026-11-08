@@ -18,7 +18,7 @@
 import { del, get, set, type UseStore } from 'idb-keyval';
 import { bytesEqual } from '@/spacetimedb/src/shared/encoding';
 import { randomBytes } from '@/lib/crypto/hash';
-import { defaultKeyStore, IncidentStore, lockedIncidentIds } from '@/lib/crypto/store';
+import { defaultKeyStore, IncidentStore, lockedIncidentIds, orgIdsOnDevice } from '@/lib/crypto/store';
 import {
   deriveVault,
   isLockedDeviceKeys,
@@ -49,6 +49,8 @@ export interface DeviceVaultPort {
   key(): VaultKey | null;
   /** True when new device keys must be passkey-locked. */
   isEnabled(): Promise<boolean>;
+  /** Optional: whether this browser can make a passkey with PRF at all, for a clearer error. */
+  supported?(): Promise<boolean>;
   subscribe(listener: () => void): () => void;
 }
 
@@ -128,6 +130,10 @@ export class DeviceVault implements DeviceVaultPort {
 
   async isEnabled(): Promise<boolean> {
     return isVaultRecord(await get(RECORD_KEY, this.deps.store));
+  }
+
+  supported(): Promise<boolean> {
+    return this.deps.webauthn.supported().catch(() => false);
   }
 
   /** Resolves once the first status check is done. */
@@ -247,6 +253,10 @@ export class DeviceVault implements DeviceVaultPort {
       if (!isVaultRecord(rec)) throw new PasskeyLockError('The passkey lock is not on.');
       const key = this.vaultKey;
       if (!key || !bytesEqual(key.vaultId, rec.vaultId)) throw new PasskeyLockError('Unlock with your passkey first.');
+      // Org keys exist only behind the passkey, so the lock cannot be undone while this device holds any.
+      if ((await orgIdsOnDevice(this.deps.store)).length > 0) {
+        throw new PasskeyLockError('This device is enrolled in an organization, and its keys exist only behind this passkey. The lock stays on.');
+      }
       for (const incidentId of await lockedIncidentIds(this.deps.store)) {
         const s = new IncidentStore(incidentId, this.deps.store);
         const locked = await s.getDeviceRecord();

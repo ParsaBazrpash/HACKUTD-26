@@ -34,6 +34,9 @@ export interface StoredHead {
   hash: Uint8Array;
 }
 
+/** Everything stored for an org lives under `org/<orgId>/`. Incident ids are UUIDs, so the prefixes cannot collide. */
+const ORG_PREFIX = 'org/';
+
 let defaultStore: UseStore | null = null;
 function db(): UseStore {
   defaultStore ??= createStore('zerohour', 'v1');
@@ -49,7 +52,7 @@ export function defaultKeyStore(): UseStore {
 export async function lockedIncidentIds(store: UseStore = db()): Promise<string[]> {
   const out: string[] = [];
   for (const key of await idbKeys(store)) {
-    if (typeof key !== 'string' || !key.endsWith('/device')) continue;
+    if (typeof key !== 'string' || !key.endsWith('/device') || key.startsWith(ORG_PREFIX)) continue;
     const id = key.slice(0, -'/device'.length);
     if (isLockedDeviceKeys(await get(key, store))) out.push(id);
   }
@@ -128,6 +131,14 @@ export class IncidentStore {
     return del(k(this.incidentId, `invite/${codeHashHex}`), this.store);
   }
 
+  // --- org this incident is linked to (commander side; a missing flag is re-derived from the roster rows)
+  getOrgLink(): Promise<string | undefined> {
+    return get<string>(k(this.incidentId, 'org-link'), this.store);
+  }
+  setOrgLink(orgId: string): Promise<void> {
+    return set(k(this.incidentId, 'org-link'), orgId, this.store);
+  }
+
   // --- pinned heads
   getHead(kind: ChannelKind): Promise<StoredHead | undefined> {
     return get<StoredHead>(k(this.incidentId, `head/${kind}`), this.store);
@@ -152,6 +163,112 @@ export class IncidentStore {
    */
   async wipe(): Promise<void> {
     const prefix = `${this.incidentId}/`;
+    for (const key of await idbKeys(this.store)) {
+      if (typeof key === 'string' && key.startsWith(prefix)) await del(key, this.store);
+    }
+  }
+}
+
+// --- Org roster (peacetime) ----------------------------------------------------------------
+
+/** What this device pinned about an org. The admin fingerprint comes from the enrollment link or from the admin's own keys. */
+export interface OrgPin {
+  /** Full 32-byte fingerprint of the admin's keys. */
+  adminFingerprint: Uint8Array;
+  /** Set once the org row's keys have been checked against `adminFingerprint`. */
+  adminSignPub?: Uint8Array;
+  adminEcdhPub?: Uint8Array;
+  role: 'admin' | 'member';
+}
+
+/** One roster member's keys as certified by the admin, cached so a later swap is noticed. */
+export interface CachedRosterKey {
+  identityHex: string;
+  signPub: Uint8Array;
+  ecdhPub: Uint8Array;
+  /** SHA-256 of the sealed contact the certificate covered. */
+  sealedContactHash: Uint8Array;
+}
+
+export interface StoredEnrollLink {
+  secret: Uint8Array;
+  expiresAtMs: number;
+}
+
+/** Org ids that have device keys in this store. */
+export async function orgIdsOnDevice(store: UseStore = db()): Promise<string[]> {
+  const out: string[] = [];
+  for (const key of await idbKeys(store)) {
+    if (typeof key !== 'string' || !key.startsWith(ORG_PREFIX) || !key.endsWith('/device')) continue;
+    out.push(key.slice(ORG_PREFIX.length, -'/device'.length));
+  }
+  return out.sort();
+}
+
+const ok = (orgId: string, part: string) => `${ORG_PREFIX}${orgId}/${part}`;
+
+/**
+ * Per-org persistence. Device keys are only ever stored as a passkey-locked
+ * record: there is deliberately no method that stores plain org keys.
+ */
+export class OrgStore {
+  constructor(
+    readonly orgId: string,
+    private readonly store: UseStore = db(),
+  ) {}
+
+  getLockedKeys(): Promise<LockedDeviceKeys | undefined> {
+    return get<unknown>(ok(this.orgId, 'device'), this.store).then((r) => (isLockedDeviceKeys(r) ? r : undefined));
+  }
+  setLockedKeys(v: LockedDeviceKeys): Promise<void> {
+    if (!isLockedDeviceKeys(v)) return Promise.reject(new TypeError('invalid locked device keys'));
+    return set(ok(this.orgId, 'device'), v, this.store);
+  }
+
+  getPin(): Promise<OrgPin | undefined> {
+    return get<OrgPin>(ok(this.orgId, 'pin'), this.store);
+  }
+  setPin(v: OrgPin): Promise<void> {
+    return set(ok(this.orgId, 'pin'), v, this.store);
+  }
+
+  /** Cached certified keys by orgMemberId (decimal string). */
+  async getRoster(): Promise<Record<string, CachedRosterKey>> {
+    return (await get<Record<string, CachedRosterKey>>(ok(this.orgId, 'roster'), this.store)) ?? {};
+  }
+  /** Adds entries that are not cached yet. An existing entry is never replaced. */
+  async addToRoster(entries: Record<string, CachedRosterKey>): Promise<void> {
+    const cur = await this.getRoster();
+    let changed = false;
+    for (const [id, e] of Object.entries(entries)) {
+      if (cur[id]) continue;
+      cur[id] = e;
+      changed = true;
+    }
+    if (changed) await set(ok(this.orgId, 'roster'), cur, this.store);
+  }
+
+  // --- enrollment link secrets (admin), by codeHash hex
+  async getLinks(): Promise<StoredEnrollLink[]> {
+    const prefix = ok(this.orgId, 'link/');
+    const out: StoredEnrollLink[] = [];
+    for (const key of await idbKeys(this.store)) {
+      if (typeof key !== 'string' || !key.startsWith(prefix)) continue;
+      const v = await get<StoredEnrollLink>(key, this.store);
+      if (v) out.push(v);
+    }
+    return out;
+  }
+  setLink(codeHashHex: string, v: StoredEnrollLink): Promise<void> {
+    return set(ok(this.orgId, `link/${codeHashHex}`), v, this.store);
+  }
+  delLink(codeHashHex: string): Promise<void> {
+    return del(ok(this.orgId, `link/${codeHashHex}`), this.store);
+  }
+
+  /** Removes everything stored for this org, including the device keys. */
+  async wipe(): Promise<void> {
+    const prefix = ok(this.orgId, '');
     for (const key of await idbKeys(this.store)) {
       if (typeof key === 'string' && key.startsWith(prefix)) await del(key, this.store);
     }

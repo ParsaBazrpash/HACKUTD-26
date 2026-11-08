@@ -74,20 +74,16 @@ describe('POST /api/twilio/voice logic', () => {
     expect(second.net.updates).toHaveLength(0);
   });
 
-  it.each([
-    ['ringing', 'ringing'],
-    ['no-answer', 'no_answer'],
-    ['busy', 'busy'],
-    ['failed', 'failed'],
-    ['canceled', 'failed'],
-  ])('status %s writes %s', async (callStatus, expected) => {
+  it('status ringing writes ringing', async () => {
     const w = await buildWorld();
-    const { net, res } = await call(w, { params: { CallStatus: callStatus } });
-    expect(net.updates).toEqual([{ pageId: PAGE, orgMemberId: MEMBER, status: expected }]);
+    const { net, res } = await call(w, { params: { CallStatus: 'ringing' } });
+    expect(net.updates).toEqual([{ pageId: PAGE, orgMemberId: MEMBER, status: 'ringing' }]);
     expect(res.body).toContain('<Response/>');
   });
 
-  it.each(['initiated', 'in-progress', 'completed', 'queued', 'bogus'])('status %s changes nothing', async (callStatus) => {
+  // A dead call must not end the page: the same page was texted, and a reply of 4 can still acknowledge it
+  // (terminal rows never change in the module, the 120 second sweep ends the page).
+  it.each(['no-answer', 'busy', 'failed', 'canceled', 'initiated', 'in-progress', 'completed', 'queued', 'bogus'])('status %s changes nothing', async (callStatus) => {
     const w = await buildWorld();
     const { net, res } = await call(w, { params: { CallStatus: callStatus } });
     expect(net.updates).toHaveLength(0);

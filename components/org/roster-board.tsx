@@ -177,6 +177,20 @@ export function RosterBoard({
     });
   }
 
+  async function callOne(member: RosterMember) {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await getIncidentClient().page([member.orgMemberId]);
+      setNotice(`Paging ${member.displayName}.`);
+    } catch (cause) {
+      setError(clientErrorMessage(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function run(kind: "add" | "page") {
     if (picked.size === 0) return;
     setBusy(true);
@@ -281,6 +295,11 @@ export function RosterBoard({
                         <option value="executive">{ROLE_LABELS.executive}</option>
                       </select>
                     </label>
+                    {pickable ? (
+                      <button type="button" disabled={busy} onClick={() => void callOne(member)} className={secondaryButtonClass}>
+                        {page ? "Retry call" : "Call"}
+                      </button>
+                    ) : null}
                     {isAdmin ? null : <RevokeControl member={member} onDone={setNotice} />}
                   </div>
                 ) : null}

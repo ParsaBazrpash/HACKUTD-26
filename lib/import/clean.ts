@@ -4,8 +4,10 @@
 
 import { segmentHttpText } from '@/lib/links';
 
-// Same ranges as spacetimedb/src/shared/limits.ts (copied, not imported, so limits.ts stays untouched):
-// controls, bidi marks and overrides, isolates, and invisible format characters.
+// The ranges of spacetimedb/src/shared/limits.ts (copied, not imported, so limits.ts stays untouched):
+// controls, bidi marks and overrides, isolates, and invisible format characters. Then characters that show
+// nothing or a blank on their own: variation selectors, the combining grapheme joiner, Hangul and Khmer
+// fillers and the braille blank. Every format character (\p{Cf}, which includes tag characters) is removed too.
 const STRIPPED_RANGES: ReadonlyArray<readonly [number, number]> = [
   [0x00, 0x1f],
   [0x7f, 0x9f],
@@ -16,11 +18,25 @@ const STRIPPED_RANGES: ReadonlyArray<readonly [number, number]> = [
   [0x200b, 0x200d],
   [0x2060, 0x2060],
   [0xfeff, 0xfeff],
+  [0x034f, 0x034f],
+  [0x115f, 0x1160],
+  [0x17b4, 0x17b5],
+  [0x2800, 0x2800],
+  [0x3164, 0x3164],
+  [0xfe00, 0xfe0f],
+  [0xffa0, 0xffa0],
+  [0xe0100, 0xe01ef],
 ];
 
 function isStripped(cp: number): boolean {
   for (const [lo, hi] of STRIPPED_RANGES) if (cp >= lo && cp <= hi) return true;
   return false;
+}
+
+/** True for a character that cleaning always removes. The file scan uses the same test, so its report matches. */
+export function isStrippedChar(ch: string): boolean {
+  const cp = ch.codePointAt(0) as number;
+  return isStripped(cp) || /\p{Cf}/u.test(ch);
 }
 
 /** Cuts to at most `max` code points. */
@@ -40,8 +56,8 @@ export function cleanText(raw: string, max: number): string {
   let out = '';
   let lastSpace = false;
   for (const ch of spaced) {
+    if (isStrippedChar(ch)) continue;
     const cp = ch.codePointAt(0) as number;
-    if (isStripped(cp) || /\p{Cf}/u.test(ch)) continue;
     const space = cp === 0x20 || cp === 0xa0 || (cp >= 0x2000 && cp <= 0x200a) || cp === 0x3000;
     if (space) {
       if (lastSpace) continue;

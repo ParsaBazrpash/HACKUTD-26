@@ -89,13 +89,14 @@ describe('2. hidden and binary characters', () => {
     const r = await readImportFile(file(enc(csv)));
     expect(r.ok).toBe(true);
     if (r.ok) {
-      expect(r.warnings).toEqual(['3 hidden zero-width characters were removed.', '1 control character was removed.']);
+      expect(r.warnings).toEqual(['3 hidden characters were removed.', '1 control character was removed.']);
     }
   });
 
-  it('keeps ordinary right-to-left marks, tabs and line breaks', () => {
+  it('never refuses ordinary right-to-left marks, and reports them because cleaning removes them', () => {
     expect(scanText('a\tb\r\nc\u200Ed\u200F').refuse).toBeNull();
-    expect(scanText('a\tb\r\nc\u200Ed\u200F').warnings).toEqual([]);
+    expect(scanText('a\tb\r\nc\u200Ed\u200F').warnings).toEqual(['2 hidden characters were removed.']);
+    expect(scanText('a\tb\r\nc').warnings).toEqual([]);
   });
 
   it('refuses a file that is mostly control characters', async () => {

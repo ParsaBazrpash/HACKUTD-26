@@ -8,7 +8,8 @@ export type Row = Map<string, string>;
 
 export type TableResult =
   | { ok: true; columns: string[]; rows: Row[] }
-  | { ok: false; error: string };
+  /** `limit` is set when a size cap (rows, columns, cell length) stopped the read. */
+  | { ok: false; error: string; limit?: true };
 
 function pickDelimiter(text: string): string {
   let inQuotes = false;
@@ -67,21 +68,21 @@ export function parseCsv(text: string): TableResult {
     } else if (c === '\n' || c === '\r') {
       if (c === '\r' && text[i + 1] === '\n') i += 1;
       endRecord();
-      if (records.length > MAX_ROWS + 1) return { ok: false, error: 'Too many rows (limit 5,000). Export a shorter time range.' };
+      if (records.length > MAX_ROWS + 1) return { ok: false, limit: true, error: 'Too many rows (limit 5,000). Export a shorter time range.' };
     } else {
       cell += c;
     }
     if (cell.length > MAX_CELL) overCell = true;
-    if (overCell) return { ok: false, error: 'A cell is longer than 8 KB. This does not look like an alert export.' };
-    if (record.length > MAX_COLUMNS) return { ok: false, error: 'Too many columns (limit 200).' };
+    if (overCell) return { ok: false, limit: true, error: 'A cell is longer than 8 KB. This does not look like an alert export.' };
+    if (record.length > MAX_COLUMNS) return { ok: false, limit: true, error: 'Too many columns (limit 200).' };
   }
   if (inQuotes) return { ok: false, error: 'The file ends inside a quoted value. Check the export.' };
   if (cell.length > 0 || record.length > 0) endRecord();
 
   if (records.length === 0) return { ok: false, error: 'The file has no rows.' };
-  if (records.length - 1 > MAX_ROWS) return { ok: false, error: 'Too many rows (limit 5,000). Export a shorter time range.' };
+  if (records.length - 1 > MAX_ROWS) return { ok: false, limit: true, error: 'Too many rows (limit 5,000). Export a shorter time range.' };
   const header = records[0];
-  if (header.length > MAX_COLUMNS) return { ok: false, error: 'Too many columns (limit 200).' };
+  if (header.length > MAX_COLUMNS) return { ok: false, limit: true, error: 'Too many columns (limit 200).' };
 
   const columns: string[] = [];
   const seen = new Set<string>();
@@ -95,7 +96,7 @@ export function parseCsv(text: string): TableResult {
   const rows: Row[] = [];
   for (let r = 1; r < records.length; r += 1) {
     const rec = records[r];
-    if (rec.length > MAX_COLUMNS) return { ok: false, error: 'Too many columns (limit 200).' };
+    if (rec.length > MAX_COLUMNS) return { ok: false, limit: true, error: 'Too many columns (limit 200).' };
     const row: Row = new Map();
     for (let c = 0; c < columns.length; c += 1) row.set(columns[c], rec[c] ?? '');
     rows.push(row);

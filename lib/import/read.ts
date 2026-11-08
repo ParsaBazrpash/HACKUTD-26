@@ -1,6 +1,7 @@
 // Reading an import file in the browser (plan.md rules 1 to 3). The file is never uploaded:
 // only its bytes are hashed and decoded here.
 
+import { isStrippedChar } from '@/lib/import/clean';
 import type { Row } from '@/lib/import/csv';
 
 export const MAX_FILE_BYTES = 2 * 1024 * 1024;
@@ -9,7 +10,8 @@ export type ImportFormat = 'csv' | 'json' | 'ndjson';
 
 export type ReadResult =
   | { ok: true; text: string; sha256: string; size: number; format: ImportFormat; warnings: string[] }
-  | { ok: false; error: string };
+  /** `check` names the checklist line that refused the file, when one did. */
+  | { ok: false; error: string; check?: 'type' | 'limits' };
 
 export interface FileLike {
   size: number;
@@ -84,21 +86,17 @@ interface Counts {
   hidden: number;
 }
 
+// Counts exactly what cleaning removes (isStrippedChar), so "none found" in the preview is true for every
+// character cleaning would take out: controls, bidi marks, overrides and isolates, zero-width and tag characters,
+// variation selectors and blank fillers.
 function count(text: string, c: Counts): void {
   c.chars += text.length;
-  for (let i = 0; i < text.length; i += 1) {
-    const ch = text.charCodeAt(i);
-    if ((ch < 0x20 && ch !== 0x09 && ch !== 0x0a && ch !== 0x0d) || (ch >= 0x7f && ch <= 0x9f)) c.controls += 1;
-    else if ((ch >= 0x202a && ch <= 0x202e) || (ch >= 0x2066 && ch <= 0x2069)) c.overrides += 1;
-    else if (ch === 0x200b || ch === 0x200c || ch === 0x200d || ch === 0x2060 || ch === 0xfeff || ch === 0x061c) c.hidden += 1;
-    else if (ch === 0xdb40) {
-      // Unicode tag characters (U+E0001, U+E0020 to U+E007F) are invisible and can hide text meant for an AI reader.
-      const lo = text.charCodeAt(i + 1);
-      if (lo === 0xdc01 || (lo >= 0xdc20 && lo <= 0xdc7f)) {
-        c.hidden += 1;
-        i += 1;
-      }
-    }
+  for (const ch of text) {
+    const cp = ch.codePointAt(0) as number;
+    if ((cp >= 0x20 && cp < 0x7f) || cp === 0x09 || cp === 0x0a || cp === 0x0d) continue;
+    if (cp < 0x20 || (cp >= 0x7f && cp <= 0x9f)) c.controls += 1;
+    else if ((cp >= 0x202a && cp <= 0x202e) || (cp >= 0x2066 && cp <= 0x2069)) c.overrides += 1;
+    else if (isStrippedChar(ch)) c.hidden += 1;
   }
 }
 
@@ -114,7 +112,7 @@ function verdict(c: Counts): TextScan {
       `${plural(c.overrides, 'right-to-left override or isolate character was', 'right-to-left override or isolate characters were')} removed, so text shows in its real order. A file name that hides its real extension this way is a known malware trick.`,
     );
   }
-  if (c.hidden > 0) warnings.push(`${plural(c.hidden, 'hidden zero-width character was', 'hidden zero-width characters were')} removed.`);
+  if (c.hidden > 0) warnings.push(`${plural(c.hidden, 'hidden character was', 'hidden characters were')} removed.`);
   if (c.controls > 0) warnings.push(`${plural(c.controls, 'control character was', 'control characters were')} removed.`);
   return { refuse: null, warnings, found: warnings.length > 0 };
 }
@@ -202,7 +200,7 @@ export function detectFormat(text: string): ImportFormat {
 
 export async function readImportFile(file: FileLike): Promise<ReadResult> {
   if (file.size > MAX_FILE_BYTES) {
-    return { ok: false, error: 'The file is larger than 2 MB. Export a shorter time range.' };
+    return { ok: false, error: 'The file is larger than 2 MB. Export a shorter time range.', check: 'limits' };
   }
   if (file.size === 0) return { ok: false, error: 'The file is empty.' };
   let buf: ArrayBuffer;
@@ -213,12 +211,12 @@ export async function readImportFile(file: FileLike): Promise<ReadResult> {
   }
   const bytes = new Uint8Array(buf);
   if (bytes.length > MAX_FILE_BYTES) {
-    return { ok: false, error: 'The file is larger than 2 MB. Export a shorter time range.' };
+    return { ok: false, error: 'The file is larger than 2 MB. Export a shorter time range.', check: 'limits' };
   }
   const decoded = decodeBytes(bytes);
-  if (!decoded.ok) return decoded;
+  if (!decoded.ok) return { ok: false, error: decoded.error, check: 'type' };
   const scan = scanText(decoded.text);
-  if (scan.refuse) return { ok: false, error: scan.refuse };
+  if (scan.refuse) return { ok: false, error: scan.refuse, check: 'type' };
   const sha256 = await sha256Hex(bytes);
   return { ok: true, text: decoded.text, sha256, size: bytes.length, format: detectFormat(decoded.text), warnings: scan.warnings };
 }

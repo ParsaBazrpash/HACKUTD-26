@@ -16,7 +16,7 @@ import { parseJson, parseNdjson } from "@/lib/import/json";
 import { buildPlan, sendImport, type ImportPlan } from "@/lib/import/plan";
 import { isPlatformId, missingFields, PLATFORM_IDS, PLATFORMS, suggestForPlatform, type PlatformId } from "@/lib/import/platforms";
 import type { ImportedSource } from "@/lib/import/label";
-import { fileChecklist, type CheckState } from "@/lib/import/checklist";
+import { failedChecklist, fileChecklist, type CheckLine, type CheckState, type FailedCheck } from "@/lib/import/checklist";
 import { readImportFile, scanParsed, type ImportFormat } from "@/lib/import/read";
 
 const FIELD_LABEL: Record<FieldKey, string> = {
@@ -48,6 +48,27 @@ function sizeLabel(bytes: number): string {
 const CHECK_MARK: Record<CheckState, string> = { pass: "\u2713", warn: "!", fail: "\u2717" };
 const CHECK_WORD: Record<CheckState, string> = { pass: "Passed", warn: "Warning", fail: "Failed" };
 const CHECK_CLASS: Record<CheckState, string> = { pass: "text-emerald-500", warn: "text-amber-500", fail: "text-alert" };
+const CHECKS_NOTE = "Basic safety checks only. This is not a thorough scan and does not check what the file says.";
+
+/** The basic file checks. Labels and marks are fixed strings from the code; nothing from the file is shown here. */
+function CheckList({ lines }: { lines: readonly CheckLine[] }) {
+  return (
+    <div className="grid gap-1 text-sm" data-testid="import-checks">
+      <ul className="grid gap-1">
+        {lines.map((line) => (
+          <li key={line.label} className="flex gap-2">
+            <span aria-hidden="true" className={`w-4 shrink-0 text-center ${CHECK_CLASS[line.state]}`}>
+              {CHECK_MARK[line.state]}
+            </span>
+            <span className="sr-only">{CHECK_WORD[line.state]}: </span>
+            <span>{line.label}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="text-xs text-muted">{CHECKS_NOTE}</p>
+    </div>
+  );
+}
 
 function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
@@ -68,6 +89,7 @@ function ImportPanelInner() {
   const [overrides, setOverrides] = useState<ReadonlyMap<string, boolean>>(new Map());
   const [again, setAgain] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [failedCheck, setFailedCheck] = useState<FailedCheck | null>(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [sent, setSent] = useState<string | null>(null);
@@ -96,6 +118,7 @@ function ImportPanelInner() {
     setOverrides(new Map());
     setAgain(false);
     setError(null);
+    setFailedCheck(null);
     setProgress(null);
     setSent(null);
     setFailure(null);
@@ -112,17 +135,20 @@ function ImportPanelInner() {
       const read = await readImportFile(file);
       if (!read.ok) {
         setError(read.error);
+        setFailedCheck(read.check ?? null);
         return;
       }
       const table = read.format === "csv" ? parseCsv(read.text) : read.format === "json" ? parseJson(read.text) : parseNdjson(read.text);
       if (!table.ok) {
         setError(table.error);
+        setFailedCheck(table.limit ? "limits" : null);
         return;
       }
       // JSON escapes (\u202e, \u200b, \u0007) only become characters once parsed, so the parsed strings are checked too.
       const scan = scanParsed(read.format, read.warnings, table.columns, table.rows);
       if (scan.refuse) {
         setError(scan.refuse);
+        setFailedCheck("type");
         return;
       }
       setLoaded({
@@ -228,6 +254,7 @@ function ImportPanelInner() {
             />
           </label>
           <div className="mt-3 grid gap-2">
+            {failedCheck ? <CheckList lines={failedChecklist(failedCheck)} /> : null}
             <FormError message={error} />
           </div>
 
@@ -267,20 +294,7 @@ function ImportPanelInner() {
                 </div>
               </dl>
 
-              <div className="grid gap-1 text-sm" data-testid="import-checks">
-                <ul className="grid gap-1">
-                  {fileChecklist({ hiddenFound: loaded.hiddenFound }).map((line) => (
-                    <li key={line.label} className="flex gap-2">
-                      <span aria-hidden="true" className={CHECK_CLASS[line.state]}>
-                        {CHECK_MARK[line.state]}
-                      </span>
-                      <span className="sr-only">{CHECK_WORD[line.state]}: </span>
-                      <span>{line.label}</span>
-                    </li>
-                  ))}
-                </ul>
-                <p className="text-xs text-muted">Basic safety checks only. This is not a thorough scan and does not check what the file says.</p>
-              </div>
+              <CheckList lines={fileChecklist({ hiddenFound: loaded.hiddenFound })} />
 
               {loaded.warnings.length > 0 ? (
                 <ul className="grid gap-1 text-sm text-muted">

@@ -33,3 +33,6 @@ yarn-error.log*
 # Spacetime module build output
 /spacetimedb/dist
 /spacetimedb/node_modules
+
+# Local live-test org admin signing key (milestone M2). Never commit.
+/live/.org-admin.local.json

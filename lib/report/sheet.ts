@@ -69,9 +69,9 @@ export function coverStats(report: IncidentReport): CoverStat[] {
   const events = report.integrity.channels.reduce((sum, channel) => sum + channel.eventsChecked, 0);
   return [
     { label: "Systems affected", value: String(report.systems.length), sub: hit > 0 ? `${hit} encrypted or exfiltrated` : "None encrypted or exfiltrated" },
-    { label: "Evidence items", value: String(report.evidence.length), sub: "Hashed with SHA-256" },
+    { label: "Evidence items", value: String(report.evidence.length), sub: report.evidence.length === 0 ? "No evidence recorded" : "Hashed with SHA-256" },
     { label: "Tasks done", value: `${done}/${report.tasks.length}`, sub: report.tasks.length === 0 ? "No tasks recorded" : `${report.tasks.length - done} still open` },
-    { label: "Responders", value: String(active), sub: `${events} signed events checked` },
+    { label: "Responders", value: String(active), sub: report.demoNote ? `${events} events checked` : `${events} signed events checked` },
   ];
 }
 

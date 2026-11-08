@@ -235,7 +235,7 @@ function TimelineAppendix({ report, actions }: { report: IncidentReport; actions
         </span>
         Timeline of actions
       </h2>
-      <p className={`mt-1 text-[12px] ${muted}`}>Every signed entry, oldest first. Times are UTC.</p>
+      <p className={`mt-1 text-[12px] ${muted}`}>Signed entries and pages, oldest first. Times are UTC.</p>
       {actions.length === 0 ? (
         <p className={`mt-3 ${muted}`}>{report.timelineEmpty ?? "No timeline entries are on the record."}</p>
       ) : (

@@ -41,6 +41,9 @@ function state(partial: Partial<IncidentState> = {}): IncidentState {
       channels: {},
       rosterFailures: [],
     },
+    org: null,
+    roster: [],
+    pages: [],
     ...partial,
   };
 }

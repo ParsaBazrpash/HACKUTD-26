@@ -144,6 +144,9 @@ function state(role: MemberView["role"] = "counsel"): IncidentState {
         },
       },
     ],
+    org: null,
+    roster: [],
+    pages: [],
     integrity: {
       ok: true,
       checkedAt: NOW,

@@ -145,6 +145,9 @@ function emptyState(connection: IncidentState['connection'], at: Date, error?: s
     deadlineUpdates: {},
     evidence: [],
     integrity: { ok: true, checkedAt: at, channels: {}, rosterFailures: [] },
+    org: null,
+    roster: [],
+    pages: [],
     ...(error ? { error } : {}),
   };
 }
@@ -597,6 +600,9 @@ export class RealIncidentClient implements IncidentClient {
       incident: inc && commander ? { id, title: title ?? '', createdAt: micros(inc.createdAtMicros), commander } : null,
       members: views,
       integrity: report,
+      org: null,
+      roster: [],
+      pages: [],
     };
   }
 
@@ -994,6 +1000,33 @@ export class RealIncidentClient implements IncidentClient {
         throw new ClientError('Could not sign a checkpoint');
       }
     });
+  }
+
+  // --- org roster and paging (WP0 stubs, built in later packages) -----------------
+
+  createOrg(): Promise<{ orgId: string }> {
+    return Promise.reject(new Error('not built yet'));
+  }
+  createEnrollLink(): Promise<{ url: string; qr: string | null }> {
+    return Promise.reject(new Error('not built yet'));
+  }
+  enroll(): Promise<{ safetyCode: string }> {
+    return Promise.reject(new Error('not built yet'));
+  }
+  approveMember(): Promise<void> {
+    return Promise.reject(new Error('not built yet'));
+  }
+  revokeOrgMember(): Promise<void> {
+    return Promise.reject(new Error('not built yet'));
+  }
+  addFromRoster(): Promise<void> {
+    return Promise.reject(new Error('not built yet'));
+  }
+  page(): Promise<{ pageId: string }> {
+    return Promise.reject(new Error('not built yet'));
+  }
+  announcePresence(): Promise<void> {
+    return Promise.reject(new Error('not built yet'));
   }
 }
 

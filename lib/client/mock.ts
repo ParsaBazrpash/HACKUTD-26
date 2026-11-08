@@ -151,6 +151,9 @@ function blank(connection: IncidentState["connection"], at: Date, error?: string
     deadlineUpdates: {},
     evidence: [],
     integrity: { ok: true, checkedAt: at, channels: {}, rosterFailures: [] },
+    org: null,
+    roster: [],
+    pages: [],
     ...(error ? { error } : {}),
   };
 }
@@ -446,6 +449,33 @@ class MockIncidentClient implements IncidentClient {
     return this.run(() => {
       throw new Error("Checkpoints are not available in demo mode.");
     });
+  }
+
+  // --- org roster and paging (WP0 stubs, built in later packages) -----------------
+
+  createOrg(): Promise<{ orgId: string }> {
+    return Promise.reject(new Error('not built yet'));
+  }
+  createEnrollLink(): Promise<{ url: string; qr: string | null }> {
+    return Promise.reject(new Error('not built yet'));
+  }
+  enroll(): Promise<{ safetyCode: string }> {
+    return Promise.reject(new Error('not built yet'));
+  }
+  approveMember(): Promise<void> {
+    return Promise.reject(new Error('not built yet'));
+  }
+  revokeOrgMember(): Promise<void> {
+    return Promise.reject(new Error('not built yet'));
+  }
+  addFromRoster(): Promise<void> {
+    return Promise.reject(new Error('not built yet'));
+  }
+  page(): Promise<{ pageId: string }> {
+    return Promise.reject(new Error('not built yet'));
+  }
+  announcePresence(): Promise<void> {
+    return Promise.reject(new Error('not built yet'));
   }
 
   private run<T>(fn: () => T): Promise<T> {
@@ -839,6 +869,9 @@ class MockIncidentClient implements IncidentClient {
         : null,
       members: views,
       integrity,
+      org: null,
+      roster: [],
+      pages: [],
     });
     this.emit();
   }

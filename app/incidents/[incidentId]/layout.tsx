@@ -1,5 +1,6 @@
 import { Suspense, type ReactNode } from "react";
 import type { Metadata } from "next";
+import { ChatPanel } from "@/components/incidents/chat-panel";
 import { IncidentShell } from "@/components/incidents/incident-shell";
 import { Main } from "@/components/shell/main";
 
@@ -39,8 +40,11 @@ async function IncidentShellLoader({
 }) {
   const { incidentId } = await params;
   return (
-    <IncidentShell key={incidentId} incidentId={incidentId}>
-      {children}
-    </IncidentShell>
+    <>
+      <IncidentShell key={incidentId} incidentId={incidentId}>
+        {children}
+      </IncidentShell>
+      <ChatPanel key={`chat-${incidentId}`} incidentId={incidentId} />
+    </>
   );
 }

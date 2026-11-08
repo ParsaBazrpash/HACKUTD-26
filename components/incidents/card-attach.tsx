@@ -93,19 +93,22 @@ export function CardAttachButton({ disabled, onAttach }: { disabled?: boolean; o
     function onPointer(event: PointerEvent) {
       if (root.current && event.target instanceof Node && !root.current.contains(event.target)) setOpen(false);
     }
-    function onKey(event: globalThis.KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
-    }
     document.addEventListener("pointerdown", onPointer);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("pointerdown", onPointer);
-      document.removeEventListener("keydown", onKey);
-    };
+    return () => document.removeEventListener("pointerdown", onPointer);
   }, [open]);
 
   return (
-    <div ref={root} className="relative shrink-0">
+    <div
+      ref={root}
+      className="relative shrink-0"
+      onKeyDown={(event) => {
+        // Escape closes only the picker; it must not also close the side chat around it.
+        if (event.key === "Escape" && open) {
+          event.stopPropagation();
+          setOpen(false);
+        }
+      }}
+    >
       <button
         type="button"
         disabled={disabled}

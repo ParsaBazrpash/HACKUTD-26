@@ -171,7 +171,7 @@ function ImportPanelInner() {
           <h3 className="text-base font-semibold tracking-tight">Import from a monitoring export</h3>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">
             Pick a CSV, JSON or NDJSON export from your EDR, SIEM or monitoring console. The file is read in this browser and
-            never uploaded. Only the host, time, alert title and severity are used. Entries are added as your own signed claim,
+            never uploaded. From Excel, use Save As and pick CSV UTF-8. Only the host, time, alert title and severity are used. Entries are added as your own signed claim,
             marked unverified.
           </p>
           <label className="mt-4 grid gap-1.5 text-xs font-medium text-muted" htmlFor="import-file">

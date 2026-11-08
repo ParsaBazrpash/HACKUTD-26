@@ -43,7 +43,7 @@ export function decodeBytes(bytes: Uint8Array): DecodeResult {
   try {
     text = new TextDecoder(label, { fatal: true }).decode(bytes.subarray(start));
   } catch {
-    return { ok: false, error: 'The file is not valid text. Save it as UTF-8 and try again.' };
+    return { ok: false, error: 'The file is not valid text. Save it as UTF-8 and try again. From Excel, use Save As and pick CSV UTF-8.' };
   }
   if (text.includes('\u0000')) {
     return { ok: false, error: 'This looks like a binary file (it contains NUL bytes). Export it as CSV or JSON.' };

@@ -79,9 +79,12 @@ function isServerName(host: string): boolean {
 /** Equal, or the existing name starts with the host plus a space ("FS-CLINIC-01 file server"). */
 export function matchesExisting(host: string, existing: readonly string[]): boolean {
   const h = host.toLowerCase();
+  // A full domain name (nurse-ws-12.lakeside.local) also matches by its first label. Addresses do not.
+  const dot = h.indexOf('.');
+  const short = dot > 1 && !/^\d+$/.test(h.slice(0, dot)) ? h.slice(0, dot) : null;
   return existing.some((e) => {
     const n = e.trim().toLowerCase();
-    return n === h || n.startsWith(`${h} `);
+    return n === h || n.startsWith(`${h} `) || (short !== null && (n === short || n.startsWith(`${short} `)));
   });
 }
 

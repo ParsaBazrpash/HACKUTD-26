@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
+import { Fingerprint, LockKeyhole, ServerOff, ShieldCheck } from "lucide-react";
 import { FormError, primaryButtonClass, secondaryButtonClass } from "@/components/incidents/form-ui";
 import { isMockIncidentClient } from "@/lib/client";
 import {
@@ -23,6 +24,12 @@ function getSnapshot(): PasskeyLockState {
 export function usePasskeyLock(): PasskeyLockState {
   return useSyncExternalStore(subscribe, getSnapshot, () => PASSKEY_LOCK_SERVER_STATE);
 }
+
+const TRUST_POINTS = [
+  { Icon: LockKeyhole, title: "End-to-end encrypted", text: "Messages are sealed in your browser. The server never sees what they say." },
+  { Icon: ShieldCheck, title: "Signed and checked", text: "Every entry is signed by its author, so edits are caught." },
+  { Icon: ServerOff, title: "Works when company systems are down", text: "No company login or email. You need only this device and an internet connection." },
+];
 
 /**
  * Self-contained card for the opt-in passkey lock: turn on, unlock, lock now,
@@ -54,7 +61,7 @@ export function PasskeyLockCard({ when = "always" }: { when?: "always" | "locked
   } else if (state.status === "off") {
     heading = "Passkey lock is off";
     body =
-      "Lock this device's keys with your fingerprint, face or PIN. It covers incidents you create or join after you turn it on.";
+      "Lock this device's keys behind your fingerprint, face or PIN. Once this tab is closed or locked, a lost device or a copy of this browser cannot open your incidents. It covers incidents you create or join after you turn it on.";
   } else if (state.status === "locked") {
     heading = state.lockedIncidents > 0 ? "Your keys are locked" : "Passkey lock is on";
     body =
@@ -66,31 +73,66 @@ export function PasskeyLockCard({ when = "always" }: { when?: "always" | "locked
     body = "Your keys are unlocked in this tab until you close it or lock them.";
   }
 
+  const welcome = state.status === "off" || state.status === "locked";
+
   return (
     <section
       aria-labelledby="passkey-lock-heading"
-      className="grid gap-3 rounded-2xl border border-line bg-panel px-4 py-4"
+      className={
+        welcome
+          ? "relative grid gap-5 overflow-hidden rounded-2xl border border-line bg-panel px-5 py-6 shadow-[0_0_60px_-30px_var(--signal)] sm:px-7 sm:py-7"
+          : "grid gap-3 rounded-2xl border border-line bg-panel px-4 py-4"
+      }
     >
-      <div className="grid gap-1">
-        <span className="font-mono text-[11px] tracking-[0.16em] text-muted">DEVICE KEYS</span>
-        <h2 id="passkey-lock-heading" className="text-base font-medium">
-          {heading}
-        </h2>
-        <p className="text-sm leading-6 text-muted">{body}</p>
+      {welcome ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-signal/10 blur-3xl"
+        />
+      ) : null}
+      <div className="relative flex items-start gap-4">
+        {welcome ? (
+          <span
+            aria-hidden="true"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-signal/40 bg-signal/10 text-signal"
+          >
+            <Fingerprint className="h-6 w-6" />
+          </span>
+        ) : null}
+        <div className="grid gap-1">
+          <span className="font-mono text-[11px] tracking-[0.16em] text-muted">DEVICE KEYS</span>
+          <h2 id="passkey-lock-heading" className={welcome ? "text-xl font-medium tracking-tight" : "text-base font-medium"}>
+            {heading}
+          </h2>
+          <p className="text-sm leading-6 text-muted">{body}</p>
+        </div>
       </div>
+      {welcome ? (
+        <ul className="relative grid gap-3 sm:grid-cols-3">
+          {TRUST_POINTS.map(({ Icon, title, text }) => (
+            <li key={title} className="grid content-start gap-1.5 rounded-xl border border-line bg-panel-raised px-3.5 py-3">
+              <Icon aria-hidden="true" className="h-4 w-4 text-signal" />
+              <p className="text-sm font-medium">{title}</p>
+              <p className="text-xs leading-5 text-muted">{text}</p>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {state.busy ? (
         <p role="status" className="text-sm text-muted">
           Waiting for your passkey…
         </p>
       ) : null}
-      <div className="flex flex-wrap gap-2">
+      <div className="relative flex flex-wrap gap-2">
         {state.status === "off" ? (
-          <button type="button" className={primaryButtonClass} disabled={state.busy} onClick={act(() => vault().enable())}>
+          <button type="button" className={`${primaryButtonClass} min-h-11 w-full gap-2 sm:w-fit`} disabled={state.busy} onClick={act(() => vault().enable())}>
+            <Fingerprint aria-hidden="true" className="h-4 w-4" />
             Lock my keys with a passkey
           </button>
         ) : null}
         {state.status === "locked" ? (
-          <button type="button" className={primaryButtonClass} disabled={state.busy} onClick={act(() => vault().unlock())}>
+          <button type="button" className={`${primaryButtonClass} min-h-11 w-full gap-2 sm:w-fit`} disabled={state.busy} onClick={act(() => vault().unlock())}>
+            <Fingerprint aria-hidden="true" className="h-4 w-4" />
             Unlock with passkey
           </button>
         ) : null}

@@ -4,7 +4,8 @@ import { useCallback, useRef, useState, useSyncExternalStore, type FormEvent } f
 import { DemoBanner } from "@/components/incidents/demo-banner";
 import { FormError, fieldClass, primaryButtonClass } from "@/components/incidents/form-ui";
 import { BreakGlassCard } from "@/components/org/break-glass-card";
-import { applyEnrollHash, looksLikePhone, PHONE_HINT } from "@/components/org/org-link";
+import { PhoneField } from "@/components/org/phone-field";
+import { applyEnrollHash, PHONE_ERROR, PHONE_HINT, toUsE164 } from "@/components/org/org-link";
 import { usePasskeyGate } from "@/components/org/use-passkey-ready";
 import { PasskeyLockCard } from "@/components/security/passkey-lock-card";
 import { getIncidentClient } from "@/lib/client";
@@ -52,13 +53,14 @@ export function EnrollForm() {
     event.preventDefault();
     if (!fragment || !gate.ready) return;
     setError(null);
-    if (!looksLikePhone(phone.trim())) {
-      setError("Enter the phone number in international format, like +15555550123.");
+    const e164 = toUsE164(phone);
+    if (!e164) {
+      setError(PHONE_ERROR);
       return;
     }
     setPending(true);
     try {
-      const result = await getIncidentClient().enroll({ fragment, displayName: displayName.trim(), phone: phone.trim() });
+      const result = await getIncidentClient().enroll({ fragment, displayName: displayName.trim(), phone: e164 });
       // The number is not kept or shown again.
       setPhone("");
       setDone({ safetyCode: result.safetyCode, address: window.location.origin });
@@ -97,17 +99,7 @@ export function EnrollForm() {
             </label>
             <label className="grid gap-2 text-sm" htmlFor="enroll-phone">
               Your personal mobile number
-              <input
-                id="enroll-phone"
-                type="tel"
-                inputMode="tel"
-                value={phone}
-                required
-                placeholder="+15555550123"
-                autoComplete="tel"
-                onChange={(event) => setPhone(event.target.value)}
-                className={fieldClass}
-              />
+              <PhoneField id="enroll-phone" value={phone} onChange={setPhone} />
               <span className="text-xs leading-5 text-muted">{PHONE_HINT} It is not shown again after you submit.</span>
             </label>
             <FormError message={error} />

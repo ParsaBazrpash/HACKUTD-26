@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { applyEnrollHash, looksLikePhone } from "@/components/org/org-link";
+import { applyEnrollHash, looksLikePhone, toUsE164, usPhoneDigits } from "@/components/org/org-link";
 
 test("the enrollment fragment is read once and stripped from the address bar", () => {
   const replaced: string[] = [];
@@ -31,4 +31,24 @@ test("outside the demo only an unlocked passkey passes the gate", () => {
   }
   expect(passkeyGateFor("unlocked", false).ready).toBe(true);
   expect(passkeyGateFor("off", true).ready).toBe(true);
+});
+
+test("the fixed +1 prefix turns exactly 10 typed digits into E.164", () => {
+  expect(toUsE164("5555550123")).toBe("+15555550123");
+  expect(toUsE164("(555) 555-0123")).toBe("+15555550123");
+  expect(toUsE164("+1 555 555 0123")).toBe("+15555550123");
+  expect(toUsE164("15555550123")).toBe("+15555550123");
+  for (const bad of ["", "555555012", "55555501234", "abcdefghij", "+44 20 7946 0958"]) {
+    expect(toUsE164(bad), bad).toBeNull();
+  }
+});
+
+test("the phone field drops a pasted +1 but never cuts a longer number into a different one", () => {
+  expect(usPhoneDigits("+1 (555) 555-0123")).toBe("5555550123");
+  // What the form submits is toUsE164(usPhoneDigits(input)).
+  const submitted = (input: string) => toUsE164(usPhoneDigits(input));
+  expect(submitted("+1 (214) 555-0101")).toBe("+12145550101");
+  for (const bad of ["+44 20 7946 0958", "+52 55 1234 5678", "+1 (214) 555-0101 x23", "55555501234567", "1214555010", "0214555010", "2140550101"]) {
+    expect(submitted(bad), bad).toBeNull();
+  }
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Send } from "lucide-react";
 import { attachCardText, type LiveCard } from "@/components/incidents/blast-radius-model";
 import { AttachedCardChip, CardAttachButton } from "@/components/incidents/card-attach";
@@ -32,6 +32,8 @@ export function MessageComposer({
   // A live card attached from the paperclip. Only the dock composer offers it.
   const [attached, setAttached] = useState<LiveCard | null>(null);
   const field = useRef<HTMLTextAreaElement>(null);
+  // The side chat can sit next to a composer for the same channel, so ids stay unique per composer.
+  const fieldId = `${useId()}-message-${channel}`;
   const allowed = canCompose(state.me?.role, state.me?.state, channel);
 
   useEffect(() => {
@@ -85,12 +87,12 @@ export function MessageComposer({
               field.current?.focus();
             }}
           />
-          <label className="sr-only" htmlFor={`message-${channel}`}>
+          <label className="sr-only" htmlFor={fieldId}>
             Message {label}
           </label>
           <textarea
             ref={field}
-            id={`message-${channel}`}
+            id={fieldId}
             name={`message-${channel}`}
             value={text}
             maxLength={4000}
@@ -121,10 +123,10 @@ export function MessageComposer({
   if (compact) {
     return (
       <form onSubmit={send} className="mt-4" aria-label={`Message ${label}`}>
-        <label className="relative block text-sm" htmlFor={`message-${channel}`}>
+        <label className="relative block text-sm" htmlFor={fieldId}>
           <span className="sr-only">Message {label}</span>
           <input
-            id={`message-${channel}`}
+            id={fieldId}
             name={`message-${channel}`}
             value={text}
             maxLength={4000}
@@ -151,10 +153,10 @@ export function MessageComposer({
   }
   return (
     <form onSubmit={send} className="mt-3 grid gap-2" aria-label={`Message ${label}`}>
-      <label className="grid gap-2 text-sm" htmlFor={`message-${channel}`}>
+      <label className="grid gap-2 text-sm" htmlFor={fieldId}>
         <span className="sr-only">Message {label}</span>
         <textarea
-          id={`message-${channel}`}
+          id={fieldId}
           name={`message-${channel}`}
           value={text}
           maxLength={4000}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { Bell, Info, Lock, MessagesSquare, Users } from "lucide-react";
 import { CHANNEL_BLURBS, CHANNEL_LABELS, ROLE_LABELS } from "@/components/incidents/labels";
 import { MessageComposer } from "@/components/incidents/message-composer";
@@ -54,7 +54,23 @@ function serverHash(): string {
   return "";
 }
 
-export function ChannelsBoard({ limit }: { limit?: number }) {
+/**
+ * The chat board. "page" is the Secure Channels page, where a /channels#name
+ * link can pick the channel. "panel" is the side chat: one column, no link
+ * lookup, and `initialChannel` (only ever looked up among readable channels)
+ * picks where it opens.
+ */
+export function ChannelsBoard({
+  limit,
+  variant = "page",
+  initialChannel = null,
+}: {
+  limit?: number;
+  variant?: "page" | "panel";
+  initialChannel?: ChatChannel | null;
+}) {
+  const panel = variant === "panel";
+  const uid = useId();
   const state = useIncident();
   const channels = authorizedChatChannels(state.me?.role, state.me?.state, state.channels);
   const [picked, setPicked] = useState<ChatChannel | null>(null);
@@ -65,7 +81,7 @@ export function ChannelsBoard({ limit }: { limit?: number }) {
   // channels this member may already read; anything else falls through.
   const linked = useSyncExternalStore(subscribeHash, currentHash, serverHash);
 
-  const active = pickChatChannel(channels, picked, linked);
+  const active = pickChatChannel(channels, picked, panel ? initialChannel : linked);
 
   const messages = active ? selectMessages(active.messages, limit) : [];
 
@@ -76,7 +92,7 @@ export function ChannelsBoard({ limit }: { limit?: number }) {
   }, [active?.kind, messages.length]);
 
   if (!active) {
-    return <p className="text-sm text-muted">No chat channel is open for this role.</p>;
+    return <p className={`text-sm text-muted ${panel ? "p-4" : ""}`}>No chat channel is open for this role.</p>;
   }
 
   const label = CHANNEL_LABELS[active.kind];
@@ -95,13 +111,23 @@ export function ChannelsBoard({ limit }: { limit?: number }) {
   }
 
   return (
-    <div className="flex h-[clamp(28rem,calc(100dvh-13rem),72rem)] min-w-0 flex-col overflow-hidden rounded-xl border border-line bg-panel lg:flex-row">
+    <div
+      className={
+        panel
+          ? "flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-panel"
+          : "flex h-[clamp(28rem,calc(100dvh-13rem),72rem)] min-w-0 flex-col overflow-hidden rounded-xl border border-line bg-panel lg:flex-row"
+      }
+    >
       <nav
-        aria-label="Channels"
-        className="flex w-full min-w-0 shrink-0 flex-col border-b border-line bg-background/50 lg:w-64 lg:border-b-0 lg:border-r"
+        aria-label={panel ? "Chat channels" : "Channels"}
+        className={
+          panel
+            ? "flex w-full min-w-0 shrink-0 flex-col border-b border-line bg-background/50"
+            : "flex w-full min-w-0 shrink-0 flex-col border-b border-line bg-background/50 lg:w-64 lg:border-b-0 lg:border-r"
+        }
       >
-        <p className="px-4 pb-1 pt-3 text-sm font-medium text-foreground">Channels</p>
-        <ul className="flex gap-1 overflow-x-auto px-2 pb-2 lg:flex-col lg:overflow-y-auto lg:pb-3">
+        {panel ? null : <p className="px-4 pb-1 pt-3 text-sm font-medium text-foreground">Channels</p>}
+        <ul className={panel ? "flex gap-1 overflow-x-auto px-2 py-2" : "flex gap-1 overflow-x-auto px-2 pb-2 lg:flex-col lg:overflow-y-auto lg:pb-3"}>
           {channels.map((channel) => {
             const current = channel.kind === active.kind;
             return (
@@ -123,15 +149,15 @@ export function ChannelsBoard({ limit }: { limit?: number }) {
             );
           })}
         </ul>
-        {showPrivilegedNote ? (
+        {showPrivilegedNote && !panel ? (
           <p className="px-4 pb-3 text-xs leading-5 text-muted">{CHANNEL_BLURBS.privileged}</p>
         ) : null}
       </nav>
 
-      <section className="flex min-h-0 min-w-0 flex-1 flex-col" aria-labelledby={`channel-${active.kind}`}>
+      <section className="flex min-h-0 min-w-0 flex-1 flex-col" aria-labelledby={`${uid}-channel-${active.kind}`}>
         <header className="flex items-start justify-between gap-3 border-b border-line px-4 py-3">
           <div className="min-w-0">
-            <h3 id={`channel-${active.kind}`} className="flex items-center gap-2 text-base font-semibold tracking-tight">
+            <h3 id={`${uid}-channel-${active.kind}`} className="flex items-center gap-2 text-base font-semibold tracking-tight">
               <span className="truncate">{label}</span>
               {active.kind === "privileged" ? <Lock aria-hidden="true" className="size-3.5 shrink-0 text-signal" /> : null}
             </h3>
@@ -141,7 +167,7 @@ export function ChannelsBoard({ limit }: { limit?: number }) {
             <button
               type="button"
               aria-expanded={drawer === "people"}
-              aria-controls="channel-people"
+              aria-controls={`${uid}-channel-people`}
               onClick={() => toggleDrawer("people")}
               className={iconButtonClass(drawer === "people")}
             >
@@ -152,7 +178,7 @@ export function ChannelsBoard({ limit }: { limit?: number }) {
             <button
               type="button"
               aria-expanded={drawer === "alerts"}
-              aria-controls="channel-alerts"
+              aria-controls={`${uid}-channel-alerts`}
               aria-label="Channel alerts"
               onClick={() => toggleDrawer("alerts")}
               className={iconButtonClass(drawer === "alerts")}
@@ -162,7 +188,7 @@ export function ChannelsBoard({ limit }: { limit?: number }) {
             <button
               type="button"
               aria-expanded={drawer === "about"}
-              aria-controls="channel-about"
+              aria-controls={`${uid}-channel-about`}
               aria-label="About this channel"
               onClick={() => toggleDrawer("about")}
               className={iconButtonClass(drawer === "about")}
@@ -173,7 +199,7 @@ export function ChannelsBoard({ limit }: { limit?: number }) {
         </header>
 
         {drawer === "people" ? (
-          <div id="channel-people" className="max-h-40 overflow-y-auto border-b border-line px-4 py-3">
+          <div id={`${uid}-channel-people`} className="max-h-40 overflow-y-auto border-b border-line px-4 py-3">
             {readers.length === 0 ? (
               <p className="text-sm text-muted">No active member can read this channel.</p>
             ) : (
@@ -190,12 +216,12 @@ export function ChannelsBoard({ limit }: { limit?: number }) {
           </div>
         ) : null}
         {drawer === "alerts" ? (
-          <p id="channel-alerts" className="border-b border-line px-4 py-3 text-sm leading-6 text-muted">
+          <p id={`${uid}-channel-alerts`} className="border-b border-line px-4 py-3 text-sm leading-6 text-muted">
             New messages appear in this channel while the incident is open in this tab. HAVEN does not send a separate alert for {label}.
           </p>
         ) : null}
         {drawer === "about" ? (
-          <div id="channel-about" className="space-y-1 border-b border-line px-4 py-3 text-sm leading-6 text-muted">
+          <div id={`${uid}-channel-about`} className="space-y-1 border-b border-line px-4 py-3 text-sm leading-6 text-muted">
             <p>{posterLine(active.kind)}</p>
             <p>Plaintext and channel keys stay in this browser.</p>
           </div>

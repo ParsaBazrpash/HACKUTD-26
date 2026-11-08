@@ -65,6 +65,7 @@ import MyMembersRow from "./my_members_table";
 import MyOrgRow from "./my_org_table";
 import MyOrgStatusRow from "./my_org_status_table";
 import MyPagesRow from "./my_pages_table";
+import MyPresenceRow from "./my_presence_table";
 import MyRosterRow from "./my_roster_table";
 import MyStatusRow from "./my_status_table";
 import PagerOrgMemberRow from "./pager_org_member_table";
@@ -151,6 +152,13 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, MyPagesRow),
+  myPresence: __table({
+    name: 'my_presence',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyPresenceRow),
   myRoster: __table({
     name: 'my_roster',
     indexes: [
@@ -229,6 +237,8 @@ type __SchemaWithTableAccessorAliases = Omit<typeof tablesSchema.schemaType, "ta
     readonly "my_org_status": Omit<typeof tablesSchema.schemaType.tables["myOrgStatus"], "accessorName"> & { readonly accessorName: "my_org_status" };
     /** @deprecated Use `myPages` instead. This alias will be removed in the next major version. */
     readonly "my_pages": Omit<typeof tablesSchema.schemaType.tables["myPages"], "accessorName"> & { readonly accessorName: "my_pages" };
+    /** @deprecated Use `myPresence` instead. This alias will be removed in the next major version. */
+    readonly "my_presence": Omit<typeof tablesSchema.schemaType.tables["myPresence"], "accessorName"> & { readonly accessorName: "my_presence" };
     /** @deprecated Use `myRoster` instead. This alias will be removed in the next major version. */
     readonly "my_roster": Omit<typeof tablesSchema.schemaType.tables["myRoster"], "accessorName"> & { readonly accessorName: "my_roster" };
     /** @deprecated Use `myStatus` instead. This alias will be removed in the next major version. */
@@ -266,6 +276,7 @@ const tableAccessorAliases = {
   "my_org": "myOrg",
   "my_org_status": "myOrgStatus",
   "my_pages": "myPages",
+  "my_presence": "myPresence",
   "my_roster": "myRoster",
   "my_status": "myStatus",
   "pager_org_member": "pagerOrgMember",
@@ -312,6 +323,8 @@ export type DbView = __DbViewBase & {
   readonly "my_org_status": __DbViewBase["myOrgStatus"];
   /** @deprecated Use `myPages` instead. This alias will be removed in the next major version. */
   readonly "my_pages": __DbViewBase["myPages"];
+  /** @deprecated Use `myPresence` instead. This alias will be removed in the next major version. */
+  readonly "my_presence": __DbViewBase["myPresence"];
   /** @deprecated Use `myRoster` instead. This alias will be removed in the next major version. */
   readonly "my_roster": __DbViewBase["myRoster"];
   /** @deprecated Use `myStatus` instead. This alias will be removed in the next major version. */
@@ -346,6 +359,8 @@ export type Tables = __TablesBase & {
   readonly "my_org_status": __TablesBase["myOrgStatus"];
   /** @deprecated Use `myPages` instead. This alias will be removed in the next major version. */
   readonly "my_pages": __TablesBase["myPages"];
+  /** @deprecated Use `myPresence` instead. This alias will be removed in the next major version. */
+  readonly "my_presence": __TablesBase["myPresence"];
   /** @deprecated Use `myRoster` instead. This alias will be removed in the next major version. */
   readonly "my_roster": __TablesBase["myRoster"];
   /** @deprecated Use `myStatus` instead. This alias will be removed in the next major version. */

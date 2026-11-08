@@ -38,8 +38,8 @@ const ICONS: Record<Slug, LucideIcon> = {
   report: FileText,
 };
 
-/** A small count beside a section, shown only when it is above zero. */
-export type SectionBadges = Partial<Record<Slug, { count: number; tone: "alert" | "signal" }>>;
+/** A small count beside a section, shown only when it is above zero. `label` is read out to screen readers. */
+export type SectionBadges = Partial<Record<Slug, { count: number; tone: "alert" | "signal"; label?: string }>>;
 
 function linkClass(active: boolean): string {
   const base =
@@ -90,9 +90,10 @@ function SectionLinks({
                     aria-hidden="true"
                     className={`rounded-full px-1.5 text-[11px] font-medium tabular-nums ${badgeClass(active, badge.tone)} lg:group-data-[collapsed=true]/room:absolute lg:group-data-[collapsed=true]/room:right-1 lg:group-data-[collapsed=true]/room:top-0.5 lg:group-data-[collapsed=true]/room:px-1 lg:group-data-[collapsed=true]/room:text-[10px]`}
                   >
-                    {badge.count}
+                    {badge.count > 99 ? "99+" : badge.count}
                   </span>
                 ) : null}
+                {badge && badge.count > 0 && badge.label ? <span className="sr-only">, {badge.label}</span> : null}
               </Link>
             );
           })}

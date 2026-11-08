@@ -146,6 +146,50 @@ h1 {
   animation: haven-globe-in 0.7s ease-out both;
 }
 
+/* Side chat: the panel slides in from the right, new-message bits pop in. */
+@keyframes haven-slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0.6;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes haven-pop {
+  0% {
+    transform: scale(0.85);
+    opacity: 0;
+  }
+
+  60% {
+    transform: scale(1.04);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+.haven-slide-in {
+  animation: haven-slide-in 0.2s ease-out both;
+}
+
+.haven-pop {
+  animation: haven-pop 0.3s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .haven-slide-in,
+  .haven-pop {
+    animation: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .haven-flash {
     animation: none;

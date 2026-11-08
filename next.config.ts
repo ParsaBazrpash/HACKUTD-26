@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { canonicalHostRedirects } from "./lib/security/canonical-host";
 import { pwaHeaders, securityHeaders } from "./lib/security/headers";
 
 const nextConfig: NextConfig = {
@@ -8,6 +9,9 @@ const nextConfig: NextConfig = {
   },
   cacheComponents: true,
   partialPrefetching: true,
+  async redirects() {
+    return canonicalHostRedirects({ VERCEL_ENV: process.env.VERCEL_ENV, PUBLIC_BASE_URL: process.env.PUBLIC_BASE_URL });
+  },
   async headers() {
     return [
       {

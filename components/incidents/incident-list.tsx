@@ -108,7 +108,16 @@ export function IncidentList() {
           </li>
         </ul>
       ) : state.connection !== "connecting" && state.me?.state !== "revoked" ? (
-        <p className="text-sm text-muted">No incident is open in this tab.</p>
+        <div className="grid gap-1 text-sm text-muted">
+          <p>No incident is open in this tab.</p>
+          {mock ? null : (
+            <p className="max-w-2xl leading-6">
+              Rooms live in the browser and web address you joined from. If you joined somewhere else, open it there.
+              If you lost that browser or cleared its data, ask the commander to use Replace device and send you a new
+              invite.
+            </p>
+          )}
+        </div>
       ) : null}
 
       {holding && !showCreate ? (

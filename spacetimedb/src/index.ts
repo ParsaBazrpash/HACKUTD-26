@@ -308,7 +308,19 @@ const page_sweep = table(
   },
 );
 
-const spacetimedb = schema({ incident, member, invite, channel, key_envelope, event, join_attempt, checkpoint, rate_bucket, invite_sweep, org, enroll_link, org_member, incident_org, page, page_sweep });
+// Live presence: how many connections an identity has open and when it last connected or left.
+// The server already sees every connection, so this stores nothing it did not already learn.
+// Only people who share an incident read it (my_presence). Mutable housekeeping, not a record.
+const presence = table(
+  {},
+  {
+    identity: t.identity().primaryKey(),
+    connections: t.u32(),
+    lastSeen: t.timestamp(),
+  },
+);
+
+const spacetimedb = schema({ incident, member, invite, channel, key_envelope, event, join_attempt, checkpoint, rate_bucket, invite_sweep, org, enroll_link, org_member, incident_org, page, page_sweep, presence });
 export default spacetimedb;
 
 type S = InferSchema<typeof spacetimedb>;
@@ -1344,6 +1356,43 @@ export const page_timeout = spacetimedb.reducer({ onSchedule: page_sweep }, { ar
 });
 
 // ---------------------------------------------------------------------------
+// Presence (lifecycle reducers). They must never throw: a throwing connect hook
+// refuses the connection.
+// ---------------------------------------------------------------------------
+
+/** Cap so a buggy client that never disconnects cleanly cannot wrap the counter. */
+const MAX_PRESENCE_CONNECTIONS = 1000;
+
+/** True when this identity holds any incident or org row, so its presence is worth keeping. */
+function hasAnyMembership(ctx: Ctx, who: Ctx['sender']): boolean {
+  for (const _m of ctx.db.member.identity.filter(who)) return true;
+  for (const _o of ctx.db.org_member.identity.filter(who)) return true;
+  return false;
+}
+
+export const presence_connect = spacetimedb.clientConnected((ctx) => {
+  const row = ctx.db.presence.identity.find(ctx.sender);
+  if (row) {
+    const connections = Math.min(row.connections + 1, MAX_PRESENCE_CONNECTIONS);
+    ctx.db.presence.identity.update({ ...row, connections, lastSeen: ctx.timestamp });
+  } else {
+    ctx.db.presence.insert({ identity: ctx.sender, connections: 1, lastSeen: ctx.timestamp });
+  }
+});
+
+export const presence_disconnect = spacetimedb.clientDisconnected((ctx) => {
+  const row = ctx.db.presence.identity.find(ctx.sender);
+  if (!row) return;
+  const connections = row.connections > 0 ? row.connections - 1 : 0;
+  // Throwaway identities that never joined anything leave no trace once their last tab closes.
+  if (connections === 0 && !hasAnyMembership(ctx, ctx.sender)) {
+    ctx.db.presence.identity.delete(ctx.sender);
+    return;
+  }
+  ctx.db.presence.identity.update({ ...row, connections, lastSeen: ctx.timestamp });
+});
+
+// ---------------------------------------------------------------------------
 // Views (public, filtered by ctx.sender). Clients subscribe only to these.
 // ---------------------------------------------------------------------------
 
@@ -1375,6 +1424,34 @@ export const my_members = spacetimedb.view({ name: 'my_members', public: true },
         if (m.identity.toHexString() === me || (inc && m.identity.toHexString() === inc.commander.toHexString())) out.push(m);
       }
     }
+  }
+  return out;
+});
+
+/**
+ * Presence of the live people I can already see in my_members (same rule: active members see the
+ * incident's pending and active members, a pending joiner sees only the commander and themselves).
+ * Nobody else's presence leaks, and revoked people drop out.
+ */
+export const my_presence = spacetimedb.view({ name: 'my_presence', public: true }, t.array(presence.rowType), (ctx) => {
+  const visible = new Map<string, Ctx['sender']>();
+  const me = ctx.sender.toHexString();
+  for (const mine of ctx.db.member.identity.filter(ctx.sender)) {
+    if (mine.state === 'active') {
+      // Revoked rows are skipped: nobody needs a removed person's presence (a live row of theirs still counts).
+      for (const m of ctx.db.member.incidentId.filter(mine.incidentId)) {
+        if (m.state !== 'revoked') visible.set(m.identity.toHexString(), m.identity);
+      }
+    } else if (mine.state === 'pending') {
+      visible.set(me, ctx.sender);
+      const inc = ctx.db.incident.id.find(mine.incidentId);
+      if (inc) visible.set(inc.commander.toHexString(), inc.commander);
+    }
+  }
+  const out = [];
+  for (const who of visible.values()) {
+    const row = ctx.db.presence.identity.find(who);
+    if (row) out.push(row);
   }
   return out;
 });

@@ -349,12 +349,12 @@ async function playBots(botsByKey: Map<CastKey, Bot>, inputs: Inputs) {
       for (const line of earlier) {
         waited.add(line);
         say(`Now paste in #${line.channel} as ${nameOf(line.by)} (${offset(line.at)}): ${line.body.text}`);
-        await until(
-          () => bot.client.getState().channels.find((c) => c.kind === line.channel)?.messages.some((m) => m.text === line.body.text) === true,
-          `${nameOf(line.by)}'s line in #${line.channel}`,
-          inputs.waitMin * 60_000,
-        );
-        say(`Seen in #${line.channel}. Continuing.`);
+        // Match on who posted in that channel, so a typo in the pasted text does not hang the run.
+        const posted = () =>
+          bot.client.getState().channels.find((c) => c.kind === line.channel)?.messages.find((m) => m.author?.displayName === nameOf(line.by) && m.verdict.ok);
+        await until(() => posted() !== undefined, `${nameOf(line.by)}'s line in #${line.channel}`, inputs.waitMin * 60_000);
+        if (posted()?.text !== line.body.text) say(`Note: ${nameOf(line.by)}'s line in #${line.channel} differs from the story text. Continuing.`);
+        else say(`Seen in #${line.channel}. Continuing.`);
       }
     }
     if (beat.kind === 'timeline.add' && beat.body.amends) {
@@ -370,7 +370,7 @@ async function playBots(botsByKey: Map<CastKey, Bot>, inputs: Inputs) {
     say(`[${offset(beat.at)}] ${bot.entry.displayName} ${beat.kind}${beat.channel === 'record' ? '' : ` in #${beat.channel}`} ok (${n}/${mine.length})`);
     await sleep(inputs.paceMs);
   }
-  return n;
+  return { n, waited };
 }
 
 // --- Lines for the people ---------------------------------------------------------------
@@ -413,9 +413,9 @@ function textFor(beat: Beat): string {
   }
 }
 
-function printPasteLines(t0: Date) {
+function printPasteLines(t0: Date, skip: ReadonlySet<Beat>) {
   const show = (who: string, title: string) => {
-    const lines = BEATS.filter((b) => b.by === who);
+    const lines = BEATS.filter((b) => b.by === who && !skip.has(b));
     if (lines.length === 0) return;
     say('');
     say(`=== ${title}: ${lines.length} lines, in order ===`);
@@ -473,8 +473,8 @@ describe('Lakeside demo seed', () => {
       await enrollAndApprove(bots, inputs);
       await waitForIncident(bots, inputs);
 
-      const posted = await playBots(botsByKey, inputs);
-      printPasteLines(inputs.t0);
+      const { n: posted, waited } = await playBots(botsByKey, inputs);
+      printPasteLines(inputs.t0, waited);
 
       let failures = 0;
       for (const bot of bots) {

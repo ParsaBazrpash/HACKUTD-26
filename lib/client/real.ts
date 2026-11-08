@@ -562,10 +562,15 @@ export class RealIncidentClient implements IncidentClient {
 
   /** True when this device's own revoked row carries the pinned commander's signature over exactly these keys. */
   private async ownRevocationVerified(mine: MemberRow, store: IncidentStore): Promise<boolean> {
-    const pinned = await store.getCommander();
-    if (!pinned || mine.revokeSig.length !== 64) return false;
     const rec = await store.getDeviceRecord();
     if (rec && (!bytesEqual(rec.signPub, mine.signPub) || !bytesEqual(rec.ecdhPub, mine.ecdhPub))) return false;
+    return this.revocationSignatureVerified(mine, store);
+  }
+
+  /** True when the row's revocation carries the pinned commander's signature over exactly its own keys. */
+  private async revocationSignatureVerified(mine: MemberRow, store: IncidentStore): Promise<boolean> {
+    const pinned = await store.getCommander();
+    if (!pinned || mine.revokeSig.length !== 64) return false;
     return verifySignature(
       pinned.signPub,
       revokeStatement(store.incidentId, mine.identityHex, mine.signPub, mine.ecdhPub),
@@ -963,12 +968,25 @@ export class RealIncidentClient implements IncidentClient {
       return;
     }
     // New keys replace the old revoked ones. That only happens when the old revocation is verified, so a false "revoked" cannot make this device throw its keys away.
+    // Only the revoked row whose keys are on this device has to verify: rows for other keys leave nothing to destroy.
+    // Their keys are remembered only when their own signature verifies.
     const revokedRows = before.status.filter((r) => r.incidentId === inv.incidentId && r.state === 'revoked');
+    const held = await store.getDeviceRecord();
+    let holdsRevokedKeys = false;
     for (const r of revokedRows) {
-      if (!(await this.ownRevocationVerified(r, store))) {
-        throw new ClientError('The server says you were removed from this incident, but that could not be verified. Nothing on this device was changed.');
+      const verified = await this.revocationSignatureVerified(r, store);
+      const onThisDevice = !!held && bytesEqual(held.signPub, r.signPub) && bytesEqual(held.ecdhPub, r.ecdhPub);
+      if (onThisDevice) {
+        if (!verified) {
+          throw new ClientError('The server says you were removed from this incident, but that could not be verified. Nothing on this device was changed.');
+        }
+        holdsRevokedKeys = true;
       }
-      await store.addRevokedKeys(revokedKeyEntries(r));
+      if (verified) await store.addRevokedKeys(revokedKeyEntries(r));
+    }
+    // Keys on this device that belong to no revoked row are not ours to throw away on an unverified word.
+    if (held && !holdsRevokedKeys && revokedRows.length > 0) {
+      throw new ClientError('The keys on this device do not match the removed membership, so nothing was changed.');
     }
     if (revokedRows.length > 0) await store.wipeKeys();
     const keys = await this.newDeviceKeys(store);
@@ -1014,6 +1032,10 @@ export class RealIncidentClient implements IncidentClient {
       const c = await this.commanderCtx();
       const target = c.rows.members.find((m) => m.incidentId === c.id && m.memberId === memberId);
       if (!target || target.state !== 'pending' || !isRole(target.role)) throw new ClientError('That member cannot be admitted');
+      // The server can hide an old revoked row, so the keys this device remembers decide, not the rows it is shown.
+      if (carriesRevokedKey(await c.store.getRevokedKeys(), target)) {
+        throw new ClientError('Do not admit: this join request carries keys that were revoked.');
+      }
       // Only admit when the invite secret proves this is the person the link was made for.
       const inv = await c.store.getInvite(target.inviteCodeHash);
       const linkOk =
@@ -1126,6 +1148,8 @@ export class RealIncidentClient implements IncidentClient {
         for (const r of rotations) r.raw.fill(0);
         throw new ClientError('Could not revoke the member');
       }
+      // Remember the revoked keys now, before the next refresh.
+      await c.store.addRevokedKeys(revokedKeyEntries(target));
       // New epoch keys are stored only after the server accepted the rotation.
       for (const r of rotations) {
         const ck = await importChannelKey(r.raw);
@@ -1783,6 +1807,12 @@ export class RealIncidentClient implements IncidentClient {
             throw new ClientError(`${row.displayName} is already in this incident`);
           }
           replacements.push(live.memberId);
+        }
+        // A revoked key stays revoked, even when the server leaves the old revoked row out of what it shows.
+        if (carriesRevokedKey(await c.store.getRevokedKeys(), row)) {
+          throw new ClientError(
+            `${row.displayName} was removed from this incident under these keys and cannot be added again. They must enroll again with a fresh link.`,
+          );
         }
         // A revoked key stays revoked: no row of this incident may already carry these keys.
         const clash = c.rows.members.find(

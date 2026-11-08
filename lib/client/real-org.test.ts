@@ -546,6 +546,12 @@ describe('roster admission and paging', () => {
     await settle();
     expect(jordan.client.getState().me).toMatchObject({ state: 'revoked' });
     await expect(admin.client.addFromRoster([{ orgMemberId: id, role: 'executive' }])).rejects.toThrow(/fresh link/);
+    // Even when the server leaves the old revoked row out of what it shows, the commander remembers the keys.
+    const gone = [...hub.h.db.member.iter()].find((m) => m.incidentId === incidentId && m.displayName === 'Jordan')!;
+    (hub.h.db.member.id as any).delete(gone.id);
+    hub.notify();
+    await settle();
+    await expect(admin.client.addFromRoster([{ orgMemberId: id, role: 'executive' }])).rejects.toThrow(/fresh link/);
     // Coming back takes a fresh org enrollment, which carries new keys.
     await admin.client.revokeOrgMember(id, 'start over');
     await settle();

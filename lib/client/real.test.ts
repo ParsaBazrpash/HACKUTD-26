@@ -402,6 +402,52 @@ describe('a server that lies about revocation', () => {
   });
 });
 
+describe('revoked keys the commander remembers', () => {
+  it('admit refuses the old keys even when the server hides the old revoked row', async () => {
+    const hub = new HarnessHub();
+    const { cmd, incidentId } = await startIncident(hub);
+    await joinAndAdmit(hub, cmd, 'counsel', 'Dana');
+    const dana = cmd.client.getState().members.find((m) => m.displayName === 'Dana')!;
+    await cmd.client.revokeMember(dana.memberId, 'left');
+    await settle();
+    const old = [...hub.h.db.member.iter()].find((m) => m.incidentId === incidentId && m.displayName === 'Dana')!;
+    // The operator drops the revoked row and re-inserts the same keys as a new pending row, joinTag included.
+    (hub.h.db.member.id as any).delete(old.id);
+    (hub.h.db.member as any).insert({ ...old, id: 0n, state: 'pending', admitSig: new Uint8Array(0), revokeSig: new Uint8Array(0), revokedAt: undefined, admittedAt: undefined });
+    hub.notify();
+    await settle();
+    const pending = cmd.client.getState().members.find((m) => m.displayName === 'Dana' && m.state === 'pending')!;
+    const before = [...hub.h.db.key_envelope.iter()].length;
+    await expect(cmd.client.admitMember(pending.memberId)).rejects.toThrow(/revoked/);
+    expect([...hub.h.db.key_envelope.iter()].length).toBe(before);
+  });
+
+  it('a person revoked twice with the tab closed can still come back', async () => {
+    const hub = new HarnessHub();
+    const { cmd, incidentId } = await startIncident(hub);
+    const dana = await joinAndAdmit(hub, cmd, 'counsel', 'Dana');
+    const first = cmd.client.getState().members.find((m) => m.displayName === 'Dana')!;
+    await cmd.client.revokeMember(first.memberId, 'one');
+    await settle();
+    const { url } = await cmd.client.createInvite({ role: 'counsel' });
+    await dana.client.redeemInvite({ fragment: fragmentOf(url), displayName: 'Dana' });
+    await settle();
+    const second = cmd.client.getState().members.find((m) => m.displayName === 'Dana' && m.state === 'pending')!;
+    await cmd.client.admitMember(second.memberId);
+    await settle();
+    const store = new IncidentStore(incidentId, dana.db);
+    const saved = await store.getDeviceKeys();
+    await cmd.client.revokeMember(second.memberId, 'two');
+    await settle();
+    // The wipe never ran on this device: put the second keys back as they would be with the tab closed.
+    await store.setDeviceKeys(saved!);
+    const again = await cmd.client.createInvite({ role: 'counsel' });
+    await dana.client.redeemInvite({ fragment: fragmentOf(again.url), displayName: 'Dana' });
+    await settle();
+    expect(dana.client.getState().me).toMatchObject({ state: 'pending', displayName: 'Dana' });
+  });
+});
+
 describe('tamper detection', () => {
   it('flipping a stored ciphertext turns every reader red at the right seq', async () => {
     const hub = new HarnessHub();

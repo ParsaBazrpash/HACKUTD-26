@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { DemoBanner } from "@/components/incidents/demo-banner";
+import { PasskeyLockCard } from "@/components/security/passkey-lock-card";
 import { CHANNEL_LABELS, connectionLabel, phaseLabel } from "@/components/incidents/labels";
 import { IntegrityMark } from "@/components/ui/integrity-mark";
 import { getIncidentClient, isMockIncidentClient } from "@/lib/client";
@@ -46,6 +47,7 @@ export function IncidentList() {
   return (
     <div className="grid gap-8">
       <DemoBanner />
+      <PasskeyLockCard />
       <div className="grid gap-2 text-sm">
         <span className="font-mono text-[11px] tracking-[0.16em] text-muted">
           {connectionLabel(state.connection, mock).toUpperCase()}

@@ -12,6 +12,8 @@
 // - A pending member is never admitted unless the invite secret proves the
 //   link ("Link verified").
 // - A revoked device wipes its keys and shows nothing.
+// - With the passkey lock on, new device keys are stored only wrapped under the
+//   passkey vault key, and a locked vault means no keys and nothing shown.
 // - Errors shown to the UI never include key material or plaintext.
 
 import {
@@ -63,11 +65,13 @@ import {
 import { generateChannelKeyBytes, importChannelKey } from '@/lib/crypto/seal';
 import { sign } from '@/lib/crypto/sign';
 import { IncidentStore, type PinnedCommander } from '@/lib/crypto/store';
+import { generateLockedDeviceKeys, isLockedDeviceKeys, openLockedDeviceKeys, type VaultKey } from '@/lib/crypto/vault';
 import { type HeadPin, type RawEvent, type RosterMember, verifyIncident } from '@/lib/crypto/verify';
 import { unwrapChannelKey, wrapChannelKey } from '@/lib/crypto/wrap';
 import { createStore, get as idbGet, set as idbSet, type UseStore } from 'idb-keyval';
 import type { IncidentBackend, MemberRow } from './backend';
 import { foldEvents } from './fold';
+import { type DeviceVaultPort, getDeviceVault } from './passkey-lock';
 import { SpacetimeBackend } from './spacetime-backend';
 import {
   type ChatBody,
@@ -89,6 +93,9 @@ import {
 /** Known, user-presentable failure. Anything else becomes a generic message. */
 /** Events between automatic commander checkpoints (PLAN 4.10). */
 const CHECKPOINT_EVERY = 10n;
+
+/** Shown while this incident's keys are passkey-locked. */
+export const DEVICE_LOCKED_MESSAGE = 'Your keys for this incident are locked. Unlock them with your passkey.';
 
 export class ClientError extends Error {
   constructor(message: string) {
@@ -114,6 +121,8 @@ export interface RealClientOptions {
     get: () => Promise<string | null>;
     set: (incidentId: string) => Promise<void>;
   };
+  /** Passkey lock for device keys at rest. Omit for plain non-extractable keys only. */
+  vault?: DeviceVaultPort;
 }
 
 const micros = (m: bigint): Date => new Date(Number(m / 1000n));
@@ -154,6 +163,8 @@ export class RealIncidentClient implements IncidentClient {
   private dirty = false;
   private tail: Promise<unknown> = Promise.resolve();
   private readonly unsubscribe: () => void;
+  private readonly unsubscribeVault: () => void;
+  private vaultKey: VaultKey | null;
   private readonly now: () => number;
   private readonly waitMs: number;
 
@@ -165,7 +176,19 @@ export class RealIncidentClient implements IncidentClient {
     this.waitMs = opts.waitMs ?? 5000;
     this.state = emptyState(backend.connection(), new Date(this.now()));
     this.unsubscribe = backend.subscribe(() => void this.refresh());
+    this.vaultKey = opts.vault?.key() ?? null;
+    this.unsubscribeVault = opts.vault?.subscribe(() => this.onVaultChange()) ?? (() => undefined);
     if (opts.lastIncident) void this.resumeLast(opts.lastIncident);
+  }
+
+  /** Lock drops every key held in memory; unlock lets the next refresh unwrap them again. */
+  private onVaultChange(): void {
+    const next = this.opts.vault?.key() ?? null;
+    if (next === this.vaultKey) return;
+    this.vaultKey = next;
+    this.device = null;
+    this.keys.clear();
+    void this.refresh();
   }
 
   /** Reopens the last incident of this browser unless the page already chose one. */
@@ -184,6 +207,7 @@ export class RealIncidentClient implements IncidentClient {
 
   dispose(): void {
     this.unsubscribe();
+    this.unsubscribeVault();
     this.listeners.clear();
   }
 
@@ -263,6 +287,25 @@ export class RealIncidentClient implements IncidentClient {
     await this.refresh();
   }
 
+  /**
+   * Fresh device keys for a new incident membership. With the passkey lock on
+   * they are stored only wrapped under the vault key, so the vault must be
+   * unlocked; this check runs before anything is sent to the server.
+   */
+  private async newDeviceKeys(store: IncidentStore): Promise<DeviceKeys> {
+    const vault = this.opts.vault;
+    if (vault && (await vault.isEnabled())) {
+      const vk = vault.key();
+      if (!vk) throw new ClientError('Unlock with your passkey first. This device locks new keys with a passkey.');
+      const { record, keys } = await generateLockedDeviceKeys(vk, store.incidentId);
+      await store.setLockedDeviceKeys(record);
+      return keys;
+    }
+    const keys = await generateDeviceKeys();
+    await store.setDeviceKeys(keys);
+    return keys;
+  }
+
   private payload(kind: PayloadKind, body: unknown): Payload {
     return { v: PAYLOAD_VERSION, kind, sentAt: new Date(this.now()).toISOString(), body } as Payload;
   }
@@ -327,7 +370,23 @@ export class RealIncidentClient implements IncidentClient {
   }
 
   private async loadDevice(mine: MemberRow, store: IncidentStore): Promise<DeviceKeys> {
-    this.device ??= (await store.getDeviceKeys()) ?? null;
+    if (!this.device) {
+      const rec = await store.getDeviceRecord();
+      if (isLockedDeviceKeys(rec)) {
+        const vk = this.opts.vault?.key();
+        if (!vk) {
+          this.keys.clear();
+          throw new ClientError(DEVICE_LOCKED_MESSAGE);
+        }
+        const opened = await openLockedDeviceKeys(vk, rec, store.incidentId);
+        if (!opened) throw new ClientError('This passkey does not unlock the keys for this incident');
+        // The vault may have locked while unwrapping: never keep keys past a lock.
+        if (this.opts.vault?.key() !== vk) throw new ClientError(DEVICE_LOCKED_MESSAGE);
+        this.device = opened;
+      } else {
+        this.device = rec ?? null;
+      }
+    }
     const d = this.device;
     if (!d) throw new ClientError('This device does not hold the keys for this incident');
     if (!bytesEqual(d.signPub, mine.signPub) || !bytesEqual(d.ecdhPub, mine.ecdhPub)) {
@@ -591,8 +650,7 @@ export class RealIncidentClient implements IncidentClient {
     const myHex = await this.waitReady();
     const incidentId = crypto.randomUUID();
     const store = this.openStore(incidentId);
-    const keys = await generateDeviceKeys();
-    await store.setDeviceKeys(keys);
+    const keys = await this.newDeviceKeys(store);
     await store.setCommander({
       signPub: keys.signPub,
       ecdhPub: keys.ecdhPub,
@@ -680,12 +738,11 @@ export class RealIncidentClient implements IncidentClient {
     const store = this.openStore(inv.incidentId);
     const before = this.backend.rows();
     // Already redeemed on this device: just open it. Never replace live keys.
-    if ((await store.getDeviceKeys()) && before.status.some((r) => r.incidentId === inv.incidentId)) {
+    if ((await store.getDeviceRecord()) && before.status.some((r) => r.incidentId === inv.incidentId)) {
       await this.activate(inv.incidentId, store);
       return;
     }
-    const keys = await generateDeviceKeys();
-    await store.setDeviceKeys(keys);
+    const keys = await this.newDeviceKeys(store);
     await store.setExpectedFingerprint(inv.commanderFingerprint);
     const joinTag = await computeJoinTag(inv.secret, {
       incidentId: inv.incidentId,
@@ -952,6 +1009,7 @@ export function createRealIncidentClient(): IncidentClient {
   const dbName = process.env.NEXT_PUBLIC_SPACETIMEDB_DB_NAME || 'zerohour-hackutd26';
   return new RealIncidentClient(new SpacetimeBackend(host, dbName), {
     origin: window.location.origin,
+    vault: getDeviceVault(),
     lastIncident: {
       get: async () => (await idbGet<string>('last-incident', sessionStore())) ?? null,
       set: (id) => idbSet('last-incident', id, sessionStore()),

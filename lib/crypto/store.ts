@@ -5,11 +5,17 @@
 // unwrapped channel keys (non-extractable), invite secrets (commander only),
 // pinned chain heads and the last author counter. Nothing else persists.
 // Callers must never log anything read from here.
+//
+// With the passkey lock on (lib/crypto/vault.ts), the device keys are stored
+// as a LockedDeviceKeys record (ciphertext plus public keys) and channel keys
+// are not stored at all: after unlock they are unwrapped again from the
+// server's envelopes and held in memory only.
 
 import { createStore, del, get, keys as idbKeys, set, type UseStore } from 'idb-keyval';
 import type { ChannelKind } from '@/spacetimedb/src/shared/policy';
 import type { Role } from '@/spacetimedb/src/shared/policy';
 import type { DeviceKeys } from './keys';
+import { isLockedDeviceKeys, type LockedDeviceKeys } from './vault';
 
 export interface PinnedCommander {
   signPub: Uint8Array;
@@ -34,6 +40,22 @@ function db(): UseStore {
   return defaultStore;
 }
 
+/** The browser's default key store, shared with the passkey vault record. */
+export function defaultKeyStore(): UseStore {
+  return db();
+}
+
+/** Incident ids whose device keys are passkey-locked in this store. */
+export async function lockedIncidentIds(store: UseStore = db()): Promise<string[]> {
+  const out: string[] = [];
+  for (const key of await idbKeys(store)) {
+    if (typeof key !== 'string' || !key.endsWith('/device')) continue;
+    const id = key.slice(0, -'/device'.length);
+    if (isLockedDeviceKeys(await get(key, store))) out.push(id);
+  }
+  return out;
+}
+
 /** For tests: use a fresh isolated store. */
 export function useStoreForTests(name: string): UseStore {
   return createStore(name, 'v1');
@@ -48,11 +70,25 @@ export class IncidentStore {
   ) {}
 
   // --- device keys
-  getDeviceKeys(): Promise<DeviceKeys | undefined> {
-    return get<DeviceKeys>(k(this.incidentId, 'device'), this.store);
+  /** Whatever is stored for this device: plain keys, a passkey-locked record, or nothing. */
+  getDeviceRecord(): Promise<DeviceKeys | LockedDeviceKeys | undefined> {
+    return get<DeviceKeys | LockedDeviceKeys>(k(this.incidentId, 'device'), this.store);
+  }
+  /** Plain (not passkey-locked) device keys, if that is what is stored. */
+  async getDeviceKeys(): Promise<DeviceKeys | undefined> {
+    const r = await this.getDeviceRecord();
+    return r && !isLockedDeviceKeys(r) ? r : undefined;
   }
   setDeviceKeys(v: DeviceKeys): Promise<void> {
     return set(k(this.incidentId, 'device'), v, this.store);
+  }
+  setLockedDeviceKeys(v: LockedDeviceKeys): Promise<void> {
+    if (!isLockedDeviceKeys(v)) return Promise.reject(new TypeError('invalid locked device keys'));
+    return set(k(this.incidentId, 'device'), v, this.store);
+  }
+  /** True when this incident's device keys are passkey-locked. */
+  async isPasskeyLocked(): Promise<boolean> {
+    return isLockedDeviceKeys(await this.getDeviceRecord());
   }
 
   // --- pinned commander
@@ -75,8 +111,10 @@ export class IncidentStore {
   getChannelKey(kind: ChannelKind, epoch: number): Promise<CryptoKey | undefined> {
     return get<CryptoKey>(k(this.incidentId, `ck/${kind}/${epoch}`), this.store);
   }
-  setChannelKey(kind: ChannelKind, epoch: number, key: CryptoKey): Promise<void> {
-    return set(k(this.incidentId, `ck/${kind}/${epoch}`), key, this.store);
+  /** Skipped when the device keys are passkey-locked: channel keys then live in memory only. */
+  async setChannelKey(kind: ChannelKind, epoch: number, key: CryptoKey): Promise<void> {
+    if (await this.isPasskeyLocked()) return;
+    await set(k(this.incidentId, `ck/${kind}/${epoch}`), key, this.store);
   }
 
   // --- invite secrets (commander), by codeHash hex

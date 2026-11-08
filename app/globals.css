@@ -414,4 +414,9 @@ h1 {
     min-height: 0;
   }
 
+  #incident-report .report-timeline-page {
+    break-before: page;
+    page-break-before: always;
+  }
+
 }

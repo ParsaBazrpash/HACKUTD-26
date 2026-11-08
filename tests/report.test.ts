@@ -1,3 +1,5 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test } from "vitest";
 import { EMPTY_PROFILE, type ChannelView, type IncidentState, type MemberView, type ScopeItem } from "@/lib/client/types";
 import { showsConfirmedCountdown } from "@/lib/legal";
@@ -5,6 +7,7 @@ import { incidentAccess } from "@/lib/report/access";
 import { buildIncidentReport, type IncidentReport, type ReportOptions } from "@/lib/report";
 import { executiveBullets, coverActions, coverDecisions, coverStats, phaseSteps, severityTone } from "@/lib/report/sheet";
 import { boardEntries } from "@/components/incidents/board";
+import { ReportSheet } from "@/components/incidents/report-sheet";
 
 const NOW = new Date("2026-11-08T18:00:00.000Z");
 const SAFETY = "123 456 789 012";
@@ -504,5 +507,38 @@ describe("cover helpers", () => {
     expect(stats.map((stat) => stat.value)).toEqual(["2", "1", "1/2", "1"]);
     expect(stats[0].sub).toBe("1 encrypted or exfiltrated");
     expect(stats[3].sub).toBe("10 signed events checked");
+  });
+});
+
+describe("report sheet markup", () => {
+  test("hostile text renders as escaped text and another role's decision stays a proposal", () => {
+    const hostile = '<img src=x onerror=alert(1)> <script>alert(1)</script> <svg onload=alert(1)>';
+    const current = state("commander");
+    const base = current.timeline[0];
+    if (!base) throw new Error("missing timeline entry");
+    const counsel = current.members.find((item) => item.role === "counsel")!;
+    current.incident = { ...current.incident!, title: hostile };
+    current.status = { ...current.status!, summary: hostile };
+    current.scope = current.scope.map((item) => ({ ...item, latest: { ...item.latest, system: hostile, notes: hostile } }));
+    current.timeline = [
+      {
+        ...base,
+        seq: 1n,
+        by: counsel,
+        entry: { ...base.entry, entryId: "00000000-0000-4000-8000-000000000061", text: `Decision: ${hostile}` },
+        amendedBy: [],
+      },
+    ];
+    const report = buildIncidentReport(current, options());
+    if (!report) throw new Error("missing report");
+    const html = renderToStaticMarkup(createElement(ReportSheet, { report, pages: [], commander: "Avery Commander" }));
+    expect(html).not.toMatch(/<[a-z][^>]*\son\w+=/i);
+    expect(html).not.toMatch(/<img/i);
+    expect(html).not.toMatch(/<script/i);
+    // The only svgs are the fixed Haven logo and lucide icons, none carries a handler.
+    expect(html).not.toMatch(/<svg[^>]*onload/i);
+    expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    expect(html).toContain("Proposed: ");
+    expect(coverDecisions(report)).toEqual([]);
   });
 });

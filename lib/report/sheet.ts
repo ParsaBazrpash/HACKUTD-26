@@ -104,7 +104,7 @@ export function coverDecisions(report: IncidentReport): CoverDecision[] {
   const decisions: CoverDecision[] = [];
   for (const group of report.timeline) {
     for (const entry of group.entries) {
-      if (entry.board !== "decision" || !entry.text.startsWith("Decision: ")) continue;
+      if (entry.board !== "decision" || !entry.byCommander || !entry.text.startsWith("Decision: ")) continue;
       const title = entry.text.slice("Decision: ".length).trim();
       const role = entry.authorRole;
       const who = role ? `${initials(entry.author)}, ${role}` : initials(entry.author);
@@ -118,15 +118,20 @@ export function coverDecisions(report: IncidentReport): CoverDecision[] {
 
 function actionFromEntry(entry: ReportTimelineEntry): CoverAction {
   const decision = entry.board === "decision";
+  // Decided by who wrote it, not by standing: a non-commander line stays a proposal even after a
+  // later entry replaced it.
+  const proposal = !decision && !entry.byCommander && entry.text.startsWith("Decision: ");
   const signed = entry.signedAt ?? entry.occurredAt;
   const server =
     entry.serverAt !== signed && entry.serverAt !== entry.occurredAt ? `Server ${reportClock(entry.serverAt)}` : null;
+  // A "Decision: " line from anyone but the commander is a proposal, as on the status board.
+  const proposedTitle = `Proposed: ${entry.text.slice("Decision: ".length).trim()}`;
   return {
     id: entry.id,
     at: entry.at,
     when: reportPill(entry.occurredAt),
-    title: decision ? entry.phase : entry.text,
-    detail: decision ? entry.text : null,
+    title: decision ? entry.phase : proposal ? proposedTitle : entry.text,
+    detail: decision ? entry.text : proposal ? `Proposed by ${entry.author}${entry.authorRole ? `, ${entry.authorRole}` : ""}. Not decided by the commander.` : null,
     signature: `${entry.author} signed ${reportSigned(signed)} · ${entry.csf}`,
     note: [entry.amendment, server].filter(Boolean).join(" ") || null,
     alert: entry.verdict,

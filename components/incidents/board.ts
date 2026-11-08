@@ -38,8 +38,9 @@ export type BoardEntries = {
 
 const isCommander = (item: TimelineItem) => item.by?.role === "commander";
 
-/** True when `amender` may replace `target` on the board. */
+/** True when `amender` may replace `target` on the board. Only a later entry replaces an earlier one. */
 function replaces(amender: TimelineItem, target: TimelineItem): boolean {
+  if (target === amender || target.seq >= amender.seq) return false;
   const kind = boardKind(amender.entry.text);
   if (!kind || kind !== boardKind(target.entry.text)) return false;
   // Nobody but the commander replaces a commander decision.
@@ -47,22 +48,34 @@ function replaces(amender: TimelineItem, target: TimelineItem): boolean {
 }
 
 /**
+ * Entry ids are chosen by the author and nothing makes them unique, so the first entry by server
+ * order (seq) owns an id. A later entry that reuses the id can never be the target of an amendment.
+ */
+export function entryOwners(timeline: readonly TimelineItem[]): Map<string, TimelineItem> {
+  const owners = new Map<string, TimelineItem>();
+  const bySeq = [...timeline].sort((a, b) => (a.seq < b.seq ? -1 : a.seq > b.seq ? 1 : 0));
+  for (const item of bySeq) if (!owners.has(item.entry.entryId)) owners.set(item.entry.entryId, item);
+  return owners;
+}
+
+/**
  * Newest first by server order (seq), never by the author-chosen date. An entry is hidden only
  * when a later entry of the same board kind amends it, so an untagged amendment cannot erase it.
  * foldEvents already drops events that failed verification, so none reach this function.
+ * Replaced entries are tracked as items, not ids, so reusing an id cannot hide another entry.
  */
 export function boardEntries(timeline: readonly TimelineItem[]): BoardEntries {
   const out: BoardEntries = { decisions: [], proposed: [], known: [] };
-  const byId = new Map(timeline.map((item) => [item.entry.entryId, item]));
+  const byId = entryOwners(timeline);
   const sorted = [...timeline].sort((a, b) => (a.seq < b.seq ? 1 : a.seq > b.seq ? -1 : 0));
-  const replaced = new Map<string, TimelineItem>();
+  const replaced = new Set<TimelineItem>();
   for (const item of sorted) {
     const amends = item.entry.amends ? byId.get(item.entry.amends) : undefined;
-    if (amends && replaces(item, amends)) replaced.set(amends.entry.entryId, amends);
+    if (amends && replaces(item, amends)) replaced.add(amends);
   }
   for (const item of sorted) {
     const kind = boardKind(item.entry.text);
-    if (!kind || replaced.has(item.entry.entryId)) continue;
+    if (!kind || replaced.has(item)) continue;
     const amends = item.entry.amends ? byId.get(item.entry.amends) : undefined;
     const earlier = amends && replaces(item, amends) ? (amends.by?.displayName ?? "an unknown member") : null;
     const list = kind === "known" ? out.known : isCommander(item) ? out.decisions : out.proposed;

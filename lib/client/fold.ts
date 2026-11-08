@@ -128,11 +128,14 @@ export function foldEvents(
     }
   }
 
-  // Amendments: link each timeline entry that names `amends` to its target.
-  const byEntry = new Map(timeline.map((t) => [t.entry.entryId, t]));
+  // Amendments: link each timeline entry that names `amends` to its target. Entry ids are chosen
+  // by the author, so the first entry by seq owns an id (timeline is in seq order here), and only
+  // a later entry can amend an earlier one.
+  const byEntry = new Map<string, TimelineItem>();
+  for (const t of timeline) if (!byEntry.has(t.entry.entryId)) byEntry.set(t.entry.entryId, t);
   for (const t of timeline) {
     const target = t.entry.amends ? byEntry.get(t.entry.amends) : undefined;
-    if (target && target !== t) target.amendedBy.push(t.entry.entryId);
+    if (target && target !== t && target.seq < t.seq) target.amendedBy.push(t.entry.entryId);
   }
   timeline.sort((a, b) => {
     const d = new Date(a.entry.occurredAt).getTime() - new Date(b.entry.occurredAt).getTime();

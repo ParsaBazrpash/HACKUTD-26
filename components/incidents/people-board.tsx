@@ -455,14 +455,15 @@ function MembersPanel({
               </thead>
               <tbody>
                 {visible.map((member) => {
-                  const open = openId === member.identity;
+                  const rowId = member.memberId.toString();
+                  const open = openId === rowId;
                   return (
                     <MemberRows
-                      key={member.identity}
+                      key={rowId}
                       member={member}
                       mock={mock}
                       open={open}
-                      onToggle={() => setOpenId(open ? null : member.identity)}
+                      onToggle={() => setOpenId(open ? null : rowId)}
                     />
                   );
                 })}
@@ -471,12 +472,13 @@ function MembersPanel({
           </div>
           <ul className="divide-y divide-line rounded-xl border border-line md:hidden">
             {visible.map((member) => {
-              const open = openId === member.identity;
+              const rowId = member.memberId.toString();
+              const open = openId === rowId;
               return (
-                <li key={member.identity} className="grid gap-3 px-4 py-3">
+                <li key={rowId} className="grid gap-3 px-4 py-3">
                   <div className="flex items-start justify-between gap-3">
                     <PersonCell member={member} />
-                    <DetailsButton member={member} open={open} onToggle={() => setOpenId(open ? null : member.identity)} />
+                    <DetailsButton member={member} open={open} onToggle={() => setOpenId(open ? null : rowId)} />
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <RolePill role={member.role} />
@@ -681,7 +683,7 @@ function RequestsPanel({
       ) : (
         <ul className="mt-4 space-y-2">
           {pending.map((member) => (
-            <li key={member.identity} className="text-sm">
+            <li key={member.memberId.toString()} className="text-sm">
               <SafeText text={member.displayName} />
               <span className="text-muted"> · {ROLE_LABELS[member.role]}</span>
             </li>

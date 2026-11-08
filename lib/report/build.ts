@@ -26,7 +26,7 @@ import { localTimeZone } from "@/lib/time";
 import { CHANNELS, canRead } from "@/spacetimedb/src/shared/policy";
 import { incidentAccess } from "@/lib/report/access";
 import { formatReportStamp } from "@/lib/report/format";
-import { boardEntries } from "@/components/incidents/board";
+import { boardEntries, entryOwners } from "@/components/incidents/board";
 
 export const PRIVILEGED_WATERMARK = "PRIVILEGED / CONFIDENTIAL";
 
@@ -56,6 +56,8 @@ export interface ReportTimelineEntry {
   author: string;
   /** Role label of the signing member, from the verified roster. Null when the author is unknown. */
   authorRole: string | null;
+  /** True when the signing member is the commander. Only the commander's "Decision: " lines are decisions. */
+  byCommander: boolean;
   /**
    * Board standing, by the status board's own rules: "decision" is a commander decision that no later
    * commander entry replaced; "proposed" is a "Decision: " line from anyone else. Null for other entries.
@@ -338,17 +340,20 @@ function determination(
 
 function timeline(items: readonly TimelineItem[]): { timeline: ReportTimelineGroup[]; timelineEmpty: string | null } {
   if (items.length === 0) return { timeline: [], timelineEmpty: "No timeline entries are on the record." };
-  const byId = new Map(items.map((item) => [item.entry.entryId, item]));
+  // The first entry by seq owns an id; sets hold items, so a reused id never borrows another entry's standing.
+  const byId = entryOwners(items);
   const board = boardEntries(items);
-  const decided = new Set(board.decisions.map((entry) => entry.item.entry.entryId));
-  const proposed = new Set(board.proposed.map((entry) => entry.item.entry.entryId));
+  const decided = new Set(board.decisions.map((entry) => entry.item));
+  const proposed = new Set(board.proposed.map((entry) => entry.item));
   const groups = new Map<string, ReportTimelineEntry[]>();
   for (const item of items) {
     const phase = item.entry.phase;
     const list = groups.get(phase) ?? [];
-    const target = item.entry.amends ? byId.get(item.entry.amends) : undefined;
+    const owner = item.entry.amends ? byId.get(item.entry.amends) : undefined;
+    const target = owner && owner !== item && owner.seq < item.seq ? owner : undefined;
     list.push({
-      id: item.entry.entryId,
+      // Entry ids are author-chosen and can repeat; the server seq makes the key unique.
+      id: `${item.entry.entryId}-${item.seq.toString()}`,
       at: epoch(item.entry.occurredAt),
       occurredAt: stamp(item.entry.occurredAt) ?? "Unusable time",
       phase: label(PHASE_LABELS, phase),
@@ -356,7 +361,8 @@ function timeline(items: readonly TimelineItem[]): { timeline: ReportTimelineGro
       text: item.entry.text,
       author: item.by?.displayName.trim() || "Unknown author",
       authorRole: item.by ? label(ROLE_LABELS, item.by.role) : null,
-      board: decided.has(item.entry.entryId) ? "decision" : proposed.has(item.entry.entryId) ? "proposed" : null,
+      byCommander: item.by?.role === "commander",
+      board: decided.has(item) ? "decision" : proposed.has(item) ? "proposed" : null,
       signedAt: stamp(item.sentAt),
       serverAt: stamp(item.at) ?? "Unusable time",
       amendment: item.entry.amends

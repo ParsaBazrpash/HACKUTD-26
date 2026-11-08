@@ -36,7 +36,11 @@ export function RevokeControl({ member }: { member: MemberView }) {
   const [notice, setNotice] = useState<string | null>(null);
 
   if (notice) return <FormStatus message={notice} />;
-  if (!revokeEnabled(state.me, member)) return null;
+  // The server can accept the revoke and then the #record entry can fail. The row already shows
+  // revoked by then, so keep the error on screen instead of hiding it with the form.
+  if (!revokeEnabled(state.me, member)) {
+    return error ? <FormError message={`Access was removed, but the record entry failed: ${error}`} /> : null;
+  }
 
   const phrase = revokeConfirmPhrase(member);
   const confirmed = revokeConfirmed(member, typed);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Bell, Info, Lock, MessagesSquare, Users } from "lucide-react";
 import { CHANNEL_BLURBS, CHANNEL_LABELS, ROLE_LABELS } from "@/components/incidents/labels";
 import { MessageComposer } from "@/components/incidents/message-composer";
@@ -41,6 +41,19 @@ function sentAtIso(value: Date): string | undefined {
   return Number.isNaN(value.getTime()) ? undefined : value.toISOString();
 }
 
+function subscribeHash(listener: () => void): () => void {
+  window.addEventListener("hashchange", listener);
+  return () => window.removeEventListener("hashchange", listener);
+}
+
+function currentHash(): string {
+  return window.location.hash.slice(1);
+}
+
+function serverHash(): string {
+  return "";
+}
+
 export function ChannelsBoard({ limit }: { limit?: number }) {
   const state = useIncident();
   const channels = authorizedChatChannels(state.me?.role, state.me?.state, state.channels);
@@ -48,9 +61,13 @@ export function ChannelsBoard({ limit }: { limit?: number }) {
   const [drawer, setDrawer] = useState<Drawer | null>(null);
   const clockReady = useLocalClock();
   const scroller = useRef<HTMLDivElement>(null);
+  // A link such as /channels#technical opens that channel, but only from the
+  // channels this member may already read; anything else falls through.
+  const linked = useSyncExternalStore(subscribeHash, currentHash, serverHash);
 
   const active =
     channels.find((channel) => channel.kind === picked) ??
+    channels.find((channel) => channel.kind === linked) ??
     channels.find((channel) => channel.kind === "command") ??
     channels[0];
 

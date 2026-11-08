@@ -7,6 +7,7 @@ import {
   CENTER,
   exposureStep,
   RING_RADIUS,
+  roundTripNote,
   RINGS,
   shortCount,
   stateDeadlines,
@@ -28,7 +29,7 @@ import { canAuthorRecord } from "@/components/incidents/record-actions";
 import { getIncidentClient, isMockIncidentClient } from "@/lib/client";
 import { clientErrorMessage } from "@/lib/client/errors";
 import { SCOPE_STATUSES, type ScopeBody } from "@/lib/protocol/events";
-import { medianSync, subscribeSync, syncSamples, type SyncSample } from "@/lib/client/sync-meter";
+import { medianSync, subscribeSync, syncCount, syncSampleSince, syncSamples, type SyncSample } from "@/lib/client/sync-meter";
 import { clockStatusLabel, computeDeadlines, showsConfirmedCountdown } from "@/lib/legal";
 import type { ComputedDeadline } from "@/lib/legal";
 import type { IncidentState, MemberRef, ScopeItem } from "@/lib/client/types";
@@ -136,13 +137,13 @@ export function BlastRadius() {
       </div>
 
       {selected ? (
-        <div className="mt-5 rounded-lg border border-line bg-background/40 p-4">
+        <div role="region" aria-label="Selected details" className="mt-5 rounded-lg border border-line bg-background/40 p-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               {selected.kind === "system" ? (
-                <SystemDetail state={state} itemId={selected.itemId} />
+                <SystemDetail key={selected.itemId} state={state} itemId={selected.itemId} />
               ) : (
-                <StateDetail state={state} model={model} code={selected.code} now={now} />
+                <StateDetail key={selected.code} state={state} model={model} code={selected.code} now={now} />
               )}
             </div>
             <button
@@ -392,7 +393,7 @@ function StateGrid({
   );
 }
 
-function SystemDetail({ state, itemId }: { state: IncidentState; itemId: string }) {
+export function SystemDetail({ state, itemId }: { state: IncidentState; itemId: string }) {
   const item = state.scope.find((row) => row.itemId === itemId);
   if (!item) return <p className="text-sm text-muted">This system is no longer on the record.</p>;
   const body = item.latest;
@@ -450,13 +451,12 @@ function QuickStatus({ item }: { item: ScopeItem }) {
     if (value === item.latest.status) return;
     setBusy(true);
     setNote(null);
-    const before = syncSamples().length;
+    const mark = syncCount();
     try {
       await getIncidentClient().upsertScopeItem({ ...item.latest, status: value as ScopeBody["status"] });
-      const samples = syncSamples();
-      const timed = !isMockIncidentClient() && samples.length > before ? samples[samples.length - 1] : null;
+      const timed = isMockIncidentClient() ? null : syncSampleSince(mark);
       setPicked(null);
-      setNote({ tone: "ok", text: timed ? `Saved. Live for everyone in ${timed.ms} ms.` : "Saved." });
+      setNote({ tone: "ok", text: timed ? `Saved. ${roundTripNote(timed.ms)}` : "Saved." });
     } catch (cause) {
       setNote({ tone: "error", text: clientErrorMessage(cause) });
     } finally {

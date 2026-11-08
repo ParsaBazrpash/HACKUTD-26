@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Send } from "lucide-react";
+import { attachCardText, type LiveCard } from "@/components/incidents/blast-radius-model";
+import { AttachedCardChip, CardAttachButton } from "@/components/incidents/card-attach";
 import { CHANNEL_LABELS } from "@/components/incidents/labels";
 import { canCompose, draftChatBody, type ChatChannel } from "@/components/incidents/room-controls";
 import { useIncident } from "@/hooks/use-incident";
@@ -27,6 +29,8 @@ export function MessageComposer({
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A live card attached from the paperclip. Only the dock composer offers it.
+  const [attached, setAttached] = useState<LiveCard | null>(null);
   const field = useRef<HTMLTextAreaElement>(null);
   const allowed = canCompose(state.me?.role, state.me?.state, channel);
 
@@ -40,7 +44,8 @@ export function MessageComposer({
 
   async function send(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const draft = draftChatBody(text);
+    const card = dock ? attached : null;
+    const draft = draftChatBody(card ? attachCardText(text, card) : text);
     if (!draft.ok) {
       setError(draft.reason);
       return;
@@ -50,6 +55,7 @@ export function MessageComposer({
     try {
       await getIncidentClient().postMessage(channel, draft.body);
       setText("");
+      if (card) setAttached(null);
     } catch (cause) {
       setError(clientErrorMessage(cause));
     } finally {
@@ -69,7 +75,16 @@ export function MessageComposer({
   if (dock) {
     return (
       <form onSubmit={send} className="border-t border-line p-3" aria-label={`Message ${label}`}>
+        {attached ? <AttachedCardChip card={attached} onRemove={() => setAttached(null)} /> : null}
         <div className="flex items-end gap-2">
+          <CardAttachButton
+            disabled={sending}
+            onAttach={(card) => {
+              setAttached(card);
+              setError(null);
+              field.current?.focus();
+            }}
+          />
           <label className="sr-only" htmlFor={`message-${channel}`}>
             Message {label}
           </label>
@@ -80,14 +95,14 @@ export function MessageComposer({
             value={text}
             maxLength={4000}
             rows={1}
-            placeholder={`Message ${label}...`}
+            placeholder={attached ? "Add a message (optional)..." : `Message ${label}...`}
             onChange={(event) => setText(event.target.value)}
             onKeyDown={onDockKeyDown}
             className="max-h-32 min-h-11 min-w-0 flex-1 resize-none rounded-xl border border-line bg-panel px-3 py-2.5 text-sm text-foreground placeholder:text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
           />
           <button
             type="submit"
-            disabled={sending || text.trim().length === 0}
+            disabled={sending || (text.trim().length === 0 && !attached)}
             aria-label={sending ? "Sending" : "Send"}
             className="grid size-11 shrink-0 place-items-center rounded-xl bg-signal text-signal-ink hover:bg-signal-hover disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
           >

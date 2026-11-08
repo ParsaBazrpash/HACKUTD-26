@@ -41,6 +41,20 @@ export function contentSecurityPolicy(opts: { spacetimeHost: string; dev: boolea
     .join('; ');
 }
 
+/** The worker script must revalidate after every deploy. API responses are never stored. */
+export function pwaHeaders(): { source: string; headers: HeaderPair[] }[] {
+  return [
+    {
+      source: "/sw.js",
+      headers: [{ key: "Cache-Control", value: "no-cache, no-store, must-revalidate" }],
+    },
+    {
+      source: "/api/:path*",
+      headers: [{ key: "Cache-Control", value: "no-store" }],
+    },
+  ];
+}
+
 export function securityHeaders(opts: { spacetimeHost: string; dev: boolean }): HeaderPair[] {
   return [
     { key: 'Content-Security-Policy', value: contentSecurityPolicy(opts) },

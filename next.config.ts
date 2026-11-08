@@ -1,5 +1,5 @@
 import type { NextConfig } from "next";
-import { securityHeaders } from "./lib/security/headers";
+import { pwaHeaders, securityHeaders } from "./lib/security/headers";
 
 const nextConfig: NextConfig = {
   /* config options here */
@@ -17,6 +17,7 @@ const nextConfig: NextConfig = {
           dev: process.env.NODE_ENV !== "production",
         }),
       },
+      ...pwaHeaders(),
     ];
   },
   turbopack: {

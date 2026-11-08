@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { connectOrigins, contentSecurityPolicy, securityHeaders } from './headers';
+import { connectOrigins, contentSecurityPolicy, pwaHeaders, securityHeaders } from './headers';
 
 const HOST = 'wss://maincloud.spacetimedb.com';
 
@@ -32,6 +32,14 @@ describe('security headers (T25, T31, T21)', () => {
     expect(h['X-Frame-Options']).toBe('DENY');
     expect(h['Strict-Transport-Security']).toContain('max-age=');
     expect(h['Permissions-Policy']).toContain('camera=()');
+  });
+
+  it('does not store the service worker script or API responses', () => {
+    const rules = Object.fromEntries(
+      pwaHeaders().map((rule) => [rule.source, Object.fromEntries(rule.headers.map((header) => [header.key, header.value]))]),
+    );
+    expect(rules['/sw.js']['Cache-Control']).toContain('no-store');
+    expect(rules['/api/:path*']['Cache-Control']).toBe('no-store');
   });
 
   it('allows passkeys for this origin only, and needs no CSP relaxation for them', () => {

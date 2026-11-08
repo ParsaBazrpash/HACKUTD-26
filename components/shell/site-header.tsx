@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { User } from "lucide-react";
+import { InstallAppControl } from "@/components/pwa/install-app";
 
 function incidentIdFromPath(pathname: string | null): string | null {
   if (!pathname) return null;
@@ -27,7 +28,7 @@ function PrimaryNavLinks({ pathname }: { pathname: string | null }) {
   const onIncidents = pathname !== null && pathname.startsWith("/incidents") && !onPeople;
   const onJoin = pathname === "/join" || (pathname !== null && pathname.startsWith("/join/"));
   return (
-    <nav aria-label="Primary" className="-mb-px flex h-full min-w-0 items-stretch justify-center gap-1 overflow-x-auto sm:gap-2">
+    <nav aria-label="Primary" className="-mb-px flex h-full min-w-0 items-stretch justify-start gap-1 overflow-x-auto sm:justify-center sm:gap-2">
       <Link href="/incidents" aria-current={onIncidents ? "page" : undefined} className={itemClass(onIncidents)}>
         Incidents
       </Link>
@@ -86,7 +87,8 @@ export function SiteHeader() {
         <Suspense fallback={<PrimaryNavLinks pathname={null} />}>
           <PrimaryNav />
         </Suspense>
-        <div className="flex items-center">
+        <div className="flex shrink-0 items-center gap-2">
+          <InstallAppControl />
           <Suspense fallback={<AccountLink pathname={null} />}>
             <AccountSlot />
           </Suspense>

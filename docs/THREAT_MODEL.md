@@ -86,6 +86,12 @@ Message and record content (including attorney-client privileged communications)
 | T35 | Metadata leakage | Payload kinds encrypted; still visible to the server: timestamps, channel, sizes, roles, display names, member count | Design | n/a | Accepted (documented) |
 | T36 | Commander device compromise (root of trust) | Every commander action signed and logged in #record; the commander can passkey-lock its keys at rest (T20), so a copied or seized commander profile yields no usable key while locked; malware on the unlocked, running commander device can still use (not export) the keys; production: second commander (M-of-N) and keys held inside the authenticator | Design, `lib/crypto/vault.ts` | T20 tests | Accepted (documented) |
 
+### Installed application
+
+| # | Threat | Mitigation | Where | Verification | Status |
+| --- | --- | --- | --- | --- | --- |
+| T37 | The installed app's service worker keeps a copy of the incident room, messages, keys, invites, or API responses | The worker exists so browsers can install HAVEN. It never opens a cache and never answers a fetch, so it cannot store or rewrite a response. On activate it deletes any cache an older worker left behind. API routes and the worker script are sent `Cache-Control: no-store`. | `public/sw.js`, `lib/security/headers.ts`, `app/api` | `lib/pwa/sw-policy.test.ts` asserts the worker has a fetch listener, does not write a cache, and does not answer fetches. `headers.test.ts` checks the no-store rules | Done |
+
 ## Accepted risks, in plain words
 
 - **T8 availability:** a malicious server can stop serving data. We detect gaps and missing keys; self-hosting gives the victim control of availability.
@@ -103,6 +109,7 @@ Message and record content (including attorney-client privileged communications)
 - 2026-11-07 (Lane B): the legal engine reads `IncidentState` only. CIRCIA has no countdown. CISA's CIRCIA page, read the same day, says covered-incident and ransom reports are not required until the final rule's effective date. A draft final rule was at OIRA as of October 1, 2026, which is not an effective date. T34 is Done. T30 stays Planned because the server-drift flag is still open.
 
 - 2026-11-07 (Lane A): opt-in passkey lock (WebAuthn PRF) for device keys at rest. T20 is Done (opt-in). The lock card is mounted on the incidents page, the join page and the locked room. The PRF secret and the vault key are never stored or logged; there is no server step, so the WebAuthn challenge is random and unchecked on purpose (the passkey is not a login).
+- 2026-11-07: HAVEN can be installed as a progressive web app. The service worker does not cache incident data. T37 is Done.
 
 ## Downgrades taken
 

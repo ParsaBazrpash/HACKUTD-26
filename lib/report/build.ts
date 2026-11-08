@@ -22,9 +22,10 @@ import {
 } from "@/lib/legal/display";
 import { formatLegalInstant } from "@/lib/legal/calendar";
 import { COUNSEL_REVIEW_WARNING, computeDeadlines, nextCountdown, type ComputedDeadline } from "@/lib/legal";
-import { formatTimestamp, localTimeZone } from "@/lib/time";
+import { localTimeZone } from "@/lib/time";
 import { CHANNELS, canRead } from "@/spacetimedb/src/shared/policy";
 import { incidentAccess } from "@/lib/report/access";
+import { formatReportStamp } from "@/lib/report/format";
 
 export const PRIVILEGED_WATERMARK = "PRIVILEGED / CONFIDENTIAL";
 
@@ -45,6 +46,8 @@ export interface ReportDetermination {
 
 export interface ReportTimelineEntry {
   id: string;
+  /** Epoch milliseconds of occurredAt, for ordering. 0 when the instant is unusable. */
+  at: number;
   occurredAt: string;
   phase: string;
   csf: string;
@@ -285,7 +288,7 @@ export function buildIncidentReport(state: IncidentState, options: ReportOptions
   return {
     title: incident.title.trim() || "Untitled incident",
     incidentId: incident.id,
-    exportedAt: clock ? formatTimestamp(clock) : null,
+    exportedAt: clock ? formatReportStamp(clock) : null,
     connectionNote: connectionNote(state),
     severity: state.status?.severity ?? "Not recorded",
     phase: state.status ? label(PHASE_LABELS, state.status.phase) : "Not recorded",
@@ -319,7 +322,7 @@ function determination(
   return {
     label: labelText,
     recorded: true,
-    at: asDate(value.determinedAt) ? formatTimestamp(value.determinedAt) : "Unusable time",
+    at: stamp(value.determinedAt) ?? "Unusable time",
     by: value.by.displayName.trim() || "Unknown author",
     basis: value.basis.trim() || "No basis recorded",
   };
@@ -335,7 +338,8 @@ function timeline(items: readonly TimelineItem[]): { timeline: ReportTimelineGro
     const target = item.entry.amends ? byId.get(item.entry.amends) : undefined;
     list.push({
       id: item.entry.entryId,
-      occurredAt: formatTimestamp(item.entry.occurredAt),
+      at: epoch(item.entry.occurredAt),
+      occurredAt: stamp(item.entry.occurredAt) ?? "Unusable time",
       phase: label(PHASE_LABELS, phase),
       csf: item.entry.csf,
       text: item.entry.text,
@@ -344,7 +348,7 @@ function timeline(items: readonly TimelineItem[]): { timeline: ReportTimelineGro
       serverAt: stamp(item.at) ?? "Unusable time",
       amendment: item.entry.amends
         ? target
-          ? `Amends the entry from ${formatTimestamp(target.entry.occurredAt)}.`
+          ? `Amends the entry from ${stamp(target.entry.occurredAt) ?? "an unusable time"}.`
           : "Amends an earlier entry."
         : item.amendedBy.length > 0
           ? "A later entry amends this one."
@@ -394,7 +398,7 @@ function tasks(items: readonly Task[], members: readonly MemberView[]): { tasks:
       title: task.latest.title,
       status: label(TASK_LABELS, task.latest.status),
       owner: personName(members, task.latest.assignee),
-      due: task.latest.dueAt ? formatTimestamp(task.latest.dueAt) : "No due time recorded",
+      due: task.latest.dueAt ? formatReportStamp(task.latest.dueAt) ?? "No due time recorded" : "No due time recorded",
     })),
     tasksEmpty: null,
   };
@@ -476,7 +480,7 @@ function integrity(state: IncidentState, options: ReportOptions): ReportIntegrit
   });
   return {
     summary: integritySummary(report.ok, options.demo, channels.length),
-    checkedAt: checked ? formatTimestamp(report.checkedAt) : "Verification time is not recorded.",
+    checkedAt: checked ? formatReportStamp(report.checkedAt) ?? "Verification time is not recorded." : "Verification time is not recorded.",
     commanderFingerprint: state.incident?.commander.fingerprint.trim() || "Commander fingerprint is not on this record.",
     build: options.buildSha ? `Build ${options.buildSha}` : "Build hash is not recorded for this deployment.",
     rosterFailures: report.rosterFailures.map((failure) => `Roster check failed for ${failure.identity}. ${failure.reason}`),
@@ -648,9 +652,16 @@ function asDate(value: Date | null | undefined): Date | null {
   return null;
 }
 
-function stamp(value: Date | null | undefined): string | null {
-  const date = asDate(value);
-  return date ? formatTimestamp(date) : null;
+function stamp(value: Date | string | null | undefined): string | null {
+  if (value == null) return null;
+  if (value instanceof Date) return asDate(value) ? formatReportStamp(value) : null;
+  return formatReportStamp(value);
+}
+
+function epoch(value: Date | string | null | undefined): number {
+  if (value == null) return 0;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
 }
 
 function label(table: Record<string, string>, value: string): string {

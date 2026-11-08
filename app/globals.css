@@ -55,6 +55,54 @@ h1 {
   color: var(--signal-ink);
 }
 
+@keyframes haven-rise {
+  from {
+    opacity: 0;
+    transform: translateY(22px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.haven-rise {
+  animation: haven-rise 1.05s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@supports (animation-timeline: view()) {
+  .haven-reveal {
+    animation-name: haven-rise;
+    animation-duration: auto;
+    animation-timing-function: linear;
+    animation-fill-mode: both;
+    animation-timeline: view();
+    animation-range: cover 0% cover 18%;
+  }
+
+  .haven-s1 {
+    animation-range: cover 3% cover 22%;
+  }
+
+  .haven-s2 {
+    animation-range: cover 6% cover 26%;
+  }
+
+  .haven-s3 {
+    animation-range: cover 9% cover 30%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .haven-rise,
+  .haven-reveal {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
 .skip-link {
   position: absolute;
   left: calc(1rem + env(safe-area-inset-left));
@@ -117,6 +165,11 @@ h1 {
 }
 
 @media print {
+  @page {
+    size: letter;
+    margin: 0.5in 0.55in 0.48in;
+  }
+
   body > header,
   body > footer,
   nav,
@@ -127,7 +180,7 @@ h1 {
 
   body:has(#incident-report) {
     background: #fff !important;
-    color: #161616 !important;
+    color: #1c1f1c !important;
   }
 
   body:has(#incident-report) main {
@@ -140,43 +193,32 @@ h1 {
   }
 
   #incident-report {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
     background: #fff !important;
-    color: #161616 !important;
-    font-size: 11pt;
-    line-height: 1.45;
-  }
-
-  #incident-report,
-  #incident-report :where(:not(.privileged-watermark):not(.privileged-watermark *)) {
-    background: transparent !important;
-    color: #161616 !important;
+    color: #1c1f1c !important;
     box-shadow: none !important;
   }
 
-  #incident-report {
-    background: #fff !important;
+  #incident-report .report-cover {
+    display: flex;
+    flex-direction: column;
+    min-height: 9.35in;
   }
 
-  #incident-report .print-accent {
-    color: #1d6b3c !important;
+  #incident-report .report-cover-footer {
+    margin-top: auto;
   }
 
-  #incident-report a {
-    color: #1d6b3c !important;
-    text-decoration: underline !important;
-    text-underline-offset: 2px;
+  #incident-report .report-appendix {
+    break-before: page;
+    page-break-before: always;
   }
 
   #incident-report h2,
-  #incident-report h3,
-  #incident-report h4 {
+  #incident-report h3 {
     break-after: avoid;
     page-break-after: avoid;
-  }
-
-  #incident-report .print-section {
-    break-before: page;
-    page-break-before: always;
   }
 
   #incident-report .print-keep {
@@ -186,14 +228,18 @@ h1 {
 
   #incident-report p,
   #incident-report li,
-  #incident-report dd,
-  #incident-report h4 {
+  #incident-report dd {
     overflow-wrap: anywhere;
   }
 
-  #incident-report .privileged-watermark span {
-    border-color: rgba(29, 107, 60, 0.35) !important;
-    color: rgba(29, 107, 60, 0.18) !important;
-    background: transparent !important;
+  #incident-report a {
+    color: #1d6b3c !important;
+    text-decoration: underline !important;
+    text-underline-offset: 2px;
   }
+}
+
+.report-sheet .privileged-watermark span {
+  border-color: rgba(47, 140, 64, 0.35);
+  color: rgba(47, 140, 64, 0.16);
 }

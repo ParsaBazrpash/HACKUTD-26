@@ -3,6 +3,7 @@ import { EMPTY_PROFILE, type ChannelView, type IncidentState, type MemberView, t
 import { showsConfirmedCountdown } from "@/lib/legal";
 import { incidentAccess } from "@/lib/report/access";
 import { buildIncidentReport, type IncidentReport, type ReportOptions } from "@/lib/report";
+import { executiveBullets, coverDecisions } from "@/lib/report/sheet";
 
 const NOW = new Date("2026-11-08T18:00:00.000Z");
 const SAFETY = "123 456 789 012";
@@ -311,6 +312,42 @@ describe("incident report", () => {
     expect(verifiedReport?.integrity.channels[0]?.head).not.toContain("placeholder");
     expect(verifiedReport?.integrity.build).toBe("Build abc1234");
     expect(verifiedReport?.demoNote).toBeNull();
+  });
+
+  test("prints UTC clocks and a cover summary from the recorded facts", () => {
+    const report = buildIncidentReport(state("counsel"), options());
+    expect(report?.exportedAt).toBe("08 Nov 2026, 18:00 UTC");
+    expect(report?.timeline[0]?.entries[0]?.occurredAt).toBe("08 Nov 2026, 18:00 UTC");
+    expect(report?.timeline[0]?.entries[0]?.at).toBe(NOW.getTime());
+    expect(executiveBullets(report!)).toEqual([
+      "Clinics are on paper downtime.",
+      "Incident is open and in the containment phase.",
+    ]);
+
+    const current = state("commander");
+    const entry = current.timeline[0];
+    if (!entry) throw new Error("missing timeline entry");
+    current.timeline = [
+      {
+        ...entry,
+        entry: {
+          ...entry.entry,
+          entryId: "00000000-0000-4000-8000-000000000031",
+          text: "Decision: Remove HHRA",
+          phase: "detection_analysis",
+          csf: "RS.CO",
+        },
+      },
+    ];
+    current.status = current.status ? { ...current.status, phase: "detection_analysis", summary: "" } : current.status;
+    const decided = buildIncidentReport(current, options());
+    expect(decided?.summary).toBe("No summary has been recorded.");
+    expect(executiveBullets(decided!)).toEqual([
+      "Incident is open and in the detection and analysis phase; remove HHRA has been decided.",
+    ]);
+    expect(coverDecisions(decided!)).toEqual([
+      expect.objectContaining({ title: "Remove HHRA", meta: "AC, Commander · 08 Nov 18:00 UTC" }),
+    ]);
   });
 
   test("a counsel-review result is not a confirmed countdown", () => {

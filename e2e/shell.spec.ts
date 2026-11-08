@@ -81,7 +81,7 @@ test("shell routes render the clinic incident", async ({ page }) => {
   await nav.getByRole("link", { name: "Report", exact: true }).click();
   await expect(page).toHaveURL(/\/report$/);
   await expect(page.getByRole("heading", { name: "Incident Report", exact: true })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Incident Summary", exact: true })).toContainText("E2E status summary for the clinic.");
+  await expect(page.getByRole("region", { name: /executive summary/i })).toContainText("E2E status summary for the clinic.");
   await expect(page.getByText("E2E command note: clinics remain on paper.")).toHaveCount(0);
   await expect(page.getByText("Do not forward")).toHaveCount(0);
 

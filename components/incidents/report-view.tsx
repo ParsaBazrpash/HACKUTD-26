@@ -37,6 +37,15 @@ export function ReportView() {
             <div className="min-w-0">
               <h2 className="text-3xl font-medium tracking-tight sm:text-4xl">Incident Report</h2>
               <p className="mt-2 text-sm text-muted">A formal record of the incident and response.</p>
+              <p className="mt-2 inline-flex items-center gap-2 text-xs text-muted" role="status">
+                <span
+                  aria-hidden="true"
+                  className={`size-2 rounded-full ${state.connection === "ready" ? "bg-signal" : "bg-muted"}`}
+                />
+                {state.connection === "ready"
+                  ? "Live: this report follows the dashboard and updates as the record changes."
+                  : "Not live right now: showing the last record this client holds."}
+              </p>
             </div>
             <button type="button" onClick={() => window.print()} className={exportButtonClass}>
               <Download aria-hidden="true" className="size-4" />

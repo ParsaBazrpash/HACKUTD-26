@@ -4,12 +4,10 @@ import {
   CircleAlert,
   CircleCheck,
   Clock,
-  FileText,
   GitBranch,
   Hash,
   Layers,
   Search,
-  Shield,
   User,
   Users,
   Zap,
@@ -23,6 +21,10 @@ import {
   executiveBullets,
   incidentStanding,
   integrityLabel,
+  phaseSteps,
+  coverStats,
+  severityTone,
+  type CoverAction,
 } from "@/lib/report/sheet";
 import { cardPreviewText } from "@/components/incidents/blast-radius-model";
 import { SafeText } from "@/components/incidents/safe-text";
@@ -30,7 +32,7 @@ import { SafeText } from "@/components/incidents/safe-text";
 const ink = "text-[#1c1f1c]";
 const muted = "text-[#8b938c]";
 const green = "text-[#3c9448]";
-const card = "print-keep rounded-2xl border border-[#e4e7e3] bg-white p-4";
+const card = "print-keep rounded-2xl border border-[#e1e6df] bg-white p-4";
 const chip = "flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#e5f6dc] text-[#3c9448]";
 
 export function ReportSheet({
@@ -48,6 +50,9 @@ export function ReportSheet({
   const actions = coverActions(report, pages, lead === "Not recorded" ? "Commander" : lead);
   const decisions = coverDecisions(report);
   const bullets = executiveBullets(report);
+  const steps = phaseSteps(report);
+  const stats = coverStats(report);
+  const tone = severityTone(report.severity);
 
   return (
     <article
@@ -62,132 +67,113 @@ export function ReportSheet({
       ) : null}
 
       <div className="report-cover">
-        <header className="flex items-center justify-between gap-6">
-          <div className="flex items-center gap-2.5">
-            <span className="flex size-8 items-center justify-center rounded-lg bg-[#1a1c1a] text-[11px] font-bold tracking-tight text-white">
-              HV
-            </span>
-            <span className="text-[15px] font-bold tracking-[0.08em] text-[#1a1c1a]">HAVEN</span>
-          </div>
-          <p className={`text-[11px] font-medium tracking-[0.16em] ${muted}`}>INCIDENT RESPONSE PLATFORM</p>
-        </header>
+        <section className="report-hero" aria-label="Incident overview">
+          <header className="flex items-center justify-between gap-6">
+            <HavenLogo tone="dark" />
+            <p className="rounded-full border border-white/25 px-3 py-1 text-[10px] font-semibold tracking-[0.2em] text-[#bfe9ae]">
+              CONFIDENTIAL · INCIDENT RESPONSE REPORT
+            </p>
+          </header>
 
-        <div className="mt-7 border-l-[3px] border-[#6fbf45] pl-4">
-          <div className="flex items-start justify-between gap-4">
-            <h2 className="text-[32px] font-bold leading-none tracking-tight text-[#161816]">Incident Response Report</h2>
-            <span className="mt-1 inline-flex shrink-0 items-center gap-2 rounded-full bg-[#e7f6df] px-3 py-1 text-[13px] font-medium text-[#1c1f1c]">
-              <span aria-hidden="true" className={`size-2 rounded-full ${standing === "Open" ? "bg-[#3caf50]" : "bg-[#8b938c]"}`} />
-              {standing}
-            </span>
+          <div className="mt-6 flex items-end justify-between gap-6">
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold tracking-[0.24em] text-[#7fdc5a]">INCIDENT RESPONSE REPORT</p>
+              <h2 className="mt-2 break-words text-[34px] font-extrabold leading-[1.05] tracking-tight text-white">
+                <SafeText text={report.title} />
+              </h2>
+            </div>
+            <div className="flex shrink-0 flex-col items-end gap-2">
+              <span className={`severity-pill severity-${tone}`}>{report.severity}</span>
+              <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-[12px] font-medium text-white">
+                <span aria-hidden="true" className={`size-2 rounded-full ${standing === "Open" ? "bg-[#4be06a]" : "bg-[#9aa39c]"}`} />
+                {standing}
+              </span>
+            </div>
           </div>
-          <p className="mt-2.5 text-[16px] text-[#66706a]">
-            <SafeText text={report.title} />
-          </p>
+
+          <ol className="mt-6 grid grid-cols-6 gap-1.5" aria-label="Response phase">
+            {steps.map((step, index) => (
+              <li key={step.label} className={`phase-step phase-${step.state}`} aria-current={step.state === "current" ? "step" : undefined}>
+                <span className="phase-bar" aria-hidden="true" />
+                <span className="mt-1.5 flex items-center gap-1.5 text-[10.5px] font-semibold tracking-[0.06em]">
+                  <span className="phase-num">{index + 1}</span>
+                  {step.label}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        <div className="report-stats relative z-10 -mt-6 grid grid-cols-4 gap-3 px-4">
+          {stats.map((stat) => (
+            <div key={stat.label} className="print-keep rounded-2xl border border-[#e1e6df] bg-white px-4 py-3 shadow-[0_6px_18px_rgba(18,40,24,0.10)]">
+              <p className={`text-[9.5px] font-semibold tracking-[0.14em] ${muted}`}>{stat.label.toUpperCase()}</p>
+              <p className="mt-1 text-[26px] font-extrabold leading-none tracking-tight text-[#14201a]">{stat.value}</p>
+              <p className={`mt-1.5 text-[11px] leading-4 ${muted}`}>{stat.sub}</p>
+            </div>
+          ))}
         </div>
 
-        <dl className="mt-6 border-y border-[#e7eae6]">
-          <div className="grid grid-cols-3 divide-x divide-[#e7eae6]">
-            <Meta icon={<Hash className="size-3.5" aria-hidden="true" />} label="Incident ID" value={report.incidentId} mono />
-            <Meta
-              icon={<Calendar className="size-3.5" aria-hidden="true" />}
-              label="Exported"
-              value={report.exportedAt ?? "Export time opens with the browser clock."}
-            />
-            <Meta icon={<Layers className="size-3.5" aria-hidden="true" />} label="Phase" value={report.phase} />
-          </div>
-          <div className="grid grid-cols-3 divide-x divide-[#e7eae6] border-t border-[#e7eae6]">
-            <Meta icon={<Shield className="size-3.5" aria-hidden="true" />} label="Severity" value={report.severity} />
-            <Meta icon={<User className="size-3.5" aria-hidden="true" />} label="Commander" value={lead} />
-            <Meta
-              icon={
-                integrity.ok ? (
-                  <CircleCheck className={`size-3.5 ${green}`} aria-hidden="true" />
-                ) : (
-                  <CircleAlert className="size-3.5 text-[#a33b32]" aria-hidden="true" />
-                )
-              }
-              label="Integrity"
-              value={integrity.label}
-              tone={integrity.ok ? "good" : "bad"}
-            />
-          </div>
+        <dl className="mt-4 grid grid-cols-4 divide-x divide-[#e7eae6] rounded-2xl border border-[#e7eae6] bg-[#fafbf9]">
+          <Meta icon={<Hash className="size-3.5" aria-hidden="true" />} label="Incident ID" value={report.incidentId} mono />
+          <Meta icon={<User className="size-3.5" aria-hidden="true" />} label="Commander" value={lead} />
+          <Meta
+            icon={<Calendar className="size-3.5" aria-hidden="true" />}
+            label="Exported"
+            value={report.exportedAt ?? "Opens with the browser clock."}
+          />
+          <Meta
+            icon={
+              integrity.ok ? (
+                <CircleCheck className={`size-3.5 ${green}`} aria-hidden="true" />
+              ) : (
+                <CircleAlert className="size-3.5 text-[#a33b32]" aria-hidden="true" />
+              )
+            }
+            label="Integrity"
+            value={integrity.label}
+            tone={integrity.ok ? "good" : "bad"}
+          />
         </dl>
 
         {report.connectionNote ? <p className={`mt-3 text-[12px] ${muted}`}>{report.connectionNote}</p> : null}
 
-        <section className="mt-5 rounded-2xl bg-[#e8f6e3] px-5 py-4" aria-labelledby="report-executive-summary">
-          <h3 id="report-executive-summary" className={`flex items-center gap-2 text-[12px] font-semibold tracking-[0.14em] ${green}`}>
+        <section className="mt-4 rounded-2xl border border-[#cfe9c4] bg-gradient-to-br from-[#eaf8e3] to-[#f6fcf2] px-5 py-4" aria-labelledby="report-executive-summary">
+          <h3 id="report-executive-summary" className={`flex items-center gap-2 text-[11px] font-bold tracking-[0.16em] ${green}`}>
             <Zap className="size-4" aria-hidden="true" />
             EXECUTIVE SUMMARY
           </h3>
-          <ul className="mt-3 list-disc space-y-1 pl-5 text-[13.5px] leading-6 text-[#243028]">
+          <ul className="mt-2.5 list-disc space-y-1 pl-5 text-[13px] leading-5 text-[#243028]">
             {bullets.map((bullet, index) => (
               <li key={index}>
                 <SafeText text={bullet} />
               </li>
             ))}
           </ul>
-          {report.demoNote ? <p className="mt-3 text-[12px] leading-5 text-[#5c6560]">{report.demoNote}</p> : null}
+          {report.demoNote ? <p className="mt-2 text-[11px] leading-4 text-[#5c6560]">{report.demoNote}</p> : null}
         </section>
 
         <div className="mt-4 grid grid-cols-2 gap-4">
-          <section className={card} aria-labelledby="report-incident-summary">
-            <CardTitle id="report-incident-summary" icon={<FileText className="size-[18px]" aria-hidden="true" />} title="Incident Summary" />
-            <p className="mt-3 text-[13.5px] leading-6 text-[#3a403c]">
-              <SafeText text={report.summary} />
-            </p>
-          </section>
-
-          <section className={card} aria-labelledby="report-discovery">
+          <section className={`${card} col-span-2`} aria-labelledby="report-discovery">
             <CardTitle id="report-discovery" icon={<Search className="size-[18px]" aria-hidden="true" />} title="Discovery & Materiality" />
-            <div className="mt-4 grid grid-cols-2 gap-4">
+            <div className="mt-3 grid grid-cols-2 gap-6">
               <Fact label="Discovery" determination={report.discovery} />
               <Fact label="Materiality" determination={report.materiality} />
             </div>
           </section>
 
-          <section className={card} aria-labelledby="report-timeline">
-            <CardTitle id="report-timeline" icon={<Clock className="size-[18px]" aria-hidden="true" />} title="Timeline of Actions" />
-            {actions.length === 0 ? (
-              <p className={`mt-3 ${muted}`}>{report.timelineEmpty ?? "No timeline entries are on the record."}</p>
-            ) : (
-              <ol className="relative mt-4 space-y-4 border-l border-[#d7ecd2] pl-4">
-                {actions.map((action) => (
-                  <li key={action.id} className="print-keep relative">
-                    <span aria-hidden="true" className="absolute -left-[21px] top-1.5 size-2.5 rounded-full bg-[#3c9a4a] ring-4 ring-white" />
-                    <p>
-                      <span className="inline-flex rounded-full bg-[#f2f3f2] px-2.5 py-0.5 text-[12px] text-[#5c6560]">{action.when}</span>
-                    </p>
-                    <p className="mt-1.5 font-semibold text-[#1c1f1c]">
-                      <SafeText text={action.title} />
-                    </p>
-                    {action.detail ? (
-                      <p className="text-[13px] text-[#243028]">
-                        <SafeText text={action.detail} />
-                      </p>
-                    ) : null}
-                    <p className={`text-[12px] ${muted}`}>{action.signature}</p>
-                    {action.note ? <p className={`text-[12px] ${muted}`}>{action.note}</p> : null}
-                    {action.alert ? <p className="text-[12px] text-[#a33b32]">{action.alert}</p> : null}
-                  </li>
-                ))}
-              </ol>
-            )}
-          </section>
-
           <section className={card} aria-labelledby="report-decisions">
             <CardTitle id="report-decisions" icon={<GitBranch className="size-[18px]" aria-hidden="true" />} title="Key Decisions" />
             {decisions.length === 0 ? (
-              <p className={`mt-3 ${muted}`}>No decisions recorded yet.</p>
+              <p className={`mt-3 text-[12.5px] ${muted}`}>No decisions recorded yet.</p>
             ) : (
               <ul className="mt-3 space-y-2">
                 {decisions.map((decision) => (
-                  <li key={decision.id} className="print-keep rounded-xl bg-[#f4f5f4] px-3 py-3">
-                    <p className="flex items-start gap-2 font-semibold text-[#1c1f1c]">
-                      <CircleCheck className={`mt-0.5 size-4 shrink-0 ${green}`} aria-hidden="true" />
+                  <li key={decision.id} className="print-keep rounded-xl border-l-[3px] border-[#3c9a4a] bg-[#f4f6f3] px-3 py-2">
+                    <p className="text-[12.5px] font-semibold leading-5 text-[#1c1f1c]">
                       <SafeText text={decision.title} />
                     </p>
-                    <p className={`mt-1 pl-6 text-[12px] ${muted}`}>{decision.meta}</p>
+                    <p className={`mt-0.5 text-[11px] ${muted}`}>{decision.meta}</p>
                   </li>
                 ))}
               </ul>
@@ -197,38 +183,27 @@ export function ReportSheet({
           <section className={card} aria-labelledby="report-systems">
             <CardTitle id="report-systems" icon={<Layers className="size-[18px]" aria-hidden="true" />} title="Affected Systems" />
             {report.systems.length === 0 ? (
-              <p className={`mt-3 text-[13.5px] text-[#3a403c]`}>{report.systemsEmpty ?? "No affected systems are on the record."}</p>
+              <p className="mt-3 text-[12.5px] text-[#3a403c]">{report.systemsEmpty ?? "No affected systems are on the record."}</p>
             ) : (
-              <ul className="mt-3 space-y-3">
+              <ul className="mt-2 divide-y divide-[#eef0ee]">
                 {report.systems.map((system) => (
-                  <li key={system.id} className="print-keep">
-                    <p className="font-semibold">
+                  <li key={system.id} className="print-keep flex items-center justify-between gap-3 py-1.5">
+                    <span className="min-w-0 break-words text-[12.5px] font-medium">
                       <SafeText text={system.name} />
-                    </p>
-                    <p className={muted}>
-                      {system.status} · {system.asset}
-                    </p>
-                    <p>{system.data}</p>
-                    <p className={muted}>Records {system.records}</p>
-                    <p className={muted}>{system.residents}</p>
-                    {system.euResidents ? <p className={muted}>EU residents {system.euResidents}</p> : null}
-                    {system.notes ? (
-                      <p className="mt-1">
-                        <SafeText text={system.notes} />
-                      </p>
-                    ) : null}
+                    </span>
+                    <span className={`system-chip system-${system.status.toLowerCase()}`}>{system.status}</span>
                   </li>
                 ))}
               </ul>
             )}
           </section>
 
-          <section className={card} aria-labelledby="report-people">
+          <section className={`${card} col-span-2`} aria-labelledby="report-people">
             <CardTitle id="report-people" icon={<Users className="size-[18px]" aria-hidden="true" />} title="People Involved" />
             {report.roster.length === 0 ? (
               <p className={`mt-3 ${muted}`}>{report.rosterEmpty ?? "No team roles are on the record."}</p>
             ) : (
-              <ul className="mt-2 divide-y divide-[#eef0ee]">
+              <ul className="mt-3 flex flex-wrap gap-2">
                 {report.roster.map((member) => (
                   <Person key={`${member.name}-${member.fingerprint}`} member={member} />
                 ))}
@@ -237,14 +212,89 @@ export function ReportSheet({
           </section>
         </div>
 
-        <footer className="report-cover-footer mt-8 flex items-center justify-between gap-4 border-t border-[#e7eae6] pt-3 text-[11px] text-[#9aa19c]">
-          <p>Generated by HAVEN · {report.exportedAt ?? "Export time opens with the browser clock."}</p>
-          <p>Page 1 of 1</p>
-        </footer>
       </div>
 
+      <TimelineAppendix report={report} actions={actions} />
       <RecordAppendix report={report} />
+
+      <footer className="report-cover-footer mt-8 flex items-center justify-between gap-4 border-t border-[#e7eae6] pt-3 text-[11px] text-[#9aa19c]">
+          <p>Generated by HAVEN · {report.exportedAt ?? "Export time opens with the browser clock."} · All times UTC</p>
+          <p>Haven incident record</p>
+        </footer>
+
     </article>
+  );
+}
+
+function TimelineAppendix({ report, actions }: { report: IncidentReport; actions: CoverAction[] }) {
+  return (
+    <div className="report-timeline-page mt-8 print:mt-0">
+      <h2 className="flex items-center gap-2.5 text-[20px] font-extrabold tracking-tight text-[#14201a]">
+        <span className={chip}>
+          <Clock className="size-[18px]" aria-hidden="true" />
+        </span>
+        Timeline of actions
+      </h2>
+      <p className={`mt-1 text-[12px] ${muted}`}>Every signed entry, oldest first. Times are UTC.</p>
+      {actions.length === 0 ? (
+        <p className={`mt-3 ${muted}`}>{report.timelineEmpty ?? "No timeline entries are on the record."}</p>
+      ) : (
+        <ol className="relative ml-2 mt-5 space-y-3.5 border-l-2 border-[#cfe6c8] pl-5">
+          {actions.map((action) => (
+            <li key={action.id} className="print-keep relative">
+              <span aria-hidden="true" className="absolute -left-[27px] top-1.5 size-3 rounded-full bg-[#3c9a4a] ring-4 ring-white" />
+              <p>
+                <span className="inline-flex rounded-full bg-[#eef3ec] px-2.5 py-0.5 text-[11.5px] font-medium text-[#41594a]">{action.when}</span>
+              </p>
+              <p className="mt-1 text-[13px] font-semibold text-[#1c1f1c]">
+                <SafeText text={action.title} />
+              </p>
+              {action.detail ? (
+                <p className="text-[12.5px] text-[#243028]">
+                  <SafeText text={action.detail} />
+                </p>
+              ) : null}
+              <p className={`text-[11.5px] ${muted}`}>{action.signature}</p>
+              {action.note ? <p className={`text-[11.5px] ${muted}`}>{action.note}</p> : null}
+              {action.alert ? <p className="text-[11.5px] text-[#a33b32]">{action.alert}</p> : null}
+            </li>
+          ))}
+        </ol>
+      )}
+
+      {report.systems.length > 0 ? (
+        <section className="mt-8" aria-labelledby="report-systems-detail">
+          <h2 id="report-systems-detail" className="flex items-center gap-2.5 text-[20px] font-extrabold tracking-tight text-[#14201a]">
+            <span className={chip}>
+              <Layers className="size-[18px]" aria-hidden="true" />
+            </span>
+            Affected systems in detail
+          </h2>
+          <ul className="mt-4 grid grid-cols-2 gap-3">
+            {report.systems.map((system) => (
+              <li key={system.id} className={card}>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-semibold">
+                    <SafeText text={system.name} />
+                  </p>
+                  <span className={`system-chip system-${system.status.toLowerCase()}`}>{system.status}</span>
+                </div>
+                <p className={muted}>{system.asset}</p>
+                <p className="mt-1">{system.data}</p>
+                <p className={muted}>Records {system.records}</p>
+                <p className={muted}>{system.residents}</p>
+                {system.euResidents ? <p className={muted}>EU residents {system.euResidents}</p> : null}
+                {system.notes ? (
+                  <p className="mt-1">
+                    <SafeText text={system.notes} />
+                  </p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+    </div>
   );
 }
 
@@ -252,12 +302,7 @@ function RecordAppendix({ report }: { report: IncidentReport }) {
   return (
     <div className="report-appendix mt-10 border-t border-[#e7eae6] pt-8 print:mt-0 print:border-0 print:pt-0">
       <header className="flex items-center justify-between gap-6">
-        <div className="flex items-center gap-2.5">
-          <span className="flex size-8 items-center justify-center rounded-lg bg-[#1a1c1a] text-[11px] font-bold tracking-tight text-white">
-            HV
-          </span>
-          <span className="text-[15px] font-bold tracking-[0.08em]">HAVEN</span>
-        </div>
+        <HavenLogo tone="light" />
         <p className={`text-[11px] font-medium tracking-[0.16em] ${muted}`}>SUPPORTING RECORD</p>
       </header>
       <h2 className="mt-6 text-[22px] font-bold tracking-tight">Evidence, deadlines, and verification</h2>
@@ -434,6 +479,20 @@ function RecordAppendix({ report }: { report: IncidentReport }) {
   );
 }
 
+function HavenLogo({ tone }: { tone: "dark" | "light" }) {
+  const word = tone === "dark" ? "text-white" : "text-[#0a0c0b]";
+  return (
+    <div className="flex items-center gap-3">
+      <span className={`flex h-9 w-11 items-center justify-center rounded-lg ${tone === "dark" ? "" : "bg-[#080a09]"}`}>
+        <svg viewBox="0 0 40 24" className="h-5 w-9" aria-hidden="true" fill="none">
+          <path d="M5 17 L20 6 L35 17" stroke="#d8ff65" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </span>
+      <span className={`text-[17px] font-semibold tracking-[0.42em] ${word}`}>HAVEN</span>
+    </div>
+  );
+}
+
 function CardTitle({ id, icon, title }: { id: string; icon: ReactNode; title: string }) {
   return (
     <h3 id={id} className="flex items-center gap-2.5 text-[15px] font-semibold tracking-tight text-[#1a1c1a]">
@@ -459,7 +518,7 @@ function Meta({
   const valueClass =
     tone === "good" ? "font-medium text-[#2f8a3e]" : tone === "bad" ? "font-medium text-[#a33b32]" : "text-[#1c1f1c]";
   return (
-    <div className="min-w-0 px-4 py-3.5 first:pl-0 last:pr-0">
+    <div className="min-w-0 px-4 py-3">
       <dt className={`flex items-center gap-1.5 text-[10px] font-medium tracking-[0.14em] ${muted}`}>
         {icon}
         {label.toUpperCase()}
@@ -493,8 +552,8 @@ function Person({ member }: { member: ReportMember }) {
   const live = member.state === "Active";
   const label = live ? member.role : member.state;
   return (
-    <li className="flex items-center justify-between gap-3 py-2.5">
-      <span className="min-w-0 break-words text-[14px] font-medium text-[#1c1f1c]">
+    <li className="print-keep flex items-center gap-2.5 rounded-full border border-[#e4e7e3] bg-[#fafbf9] py-1 pl-3 pr-1">
+      <span className="min-w-0 break-words text-[12.5px] font-medium text-[#1c1f1c]">
         <SafeText text={member.name} />
       </span>
       <span

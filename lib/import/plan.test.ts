@@ -204,4 +204,30 @@ describe('import plan', () => {
     const p = planFromCsv('Timestamp,DeviceName,AlertTitle,Severity,Password\n2026-11-08T02:13:00Z,PC-1,A,high,hunter2-secret\n');
     expect(JSON.stringify(p)).not.toContain('hunter2');
   });
+
+  it('a severity that is a prototype key never sticks, and the real severity wins', () => {
+    for (const word of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
+      const p = planFromCsv(HEAD + `2026-11-08T02:13:00Z,PC-1,A,${word}\n2026-11-08T02:14:00Z,PC-1,A,critical\n`);
+      expect(p.lines[0].body.text).toContain('severity critical');
+      const q = planFromCsv(HEAD + `2026-11-08T02:13:00Z,PC-1,A,${word}\n`);
+      expect(q.lines[0].body.text).not.toMatch(/function|object/i);
+    }
+  });
+
+  it('a new system built only from flagged rows starts flagged, one with a clean row does not', () => {
+    const p = planFromCsv(
+      HEAD +
+        '2026-09-09T12:00:00Z,PC-OLD,Old,high\n' +
+        '2026-11-08 02:13:00,PC-NOZONE,Nozone,high\n' +
+        '2026-09-09T12:00:00Z,PC-MIXED,Old,high\n2026-11-08T02:13:00Z,PC-MIXED,Fresh,high\n' +
+        '2026-11-08T02:13:00Z,PC-CLEAN,Fine,high\n' +
+        '2026-11-08T02:13:00Z,PC-QUIET,,\n',
+    );
+    const flags = Object.fromEntries(p.systems.map((s) => [s.host, s.flags]));
+    expect(flags['PC-OLD']).toEqual(['only flagged alerts']);
+    expect(flags['PC-NOZONE']).toEqual(['only flagged alerts']);
+    expect(flags['PC-MIXED']).toEqual([]);
+    expect(flags['PC-CLEAN']).toEqual([]);
+    expect(flags['PC-QUIET']).toEqual([]);
+  });
 });

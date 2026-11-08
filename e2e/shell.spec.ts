@@ -76,7 +76,7 @@ test("shell routes render the clinic incident", async ({ page }) => {
   await nav.getByRole("link", { name: "Legal Deadlines" }).click();
   await expect(page).toHaveURL(/\/legal$/);
   await expect(page.getByRole("heading", { name: "Legal deadlines" })).toBeVisible();
-  await expect(page.getByText("GDPR Article 33").first()).toBeVisible();
+  await expect(page.getByText("Texas notice to the attorney general").first()).toBeVisible();
 
   await nav.getByRole("link", { name: "Report", exact: true }).click();
   await expect(page).toHaveURL(/\/report$/);

@@ -457,22 +457,20 @@ Security headers in `next.config.ts` `headers()` (production): `Content-Security
 
 `computeDeadlines(state, now): Deadline[]` is pure. Each rule: `{ id, name, citation, sourceUrl, appliesWhen(state) => 'applies' | 'check' | 'no', start(state) => Date | null, due(start) => Date }`. Exposure means scope items with status `exfiltrated` or `suspected`; HIPAA also counts `encrypted` (HHS treats ransomware encryption of PHI as a presumed breach). Label everything **"Example rules for demonstration. Verify with counsel for each matter."**
 
+Scope (2026-11-08): the catalog covers what applies to the Winstead brief, a Texas organization: Texas, HIPAA, and SEC when the client is public. GDPR, NYDFS, DFARS, the bank 36-hour rule and CIRCIA were removed to keep the page short.
+
 | id | rule | applies when | clock starts | due |
 | --- | --- | --- | --- | --- |
-| `gdpr-33` | GDPR Art. 33, notify supervisory authority | `profile.euDataSubjects` and exposure involves personal data | `legal.discovery` | +72 hours |
 | `sec-8k-105` | SEC Form 8-K Item 1.05 | `profile.publicCompany` | `legal.materiality` | +4 business days |
 | `hipaa-404` | HIPAA 45 CFR 164.404, notify individuals | `profile.hipaaCoveredEntity` and PHI exposed | discovery | +60 calendar days |
 | `hipaa-408` | HIPAA 45 CFR 164.408, notify HHS (500+) | PHI records >= 500 | discovery | +60 days ('check' below 500: annual log) |
 | `hipaa-406` | HIPAA 45 CFR 164.406, media notice | more than 500 residents of one state | discovery | +60 days |
 | `tx-521-ind` | Tex. Bus. & Com. Code 521.053, notify individuals | Texas residents' sensitive personal info exposed | discovery | +60 days |
 | `tx-521-ag` | Tex. Bus. & Com. Code 521.053(i), notify Texas AG | 250+ Texas residents | discovery | +30 days |
-| `nydfs-50017` | 23 NYCRR 500.17, notify NYDFS | `profile.nydfsRegulated` | discovery | +72 hours |
-| `dfars-7012` | DFARS 252.204-7012, report to DoD | `profile.defenseContractor` | discovery | +72 hours |
-| `bank-36h` | Computer-Security Incident Notification Rule (12 CFR part 53 and parallels), notify regulator | `profile.bank` | discovery | +36 hours |
 
 Business days (SEC): skip Saturdays, Sundays and US federal holidays. Hard-code the OPM holiday lists for 2026 and 2027 and cite opm.gov. For 2026: Jan 1, Jan 19, Feb 16, May 25, Jun 19, Jul 3 (observed), Sep 7, Oct 12, Nov 11, Nov 26, Dec 25. Verify against OPM before relying on them. California and other states: show "check with counsel" rather than inventing a number. Every rule's `sourceUrl` must be a page you opened.
 
-Required tests: GDPR 72 hours from Sat Nov 7 2026 14:00 is Tue Nov 10 14:00; SEC materiality on Wed Nov 25 2026 is due Wed Dec 2 2026 (skips Thanksgiving and the weekend); Texas AG appears only at 250+ Texans; HIPAA counts `encrypted`; no discovery event means "clock not started", not a date.
+Required tests: Texas AG from Sat Nov 7 2026 14:00 Central is due at the end of Mon Dec 7 2026 Central; SEC materiality on Wed Nov 25 2026 is due Wed Dec 2 2026 (skips Thanksgiving and the weekend); Texas AG appears only at 250+ Texans; HIPAA counts `encrypted`; no discovery event means "clock not started", not a date.
 
 ---
 

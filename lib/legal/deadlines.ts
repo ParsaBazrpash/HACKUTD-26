@@ -7,7 +7,6 @@ import {
   SEC_FILING_MINUTE,
   SEC_ZONE,
   addBusinessDays,
-  addElapsedHours,
   addIsoDays,
   civilDate,
   endOfNthCalendarDay,
@@ -29,12 +28,12 @@ import {
  * rule is on this incident. A countdown starts only from `legal.discovery` or
  * `legal.materiality`. Timeline text is never parsed into a trigger.
  *
- * CIRCIA is listed so the statute is not mistaken for a live clock. CISA's
- * CIRCIA page, opened November 7, 2026, says covered-incident and ransom
- * reports are not required until the final rule's effective date.
+ * Scope is the Winstead brief: a Texas organization. The catalog is the Texas
+ * breach statute, the HIPAA breach rules, SEC Item 1.05 for a public company,
+ * and a counsel flag for residents of any other state (California's 30-day
+ * rule is named but not started, because its statutory delays need counsel).
  */
 
-const GDPR_URL = "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32016R0679";
 const SEC_FORM_URL = "https://www.sec.gov/files/form8-k.pdf";
 const HIPAA_404_URL = "https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-D/section-164.404";
 const HIPAA_406_URL = "https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-D/section-164.406";
@@ -42,12 +41,6 @@ const HIPAA_408_URL = "https://www.ecfr.gov/current/title-45/subtitle-A/subchapt
 const HHS_RANSOMWARE_URL =
   "https://www.hhs.gov/hipaa/for-professionals/security/guidance/cybersecurity/ransomware-fact-sheet/index.html";
 const TEXAS_URL = "https://statutes.capitol.texas.gov/Docs/BC/htm/BC.521.htm";
-const NYDFS_URL = "https://www.dfs.ny.gov/cybersecurity/submissions";
-const DFARS_URL =
-  "https://www.acquisition.gov/dfars/252.204-7012-safeguarding-covered-defense-information-and-cyber-incident-reporting.";
-const BANK_URL = "https://www.ecfr.gov/current/title-12/chapter-I/part-53/section-53.3";
-const CIRCIA_URL =
-  "https://www.cisa.gov/topics/cyber-threats-and-advisories/information-sharing/cyber-incident-reporting-critical-infrastructure-act-2022-circia";
 const CALIFORNIA_URL =
   "https://leginfo.legislature.ca.gov/faces/codes_displaySection.xhtml?lawCode=CIV&sectionNum=1798.82.";
 
@@ -68,18 +61,6 @@ const PERSONAL = new Set([
 ]);
 const SPI = new Set(["ssn", "drivers_license", "financial_account", "payment_card", "phi"]);
 const RUNNING: ReadonlySet<ClockStatus> = new Set(["scheduled", "due_soon", "elapsed"]);
-
-const GDPR_RULE: LegalRule = {
-  id: "gdpr-33",
-  name: "GDPR supervisory notice",
-  jurisdiction: "European Union",
-  citation: "GDPR Article 33",
-  sourceUrl: GDPR_URL,
-  appliesWhen: "The profile marks EU data subjects, and a suspected or exfiltrated system holds personal data or a count of EU residents.",
-  trigger: "legal.discovery. Awareness of the controller. A missing discovery time means the clock has not started.",
-  calculation: "72 elapsed hours from the discovery instant. An hour is 3,600,000 milliseconds.",
-  timeZone: null,
-};
 
 const SEC_RULE: LegalRule = {
   id: "sec-8k-105",
@@ -154,84 +135,24 @@ const TEXAS_AG_RULE: LegalRule = {
   timeZone: CIVIL_ZONE,
 };
 
-const NYDFS_RULE: LegalRule = {
-  id: "nydfs-50017",
-  name: "NYDFS cybersecurity notice",
-  jurisdiction: "New York",
-  citation: "23 NYCRR 500.17(a)",
-  sourceUrl: NYDFS_URL,
-  appliesWhen: "The profile marks an NYDFS covered entity. Counsel still confirms the event is a cybersecurity incident as defined in 23 NYCRR 500.1.",
-  trigger: "legal.discovery, used as the determination that a cybersecurity incident occurred.",
-  calculation: "72 elapsed hours from that determination. The separate extortion-payment notices are not started.",
-  timeZone: null,
-};
-
-const DFARS_RULE: LegalRule = {
-  id: "dfars-7012",
-  name: "DFARS cyber incident report",
-  jurisdiction: "United States",
-  citation: "DFARS 252.204-7012(c)",
-  sourceUrl: DFARS_URL,
-  appliesWhen: "The profile marks a defense contractor. Counsel confirms the clause is in the contract and the incident meets paragraph (c).",
-  trigger: "legal.discovery. The clause defines rapidly report as within 72 hours of discovery.",
-  calculation: "72 elapsed hours from discovery.",
-  timeZone: null,
-};
-
-const BANK_RULE: LegalRule = {
-  id: "bank-36h",
-  name: "Bank regulator notice",
-  jurisdiction: "United States",
-  citation: "12 CFR 53.3",
-  sourceUrl: BANK_URL,
-  appliesWhen: "The profile marks a bank. Counsel confirms the event is a notification incident. Many cyber events are not.",
-  trigger: "legal.discovery, used as the determination that a notification incident occurred.",
-  calculation: "36 elapsed hours from that determination. Parallel Federal Reserve and FDIC rules use the same interagency standard.",
-  timeZone: null,
-};
-
-export const CIRCIA_RULE: LegalRule = {
-  id: "circia-reporting",
-  name: "CIRCIA covered-incident reporting",
-  jurisdiction: "United States",
-  citation: "6 U.S.C. 681b",
-  sourceUrl: CIRCIA_URL,
-  appliesWhen: "Not in effect. The statute directs CISA to issue a rule. Reporting begins on the final rule's effective date.",
-  trigger: "None. A discovery time, a defense-contractor flag, or a ransom note in the timeline does not start a CIRCIA clock.",
-  calculation: "No countdown. The proposed 72-hour and 24-hour periods are not operative filing deadlines.",
-  timeZone: null,
-};
-
 export const LEGAL_RULES: readonly LegalRule[] = [
-  GDPR_RULE,
   SEC_RULE,
   HIPAA_404_RULE,
   HIPAA_408_RULE,
   HIPAA_406_RULE,
   TEXAS_INDIVIDUAL_RULE,
   TEXAS_AG_RULE,
-  NYDFS_RULE,
-  DFARS_RULE,
-  BANK_RULE,
 ];
 
-const GDPR_NOTE =
-  "Article 33 applies unless the controller can show the breach is unlikely to result in a risk to the rights and freedoms of natural persons. This engine does not decide that exception.";
 const SEC_NOTE =
   "Item 1.05 is the registrant's materiality determination. A Department of Justice delay applies only when the Attorney General notifies the Commission in writing before the Form 8-K would be due. This engine does not apply that delay.";
 const HIPAA_NOTE = `45 CFR 164.404 covers a breach of unsecured PHI. HHS ransomware guidance treats ransomware encryption of ePHI as a presumed breach unless a low probability of compromise is documented (${HHS_RANSOMWARE_URL}). A law-enforcement delay under 45 CFR 164.412 is not applied here.`;
 const TEXAS_NOTE =
   "Sensitive personal information is defined in section 521.002. The record stores data categories, not the statutory name-plus-element combination. Encrypted data is a breach under section 521.053(a) only when the actor has the key. A law-enforcement delay is not applied here.";
-const NYDFS_NOTE =
-  "A cybersecurity incident is an event that requires notice to another authority, has a reasonable likelihood of materially harming operations, or deploys ransomware in a material part of the systems. Extortion-payment notice is a separate 24-hour duty, with a further explanation at 30 days. Those clocks are not started.";
-const DFARS_NOTE =
-  "Paragraph (c) applies when the incident affects a covered contractor information system, covered defense information, or operationally critical support identified in the contract. The profile flag does not establish those facts.";
-const BANK_NOTE =
-  "12 CFR 53.3 runs from the determination that a notification incident occurred. Counsel confirms the event meets that defined term. Parallel Federal Reserve and FDIC rules are the same interagency standard.";
 const STATE_NOTE =
   "State breach statutes differ in who must notify, what data counts, and whether any day count exists. This engine computes Texas and flags every other state for counsel.";
 
-type DueKind = "hours-72" | "hours-36" | "days-60" | "days-30" | "sec-4";
+type DueKind = "days-60" | "days-30" | "sec-4";
 type TriggerKind = "discovery" | "materiality";
 
 interface Decision {
@@ -247,7 +168,6 @@ interface Exposure {
   personalOpen: boolean;
   personalEncrypted: boolean;
   personalClosed: boolean;
-  euOpen: boolean;
   phiOpen: boolean;
   phiClosed: boolean;
   phiUnresolved: boolean;
@@ -275,18 +195,14 @@ export function computeDeadlines(state: IncidentState, now: Date): ComputedDeadl
   const profile = state.profile ?? EMPTY_PROFILE;
   const exposure = readExposure(state);
   const rows = [
-    finish(state, clock, GDPR_RULE, gdpr(profile, exposure), "discovery"),
     finish(state, clock, SEC_RULE, sec(profile), "materiality"),
     finish(state, clock, HIPAA_404_RULE, hipaaIndividuals(profile, exposure), "discovery"),
     finish(state, clock, HIPAA_408_RULE, hipaaSecretary(state, profile, exposure), "discovery"),
     finish(state, clock, HIPAA_406_RULE, hipaaMedia(profile, exposure), "discovery"),
     finish(state, clock, TEXAS_INDIVIDUAL_RULE, texasIndividuals(exposure), "discovery"),
     finish(state, clock, TEXAS_AG_RULE, texasAttorneyGeneral(exposure), "discovery"),
-    finish(state, clock, NYDFS_RULE, profileGate(profile.nydfsRegulated, "NYDFS", NYDFS_NOTE, "hours-72"), "discovery"),
-    finish(state, clock, DFARS_RULE, profileGate(profile.defenseContractor, "DFARS 252.204-7012", DFARS_NOTE, "hours-72"), "discovery"),
-    finish(state, clock, BANK_RULE, profileGate(profile.bank, "12 CFR 53.3", BANK_NOTE, "hours-36"), "discovery"),
-    circia(state),
     ...stateNotices(state, exposure),
+    ...outsideCatalog(state),
   ];
   const known = new Set(rows.map((row) => row.rule.id));
   for (const update of Object.values(state.deadlineUpdates ?? {})) {
@@ -306,35 +222,6 @@ export function nextCountdown(deadlines: readonly ComputedDeadline[]): ComputedD
   });
   running.sort((a, b) => a.dueAt!.getTime() - b.dueAt!.getTime() || a.rule.id.localeCompare(b.rule.id));
   return running[0] ?? null;
-}
-
-function gdpr(profile: IncidentState["profile"], exposure: Exposure): Decision {
-  if (!profile.euDataSubjects) {
-    if (exposure.euOpen) {
-      return check(
-        GDPR_NOTE,
-        "The profile does not mark EU data subjects, but scope records EU residents on an exposed system. Counsel resolves that conflict. No GDPR countdown is started.",
-      );
-    }
-    return none(GDPR_NOTE, "The profile does not mark EU data subjects. GDPR Article 33 is not placed on this incident.");
-  }
-  if (exposure.personalOpen || exposure.euOpen) {
-    return on(
-      "hours-72",
-      GDPR_NOTE,
-      "The profile marks EU data subjects, and an exposed system holds personal data or a count of EU residents. Article 33 runs from awareness, read here from the recorded discovery time.",
-    );
-  }
-  if (exposure.scopeEmpty || exposure.unresolved || exposure.personalEncrypted || exposure.personalClosed) {
-    return check(
-      GDPR_NOTE,
-      "The profile marks EU data subjects, and the scope does not show suspected or exfiltrated personal data. Encrypted-only loss, a closed system, or an incomplete record stays with counsel. No GDPR countdown is started.",
-    );
-  }
-  return none(
-    GDPR_NOTE,
-    "The profile marks EU data subjects, and the exposed systems on the record do not hold personal data. GDPR Article 33 is not placed on this incident.",
-  );
 }
 
 function sec(profile: IncidentState["profile"]): Decision {
@@ -479,31 +366,68 @@ function texasAttorneyGeneral(exposure: Exposure): Decision {
   return none(note, "The 250-resident line in section 521.053(i) is not met on this record.");
 }
 
-function profileGate(flag: boolean, label: string, counselNote: string, due: DueKind): Decision {
-  if (!flag) {
-    return none(counselNote, `The profile does not mark this organization for ${label}. That rule is not placed on this incident.`);
-  }
-  return on(
-    due,
-    counselNote,
-    `The profile marks this organization for ${label}. The countdown is the statutory outer limit once counsel confirms the incident meets the rule's own definition.`,
-  );
+/** Counts the page shows next to the rules, read the same way the rules read them. */
+export interface ExposureSummary {
+  texasCount: number;
+  texasIncomplete: boolean;
+  /** Residents of other states on a suspected or exfiltrated system holding personal data. */
+  otherStates: Map<string, number>;
+  phiRecords: number;
+  phiRecordsIncomplete: boolean;
 }
 
-function circia(state: IncidentState): ComputedDeadline {
+export function exposureSummary(state: IncidentState): ExposureSummary {
+  const exposure = readExposure(state);
+  const otherStates = new Map([...exposure.stateCounts].filter(([code, count]) => code !== "TX" && count > 0));
   return {
-    rule: CIRCIA_RULE,
-    applicability: "no",
-    clockStatus: "not_in_effect",
-    startedAt: null,
-    dueAt: null,
-    explanation:
-      "CISA's CIRCIA page, read November 7, 2026, says covered cyber incident reports and ransom payment reports are not required until the final rule's effective date. The NPRM was published April 4, 2024. A draft final rule was submitted to OIRA on October 1, 2026. That review is not Federal Register publication, and it sets no effective date. 6 U.S.C. 681b tells CISA to write the rule. It is not itself a filing deadline. Voluntary sharing with CISA is not a countdown.",
-    counselReview: counsel(
-      "Confirm the final rule's effective date before any CIRCIA period is used. Do not start 72 hours from discovery or 24 hours from a ransom payment on the statute alone.",
-    ),
-    recorded: recordedFor(state, CIRCIA_RULE.id),
+    texasCount: exposure.texasCount,
+    texasIncomplete: exposure.texasIncomplete,
+    otherStates,
+    phiRecords: exposure.phiRecords,
+    phiRecordsIncomplete: exposure.phiRecordsIncomplete,
   };
+}
+
+const OUTSIDE_RULE: LegalRule = {
+  id: "outside-catalog",
+  name: "Facts outside the Texas catalog",
+  jurisdiction: "Counsel review",
+  citation: "Not computed by this engine",
+  sourceUrl: "",
+  appliesWhen: "The stored profile or scope records EU data subjects, NYDFS, a defense contract, a bank, or EU residents on an exposed system.",
+  trigger: "None.",
+  calculation: "No countdown. This catalog covers Texas, HIPAA and SEC only.",
+  timeZone: null,
+};
+
+/**
+ * The catalog no longer computes GDPR, NYDFS, DFARS or bank rules. When the
+ * record still carries facts those rules read, say so instead of dropping them.
+ */
+function outsideCatalog(state: IncidentState): ComputedDeadline[] {
+  const profile = state.profile ?? EMPTY_PROFILE;
+  const facts: string[] = [];
+  const euOnExposed = (state.scope ?? []).some((item) => {
+    const body = item?.latest;
+    return body && OPEN.has(body.status) && typeof body.euResidents === "number" && body.euResidents > 0;
+  });
+  if (profile.euDataSubjects || euOnExposed) facts.push("EU data subjects (GDPR Article 33)");
+  if (profile.nydfsRegulated) facts.push("NYDFS regulation (23 NYCRR 500.17)");
+  if (profile.defenseContractor) facts.push("a defense contract (DFARS 252.204-7012)");
+  if (profile.bank) facts.push("a bank (12 CFR 53.3)");
+  if (facts.length === 0) return [];
+  return [
+    {
+      rule: OUTSIDE_RULE,
+      applicability: "check",
+      clockStatus: "needs_counsel",
+      startedAt: null,
+      dueAt: null,
+      explanation: `The record lists ${facts.join(", ")}. This engine covers Texas, HIPAA and SEC only, so those rules have no computed clock here. Some of them run in hours, not days. Counsel decides.`,
+      counselReview: counsel("Rules outside this catalog are not computed."),
+      recorded: recordedFor(state, OUTSIDE_RULE.id),
+    },
+  ];
 }
 
 function stateNotices(state: IncidentState, exposure: Exposure): ComputedDeadline[] {
@@ -691,14 +615,6 @@ function triggerProblem(kind: "absent" | "invalid_trigger" | "future_trigger", t
 }
 
 function computeDue(kind: DueKind, start: Date): DueResult | null {
-  if (kind === "hours-72" || kind === "hours-36") {
-    const hours = kind === "hours-72" ? 72 : 36;
-    const dueAt = addElapsedHours(start, hours);
-    return {
-      dueAt,
-      detail: `Due ${hours} elapsed hours after the trigger. An hour is 3,600,000 milliseconds, so a daylight-saving change moves the wall clock and leaves the elapsed count unchanged.`,
-    };
-  }
   if (kind === "days-60" || kind === "days-30") {
     const days = kind === "days-60" ? 60 : 30;
     const dueAt = endOfNthCalendarDay(start, days, CIVIL_ZONE);
@@ -744,9 +660,7 @@ function readExposure(state: IncidentState): Exposure {
     const phi = body.dataTypes.includes("phi");
     const status = body.status;
     const geography = Array.isArray(body.affected) && body.affected.length > 0 ? body.affected : null;
-    const eu = typeof body.euResidents === "number" && Number.isFinite(body.euResidents) ? body.euResidents : 0;
     if (status === "unknown" || body.dataTypes.length === 0) exposure.unresolved = true;
-    if (OPEN.has(status) && eu > 0) exposure.euOpen = true;
     if (OPEN.has(status) && personal) {
       exposure.personalOpen = true;
       addStates(exposure.stateCounts, geography);
@@ -762,7 +676,7 @@ function readExposure(state: IncidentState): Exposure {
         exposure.stateIncomplete = true;
       }
     }
-    if (CLOSED.has(status) && (personal || phi || eu > 0)) exposure.personalClosed = true;
+    if (CLOSED.has(status) && (personal || phi)) exposure.personalClosed = true;
     if (HIPAA_OPEN.has(status) && phi) {
       exposure.phiOpen = true;
       if (typeof body.recordCount === "number" && Number.isFinite(body.recordCount)) exposure.phiRecords += body.recordCount;
@@ -811,7 +725,6 @@ function emptyExposure(): Exposure {
     personalOpen: false,
     personalEncrypted: false,
     personalClosed: false,
-    euOpen: false,
     phiOpen: false,
     phiClosed: false,
     phiUnresolved: false,

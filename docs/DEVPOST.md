@@ -12,7 +12,7 @@
 
 ## Inspiration
 
-Winstead's scenario: the attacker can see normal company communications, ransomware has locked much of the data, company phones are down and email is sporadic. In that situation the first casualty is communication. Email, Slack and single sign-on may be in the attacker's hands, so responders fall back to personal phones and group texts. Meanwhile legal clocks start running (GDPR's 72 hours, the SEC's four business days after a materiality call, state attorney general deadlines), and the record of who knew what, and when, becomes evidence. We built the room responders walk into at hour zero, and the way to get them there.
+Winstead's scenario: the attacker can see normal company communications, ransomware has locked much of the data, company phones are down and email is sporadic. In that situation the first casualty is communication. Email, Slack and single sign-on may be in the attacker's hands, so responders fall back to personal phones and group texts. Meanwhile legal clocks start running (the Texas attorney general's 30 days, HIPAA's 60 days, the SEC's four business days after a materiality call), and the record of who knew what, and when, becomes evidence. We built the room responders walk into at hour zero, and the way to get them there.
 
 ## How HAVEN answers the scenario
 

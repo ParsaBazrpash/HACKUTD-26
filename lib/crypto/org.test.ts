@@ -16,7 +16,7 @@ import {
   type EnrollmentFields,
 } from './org';
 import { contactAad, contactSalt } from '@/lib/protocol/org';
-import { SEALED_CONTACT_MAX, SEALED_CONTACT_MIN } from '@/spacetimedb/src/shared/org';
+import { SEALED_CONTACT_LEN } from '@/spacetimedb/src/shared/org';
 
 const orgId = '11111111-1111-4111-8111-111111111111';
 const otherOrg = '22222222-2222-4222-8222-222222222222';
@@ -89,28 +89,43 @@ describe('revocation', () => {
 });
 
 describe('page request', () => {
-  const base = { orgId, incidentId, pageId, sentAtMs: 1_800_000_000_000, orgMemberIds: [3n, 1n, 2n] };
+  const T = (id: bigint, h: string) => ({ orgMemberId: id, identityHex: h.repeat(32) });
+  const t1 = T(1n, 'a1');
+  const t2 = T(2n, 'b2');
+  const t3 = T(3n, 'c3');
+  const base = { orgId, incidentId, pageId, sentAtMs: 1_800_000_000_000, targets: [t3, t1, t2] };
 
   it('verifies, ignores target order, and rejects edits', async () => {
     const cmd = await generateDeviceKeys();
     const other = await generateDeviceKeys();
     const sig = await signPageRequest(cmd.signPriv, base);
     expect(await verifyPageRequest(cmd.signPub, base, sig)).toBe(true);
-    expect(await verifyPageRequest(cmd.signPub, { ...base, orgMemberIds: [2n, 3n, 1n] }, sig)).toBe(true);
+    expect(await verifyPageRequest(cmd.signPub, { ...base, targets: [t2, t3, t1] }, sig)).toBe(true);
     expect(await verifyPageRequest(other.signPub, base, sig)).toBe(false);
-    expect(await verifyPageRequest(cmd.signPub, { ...base, orgMemberIds: [1n, 2n] }, sig)).toBe(false);
-    expect(await verifyPageRequest(cmd.signPub, { ...base, orgMemberIds: [1n, 2n, 3n, 4n] }, sig)).toBe(false);
+    expect(await verifyPageRequest(cmd.signPub, { ...base, targets: [t1, t2] }, sig)).toBe(false);
+    expect(await verifyPageRequest(cmd.signPub, { ...base, targets: [...base.targets, T(4n, 'd4')] }, sig)).toBe(false);
     expect(await verifyPageRequest(cmd.signPub, { ...base, orgId: otherOrg }, sig)).toBe(false);
     expect(await verifyPageRequest(cmd.signPub, { ...base, incidentId: otherOrg }, sig)).toBe(false);
     expect(await verifyPageRequest(cmd.signPub, { ...base, pageId: otherOrg }, sig)).toBe(false);
     expect(await verifyPageRequest(cmd.signPub, { ...base, sentAtMs: base.sentAtMs + 1 }, sig)).toBe(false);
   });
 
-  it('refuses duplicate targets', async () => {
+  it('binds each id to its identity: swapping or changing one fails', async () => {
     const cmd = await generateDeviceKeys();
-    await expect(signPageRequest(cmd.signPriv, { ...base, orgMemberIds: [1n, 1n] })).rejects.toThrow();
     const sig = await signPageRequest(cmd.signPriv, base);
-    expect(await verifyPageRequest(cmd.signPub, { ...base, orgMemberIds: [1n, 1n] }, sig)).toBe(false);
+    // Same two identities, ids exchanged.
+    const swapped = [T(1n, 'b2'), T(2n, 'a1'), t3];
+    expect(await verifyPageRequest(cmd.signPub, { ...base, targets: swapped }, sig)).toBe(false);
+    // Right id, a different person's identity.
+    expect(await verifyPageRequest(cmd.signPub, { ...base, targets: [t3, T(1n, 'ee'), t2] }, sig)).toBe(false);
+  });
+
+  it('refuses duplicate ids or identities', async () => {
+    const cmd = await generateDeviceKeys();
+    await expect(signPageRequest(cmd.signPriv, { ...base, targets: [t1, t1] })).rejects.toThrow();
+    await expect(signPageRequest(cmd.signPriv, { ...base, targets: [t1, T(2n, 'a1')] })).rejects.toThrow();
+    const sig = await signPageRequest(cmd.signPriv, base);
+    expect(await verifyPageRequest(cmd.signPub, { ...base, targets: [t1, t1] }, sig)).toBe(false);
   });
 });
 
@@ -120,10 +135,18 @@ describe('sealed contact', () => {
     const a = await sealContact(p.pub, orgId, idA, PHONE);
     const b = await sealContact(p.pub, orgId, idA, PHONE);
     expect(a).not.toEqual(b);
-    expect(a.length).toBeGreaterThanOrEqual(SEALED_CONTACT_MIN);
-    expect(a.length).toBeLessThanOrEqual(SEALED_CONTACT_MAX);
+    expect(a.length).toBe(SEALED_CONTACT_LEN);
     expect(await openContact(p.priv, orgId, idA, a)).toBe(PHONE);
     expect(await openContact(p.priv, orgId, idA, b)).toBe(PHONE);
+  });
+
+  it('hides the digit count: every number seals to 109 bytes and round trips', async () => {
+    const p = await pagerKeys();
+    for (const n of ['+12345678', '+123456789012', '+123456789012345']) {
+      const sealed = await sealContact(p.pub, orgId, idA, n);
+      expect(sealed.length).toBe(109);
+      expect(await openContact(p.priv, orgId, idA, sealed)).toBe(n);
+    }
   });
 
   it('does not contain the number in the clear', async () => {
@@ -172,7 +195,9 @@ describe('sealed contact', () => {
   it('refuses to open a validly sealed blob whose plaintext is not E.164', async () => {
     // Same ECDH, HKDF and AES-GCM steps as sealContact, but the plaintext skips the E.164 check.
     const p = await pagerKeys();
-    async function sealRaw(plaintext: string): Promise<Uint8Array> {
+    async function sealRaw(plaintext: string | Uint8Array, pad = true): Promise<Uint8Array> {
+      const bytes = typeof plaintext === 'string' ? new TextEncoder().encode(plaintext) : plaintext;
+      const body = pad ? Uint8Array.from({ length: 16 }, (_, i) => bytes[i] ?? 0) : bytes;
       const eph = (await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveBits'])) as CryptoKeyPair;
       const ephPub = new Uint8Array(await crypto.subtle.exportKey('raw', eph.publicKey));
       const peer = await crypto.subtle.importKey('raw', p.pub as BufferSource, { name: 'ECDH', namedCurve: 'P-256' }, false, []);
@@ -190,17 +215,26 @@ describe('sealed contact', () => {
         await crypto.subtle.encrypt(
           { name: 'AES-GCM', iv, additionalData: contactAad(orgId, idA) as BufferSource },
           key,
-          new TextEncoder().encode(plaintext),
+          body as BufferSource,
         ),
       );
       return Uint8Array.from([...ephPub, ...iv, ...ct]);
     }
     // Control: the helper produces a blob openContact accepts when the plaintext is valid.
     expect(await openContact(p.priv, orgId, idA, await sealRaw('+442071234567'))).toBe('+442071234567');
-    // Lengths stay inside the accepted range so only the plaintext check can reject these.
+    // Properly padded and sized, so only the E.164 check can reject these.
     for (const bad of ['5551234567890', '+1 555 123 45', 'abcdefghijkl', '+0555123456789']) {
       expect(await openContact(p.priv, orgId, idA, await sealRaw(bad)), bad).toBeNull();
     }
+    // Wrong plaintext length (no padding): rejected even though the number itself is valid.
+    expect(await openContact(p.priv, orgId, idA, await sealRaw('+442071234567', false))).toBeNull();
+    // Zero byte in the middle, number after it: padding must be trailing only.
+    const gap = new Uint8Array(16);
+    gap.set(new TextEncoder().encode('+442071234567'), 0); // a valid number on its own
+    gap[14] = 0x37; // stray byte after the padding starts
+    expect(await openContact(p.priv, orgId, idA, await sealRaw(gap, false))).toBeNull();
+    // All padding, empty number.
+    expect(await openContact(p.priv, orgId, idA, await sealRaw(new Uint8Array(16), false))).toBeNull();
   });
 });
 

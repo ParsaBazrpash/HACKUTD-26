@@ -11,6 +11,7 @@ const pub = (n: number) => Object.assign(new Uint8Array(65).fill(n), { 0: 4 });
 const hash = new Uint8Array(32).fill(8);
 const code = new Uint8Array(16).fill(1);
 const hex = (b: Uint8Array) => bytesToHex(b);
+const tg = (...ids: bigint[]) => ids.map((i) => ({ orgMemberId: i, identityHex: i.toString(16).padStart(2, '0').repeat(32) }));
 
 describe('client and module statements match byte for byte', () => {
   it('enroll link, join, enroll, revoke, contact, page and safety', () => {
@@ -24,8 +25,8 @@ describe('client and module statements match byte for byte', () => {
     expect(hex(client.orgRevokeStatement(orgId, 5n, identity, 'lost phone'))).toBe(hex(mod.orgRevokeStatement(orgId, 5n, identity, 'lost phone')));
     expect(hex(client.contactAad(orgId, identity))).toBe(hex(mod.contactAad(orgId, identity)));
     expect(hex(client.contactSalt(orgId))).toBe(hex(mod.contactSalt(orgId)));
-    expect(hex(client.pageStatement(orgId, incidentId, pageId, 1_800_000_000_000, [3n, 1n, 2n]))).toBe(
-      hex(mod.pageStatement(orgId, incidentId, pageId, 1_800_000_000_000, [3n, 1n, 2n])),
+    expect(hex(client.pageStatement(orgId, incidentId, pageId, 1_800_000_000_000, tg(3n, 1n, 2n)))).toBe(
+      hex(mod.pageStatement(orgId, incidentId, pageId, 1_800_000_000_000, tg(3n, 1n, 2n))),
     );
     expect(hex(client.orgSafetyInput(orgId, identity, pub(1), pub(2)))).toBe(hex(mod.orgSafetyInput(orgId, identity, pub(1), pub(2))));
   });
@@ -46,7 +47,7 @@ describe('statements are domain separated and injective', () => {
       mod.orgRevokeStatement(orgId, 1n, identity, 'r'),
       mod.contactAad(orgId, identity),
       mod.contactSalt(orgId),
-      mod.pageStatement(orgId, incidentId, pageId, 1, [1n]),
+      mod.pageStatement(orgId, incidentId, pageId, 1, tg(1n)),
       mod.orgSafetyInput(orgId, identity, pub(1), pub(2)),
     ];
     const tags = outs.map((o) => new TextDecoder().decode(o.subarray(4, 4 + new DataView(o.buffer, o.byteOffset).getUint32(0))));
@@ -55,11 +56,24 @@ describe('statements are domain separated and injective', () => {
   });
 
   it('page statement sorts targets, binds every field and rejects duplicates', () => {
-    const base = mod.pageStatement(orgId, incidentId, pageId, 5, [2n, 1n]);
-    expect(hex(mod.pageStatement(orgId, incidentId, pageId, 5, [1n, 2n]))).toBe(hex(base));
-    expect(hex(mod.pageStatement(orgId, incidentId, pageId, 6, [1n, 2n]))).not.toBe(hex(base));
-    expect(hex(mod.pageStatement(orgId, incidentId, pageId, 5, [1n, 2n, 3n]))).not.toBe(hex(base));
-    expect(() => mod.pageStatement(orgId, incidentId, pageId, 5, [1n, 1n])).toThrow();
+    const base = mod.pageStatement(orgId, incidentId, pageId, 5, tg(2n, 1n));
+    expect(hex(mod.pageStatement(orgId, incidentId, pageId, 5, tg(1n, 2n)))).toBe(hex(base));
+    expect(hex(mod.pageStatement(orgId, incidentId, pageId, 6, tg(1n, 2n)))).not.toBe(hex(base));
+    expect(hex(mod.pageStatement(orgId, incidentId, pageId, 5, tg(1n, 2n, 3n)))).not.toBe(hex(base));
+    expect(() => mod.pageStatement(orgId, incidentId, pageId, 5, tg(1n, 1n))).toThrow();
+    // Same id twice under different identities, and one identity under two ids, are both refused.
+    expect(() => mod.pageStatement(orgId, incidentId, pageId, 5, [...tg(1n), { orgMemberId: 1n, identityHex: 'ff'.repeat(32) }])).toThrow();
+    expect(() => mod.pageStatement(orgId, incidentId, pageId, 5, [...tg(1n), { orgMemberId: 2n, identityHex: tg(1n)[0].identityHex }])).toThrow();
+  });
+
+  it('page statement binds each id to its identity', () => {
+    const a = mod.pageStatement(orgId, incidentId, pageId, 5, tg(1n, 2n));
+    const swapped = [
+      { orgMemberId: 1n, identityHex: tg(2n)[0].identityHex },
+      { orgMemberId: 2n, identityHex: tg(1n)[0].identityHex },
+    ];
+    expect(hex(mod.pageStatement(orgId, incidentId, pageId, 5, swapped))).not.toBe(hex(a));
+    expect(hex(client.pageStatement(orgId, incidentId, pageId, 5, swapped))).toBe(hex(mod.pageStatement(orgId, incidentId, pageId, 5, swapped)));
   });
 
   it('enroll statement binds the sealed contact hash', () => {
@@ -85,7 +99,7 @@ describe('golden bytes', () => {
     const p = new Uint8Array(65).fill(1);
     const q = new Uint8Array(65).fill(2);
     const h = new Uint8Array(32).fill(3);
-    expect(hex(mod.pageStatement(orgId, incidentId, pageId, 1_800_000_000_000, [2n, 1n]))).toBe('0000000c7a68312f6f72672f706167650000002431313131313131312d313131312d343131312d383131312d3131313131313131313131310000002433333333333333332d333333332d343333332d383333332d3333333333333333333333330000002434343434343434342d343434342d343434342d383434342d34343434343434343434343400000008000001a3185c5000000000080000000000000002000000080000000000000001000000080000000000000002');
+    expect(hex(mod.pageStatement(orgId, incidentId, pageId, 1_800_000_000_000, tg(2n, 1n)))).toBe('0000000c7a68312f6f72672f706167650000002431313131313131312d313131312d343131312d383131312d3131313131313131313131310000002433333333333333332d333333332d343333332d383333332d3333333333333333333333330000002434343434343434342d343434342d343434342d383434342d34343434343434343434343400000008000001a3185c500000000008000000000000000200000008000000000000000100000040303130313031303130313031303130313031303130313031303130313031303130313031303130313031303130313031303130313031303130313031303130310000000800000000000000020000004030323032303230323032303230323032303230323032303230323032303230323032303230323032303230323032303230323032303230323032303230323032');
     expect(hex(mod.enrollStatement(orgId, identity, 'Dana', p, q, h))).toBe('0000000e7a68312f6f72672f656e726f6c6c0000002431313131313131312d313131312d343131312d383131312d31313131313131313131313100000040616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261620000000444616e61000000410101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101000000410202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202000000200303030303030303030303030303030303030303030303030303030303030303');
     expect(hex(mod.orgRevokeStatement(orgId, 5n, identity, 'lost phone'))).toBe('0000000e7a68312f6f72672f7265766f6b650000002431313131313131312d313131312d343131312d383131312d31313131313131313131313100000008000000000000000500000040616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261620000000a6c6f73742070686f6e65');
     expect(hex(mod.contactAad(orgId, identity))).toBe('0000000f7a68312f6f72672f636f6e746163740000002431313131313131312d313131312d343131312d383131312d3131313131313131313131310000004061626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162');

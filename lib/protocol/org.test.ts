@@ -86,7 +86,7 @@ function record(n: number) {
     displayName: `Person ${n}`,
     signPub: b64urlEncode(Object.assign(new Uint8Array(65).fill(n), { 0: 4 })),
     ecdhPub: b64urlEncode(Object.assign(new Uint8Array(65).fill(n), { 0: 4 })),
-    sealedContact: b64urlEncode(new Uint8Array(102).fill(n)),
+    sealedContact: b64urlEncode(new Uint8Array(109).fill(n)),
     enrollSig: b64urlEncode(new Uint8Array(64).fill(n)),
   };
 }
@@ -131,6 +131,12 @@ describe('page request body', () => {
     const badId = body();
     badId.targets[0].orgMemberId = '-1';
     expect(pageRequestSchema.safeParse(badId).success).toBe(false);
+    const oldSize = body();
+    oldSize.targets[0].sealedContact = b64urlEncode(new Uint8Array(102));
+    expect(pageRequestSchema.safeParse(oldSize).success).toBe(false);
+    const longSealed = body();
+    longSealed.targets[0].sealedContact = b64urlEncode(new Uint8Array(110));
+    expect(pageRequestSchema.safeParse(longSealed).success).toBe(false);
     const shortSealed = body();
     shortSealed.targets[0].sealedContact = b64urlEncode(new Uint8Array(50));
     expect(pageRequestSchema.safeParse(shortSealed).success).toBe(false);

@@ -24,9 +24,11 @@ import {
   isValidEnrollTtlHours,
   isValidOrgName,
   normalizeOrgName,
-  sortedUniqueIds,
+  sortedUniqueTargets,
+  type PageTargetRef,
 } from '@/spacetimedb/src/shared/org';
 
+export type { PageTargetRef };
 export {
   ENROLL_LINK_CODE_LEN,
   ENROLL_LINK_SECRET_LEN,
@@ -72,10 +74,10 @@ export function pageStatement(
   incidentId: string,
   pageId: string,
   sentAtMs: number,
-  orgMemberIds: readonly (number | bigint)[],
+  targets: readonly PageTargetRef[],
 ): Uint8Array {
-  const ids = sortedUniqueIds(orgMemberIds);
-  return enc(ORG_DOMAIN.page, orgId, incidentId, pageId, sentAtMs, ids.length, ...ids);
+  const sorted = sortedUniqueTargets(targets);
+  return enc(ORG_DOMAIN.page, orgId, incidentId, pageId, sentAtMs, sorted.length, ...sorted.flatMap((t) => [t.orgMemberId, t.identityHex]));
 }
 
 export const orgSafetyInput = (orgId: string, identityHex: string, signPub: Uint8Array, ecdhPub: Uint8Array): Uint8Array =>

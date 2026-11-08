@@ -31,9 +31,12 @@ export const MAX_PAGE_TARGETS = 8;
 export const MAX_PAGE_BODY_BYTES = 16384;
 /** Ephemeral ECDH public key (65) plus IV (12). */
 export const SEALED_CONTACT_HEADER = 77;
-/** "+" and 8 digits is 9 bytes, "+" and 15 digits is 16 bytes, plus a 16-byte GCM tag. */
-export const SEALED_CONTACT_MIN = SEALED_CONTACT_HEADER + 9 + 16;
-export const SEALED_CONTACT_MAX = SEALED_CONTACT_HEADER + 16 + 16;
+/** The phone plaintext is zero-padded to 16 bytes ("+" and 15 digits is the longest), so its length leaks nothing. */
+export const CONTACT_PLAINTEXT_LEN = 16;
+/** Sealed contact is always header (77) + padded plaintext (16) + GCM tag (16) bytes. */
+export const SEALED_CONTACT_LEN = SEALED_CONTACT_HEADER + CONTACT_PLAINTEXT_LEN + 16;
+export const SEALED_CONTACT_MIN = SEALED_CONTACT_LEN;
+export const SEALED_CONTACT_MAX = SEALED_CONTACT_LEN;
 export const MAX_ORG_REASON = 200;
 
 const E164 = /^\+[0-9]{8,15}$/;
@@ -108,16 +111,36 @@ export function sortedUniqueIds(ids: readonly (number | bigint)[]): bigint[] {
   return sorted;
 }
 
-/** Statement the commander signs to request a page. */
+export interface PageTargetRef {
+  orgMemberId: number | bigint;
+  /** Lowercase hex identity of that roster member. */
+  identityHex: string;
+}
+
+/** Orders targets by id and rejects duplicate ids or identities. */
+export function sortedUniqueTargets(targets: readonly PageTargetRef[]): { orgMemberId: bigint; identityHex: string }[] {
+  const sorted = targets
+    .map((t) => ({ orgMemberId: BigInt(t.orgMemberId), identityHex: t.identityHex }))
+    .sort((a, b) => (a.orgMemberId < b.orgMemberId ? -1 : a.orgMemberId > b.orgMemberId ? 1 : 0));
+  const ids = new Set<string>();
+  for (const t of sorted) {
+    if (ids.has(`i:${t.orgMemberId}`) || ids.has(`h:${t.identityHex}`)) throw new RangeError('duplicate target');
+    ids.add(`i:${t.orgMemberId}`);
+    ids.add(`h:${t.identityHex}`);
+  }
+  return sorted;
+}
+
+/** Statement the commander signs to request a page. Binds each id to its person's identity. */
 export function pageStatement(
   orgId: string,
   incidentId: string,
   pageId: string,
   sentAtMs: number,
-  orgMemberIds: readonly (number | bigint)[],
+  targets: readonly PageTargetRef[],
 ): Uint8Array {
-  const ids = sortedUniqueIds(orgMemberIds);
-  return enc(ORG_DOMAIN.page, orgId, incidentId, pageId, sentAtMs, ids.length, ...ids);
+  const sorted = sortedUniqueTargets(targets);
+  return enc(ORG_DOMAIN.page, orgId, incidentId, pageId, sentAtMs, sorted.length, ...sorted.flatMap((t) => [t.orgMemberId, t.identityHex]));
 }
 
 /** Bytes hashed (SHA-256) to produce a member's org safety code. */

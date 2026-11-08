@@ -14,9 +14,10 @@ import {
   orgRevokeStatement,
   orgSafetyInput,
   pageStatement,
+  type PageTargetRef,
 } from '@/lib/protocol/org';
 import { HASH_LEN, IV_LEN, PUBKEY_LEN } from '@/spacetimedb/src/shared/limits';
-import { SEALED_CONTACT_HEADER, SEALED_CONTACT_MAX, SEALED_CONTACT_MIN } from '@/spacetimedb/src/shared/org';
+import { CONTACT_PLAINTEXT_LEN, SEALED_CONTACT_HEADER, SEALED_CONTACT_LEN } from '@/spacetimedb/src/shared/org';
 import { buf, randomBytes, sha256 } from './hash';
 import { importEcdhPub } from './keys';
 import { sign, verify } from './sign';
@@ -105,12 +106,13 @@ export interface PageRequestFields {
   incidentId: string;
   pageId: string;
   sentAtMs: number;
-  orgMemberIds: readonly bigint[];
+  /** Each target's id and identity; the signature binds the pair. */
+  targets: readonly PageTargetRef[];
 }
 
 /** Throws on duplicate ids; verify returns false instead. */
 export async function signPageRequest(commanderSignPriv: CryptoKey, f: PageRequestFields): Promise<Uint8Array> {
-  return sign(commanderSignPriv, pageStatement(f.orgId, f.incidentId, f.pageId, f.sentAtMs, f.orgMemberIds));
+  return sign(commanderSignPriv, pageStatement(f.orgId, f.incidentId, f.pageId, f.sentAtMs, f.targets));
 }
 
 export async function verifyPageRequest(
@@ -119,7 +121,7 @@ export async function verifyPageRequest(
   sig: Uint8Array,
 ): Promise<boolean> {
   try {
-    return await verify(commanderSignPub, pageStatement(f.orgId, f.incidentId, f.pageId, f.sentAtMs, f.orgMemberIds), sig);
+    return await verify(commanderSignPub, pageStatement(f.orgId, f.incidentId, f.pageId, f.sentAtMs, f.targets), sig);
   } catch {
     return false;
   }
@@ -140,10 +142,28 @@ async function contactKey(priv: CryptoKey, peerPub: Uint8Array, orgId: string, i
   );
 }
 
+/** Zero-pads the number to 16 bytes so the sealed length never reveals the digit count. */
+function padContact(e164: string): Uint8Array {
+  const raw = textEncoder.encode(e164);
+  if (raw.length > CONTACT_PLAINTEXT_LEN) throw new TypeError('phone too long');
+  const out = new Uint8Array(CONTACT_PLAINTEXT_LEN);
+  out.set(raw);
+  return out;
+}
+
+/** Strict inverse: exactly 16 bytes, zero padding only after the number, and the number must be E.164. */
+function unpadContact(pt: Uint8Array): string | null {
+  if (pt.length !== CONTACT_PLAINTEXT_LEN) return null;
+  let end = pt.length;
+  while (end > 0 && pt[end - 1] === 0) end--;
+  const e164 = textDecoder.decode(pt.subarray(0, end));
+  return isE164(e164) ? e164 : null;
+}
+
 /**
  * Seals an E.164 number to the pager's public key: ephemeral ECDH P-256,
  * HKDF-SHA256, AES-256-GCM with AAD enc('zh1/org/contact', orgId, identityHex).
- * Output is ephPub (65) || iv (12) || ciphertext. Throws on a malformed number.
+ * Plaintext is zero-padded to 16 bytes. Output is ephPub (65) || iv (12) || ciphertext (always 109 bytes). Throws on a malformed number.
  */
 export async function sealContact(
   pagerEcdhPub: Uint8Array,
@@ -160,7 +180,7 @@ export async function sealContact(
     await crypto.subtle.encrypt(
       { name: 'AES-GCM', iv: buf(iv), additionalData: buf(contactAad(orgId, identityHex)) },
       key,
-      buf(textEncoder.encode(e164)),
+      buf(padContact(e164)),
     ),
   );
   const out = new Uint8Array(ephPub.length + iv.length + ct.length);
@@ -178,7 +198,7 @@ export async function openContact(
   sealed: Uint8Array,
 ): Promise<string | null> {
   try {
-    if (!(sealed instanceof Uint8Array) || sealed.length < SEALED_CONTACT_MIN || sealed.length > SEALED_CONTACT_MAX) return null;
+    if (!(sealed instanceof Uint8Array) || sealed.length !== SEALED_CONTACT_LEN) return null;
     const ephPub = sealed.subarray(0, PUBKEY_LEN);
     const iv = sealed.subarray(PUBKEY_LEN, SEALED_CONTACT_HEADER);
     const ct = sealed.subarray(SEALED_CONTACT_HEADER);
@@ -190,8 +210,7 @@ export async function openContact(
         buf(ct),
       ),
     );
-    const e164 = textDecoder.decode(pt);
-    return isE164(e164) ? e164 : null;
+    return unpadContact(pt);
   } catch {
     return null;
   }

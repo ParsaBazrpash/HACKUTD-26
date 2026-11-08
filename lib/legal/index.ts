@@ -19,6 +19,17 @@ export {
   zonedWallTime,
 } from "@/lib/legal/calendar";
 
+export {
+  HAVEN_LEGAL_DISCLAIMER,
+  applicabilityLabel,
+  clockStatusLabel,
+  compareDeadlines,
+  deadlineRank,
+  isCounselReview,
+  showsConfirmedCountdown,
+  triggerLabel,
+} from "@/lib/legal/display";
+
 export { COUNSEL_REVIEW_WARNING } from "@/lib/legal/types";
 
 export type {

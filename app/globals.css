@@ -67,24 +67,105 @@ h1 {
   outline-offset: 2px;
 }
 
-@media print {
-  body:has(#incident-report) {
-    background: #fff;
-    color: #141716;
-  }
+.privileged-watermark {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
 
-  body:has(#incident-report) header,
-  body:has(#incident-report) footer,
-  body:has(#incident-report) .no-print {
+.privileged-watermark span {
+  transform: rotate(-24deg);
+  border: 2px solid rgba(216, 255, 101, 0.35);
+  padding: 0.35em 0.55em;
+  color: rgba(216, 255, 101, 0.22);
+  font-size: clamp(1.4rem, 6vw, 4.5rem);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+}
+
+@media print {
+  body > header,
+  body > footer,
+  nav,
+  .skip-link,
+  .no-print {
     display: none !important;
   }
 
-  body:has(#incident-report) #incident-report {
-    color: #141716;
+  body:has(#incident-report) {
+    background: #fff !important;
+    color: #161616 !important;
   }
 
-  body:has(#incident-report) #incident-report a {
-    color: inherit;
-    text-decoration: none;
+  body:has(#incident-report) main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  body:has(#incident-report) main *:not(#incident-report):not(#incident-report *):not(:has(#incident-report)) {
+    display: none !important;
+  }
+
+  #incident-report {
+    background: #fff !important;
+    color: #161616 !important;
+    font-size: 11pt;
+    line-height: 1.45;
+  }
+
+  #incident-report,
+  #incident-report :where(:not(.privileged-watermark):not(.privileged-watermark *)) {
+    background: transparent !important;
+    color: #161616 !important;
+    box-shadow: none !important;
+  }
+
+  #incident-report {
+    background: #fff !important;
+  }
+
+  #incident-report .print-accent {
+    color: #1d6b3c !important;
+  }
+
+  #incident-report a {
+    color: #1d6b3c !important;
+    text-decoration: underline !important;
+    text-underline-offset: 2px;
+  }
+
+  #incident-report h2,
+  #incident-report h3,
+  #incident-report h4 {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  #incident-report .print-section {
+    break-before: page;
+    page-break-before: always;
+  }
+
+  #incident-report .print-keep {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  #incident-report p,
+  #incident-report li,
+  #incident-report dd,
+  #incident-report h4 {
+    overflow-wrap: anywhere;
+  }
+
+  #incident-report .privileged-watermark span {
+    border-color: rgba(29, 107, 60, 0.35) !important;
+    color: rgba(29, 107, 60, 0.18) !important;
+    background: transparent !important;
   }
 }

@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import {
   canAuthorRecord,
+  draftDeadline,
+  draftDiscovery,
   draftScope,
   draftStatus,
   draftTask,
@@ -53,6 +55,13 @@ describe("record authorization", () => {
     expect(canAuthorRecord("technical", "active", "scope.set")).toBe(true);
     expect(canAuthorRecord("commander", "pending", "status.set")).toBe(false);
     expect(canAuthorRecord(undefined, "active", "task.set")).toBe(false);
+    expect(canAuthorRecord("counsel", "active", "legal.discovery")).toBe(true);
+    expect(canAuthorRecord("commander", "active", "legal.materiality")).toBe(true);
+    expect(canAuthorRecord("commander", "active", "deadline.update")).toBe(true);
+    expect(canAuthorRecord("technical", "active", "legal.discovery")).toBe(false);
+    expect(canAuthorRecord("technical", "active", "deadline.update")).toBe(false);
+    expect(canAuthorRecord("executive", "active", "legal.materiality")).toBe(false);
+    expect(canAuthorRecord("counsel", "pending", "deadline.update")).toBe(false);
   });
 
   test("the client still rejects a record write the role cannot make", async () => {
@@ -123,10 +132,33 @@ describe("record drafts", () => {
       status: "open",
     });
     expect(task.ok).toBe(true);
+
+    const discovery = draftDiscovery({
+      determinedAt: "2026-11-07T08:13",
+      basis: "Awareness when the note and the export were both in hand.",
+    });
+    expect(discovery.ok).toBe(true);
+    if (discovery.ok) {
+      expect(discovery.body.basis).toContain("Awareness");
+      expect(PayloadSchema.safeParse({ v: 1, kind: "legal.discovery", sentAt: new Date().toISOString(), body: discovery.body }).success).toBe(true);
+    }
+
+    const deadline = draftDeadline({
+      ruleId: "hipaa-404",
+      status: "in_progress",
+      owner: "ab".repeat(32),
+      note: "Notice analysis is underway.",
+    });
+    expect(deadline.ok).toBe(true);
   });
 
   test("rejects empty, oversized, and malformed record fields", () => {
     expect(draftStatus({ severity: "SEV9", phase: "recovery", summary: "x" }).ok).toBe(false);
+    expect(draftDiscovery({ determinedAt: "", basis: "x" }).ok).toBe(false);
+    expect(draftDiscovery({ determinedAt: "2026-11-07T08:13", basis: "x".repeat(1001) }).ok).toBe(false);
+    expect(draftDeadline({ ruleId: "HIPAA", status: "open", owner: "", note: "" }).ok).toBe(false);
+    expect(draftDeadline({ ruleId: "x".repeat(41), status: "open", owner: "", note: "" }).ok).toBe(false);
+    expect(draftDeadline({ ruleId: "hipaa-404", status: "closed", owner: "", note: "" }).ok).toBe(false);
     expect(draftStatus({ severity: "SEV1", phase: "recovery", summary: "x".repeat(501) }).ok).toBe(false);
     expect(draftTimeline({ occurredAt: "", phase: "recovery", csf: "DE.AE", text: "x", amends: "" }).ok).toBe(false);
     expect(draftTimeline({ occurredAt: "2026-11-07T08:13", phase: "recovery", csf: "DE.AE", text: " ", amends: "" }).ok).toBe(false);
@@ -306,23 +338,30 @@ describe("situation metrics", () => {
 });
 
 describe("war room wiring", () => {
-  test("forms call the incident client and the report leaves chat out", () => {
+  test("forms call the incident client and the report does not read channels itself", () => {
     const status = readFileSync("components/incidents/status-form.tsx", "utf8");
     const timeline = readFileSync("components/incidents/timeline-form.tsx", "utf8");
     const scope = readFileSync("components/incidents/scope-form.tsx", "utf8");
     const tasks = readFileSync("components/incidents/task-form.tsx", "utf8");
     const taskList = readFileSync("components/incidents/task-list.tsx", "utf8");
+    const legal = readFileSync("components/incidents/legal-forms.tsx", "utf8");
     const report = readFileSync("components/incidents/report-view.tsx", "utf8");
+    const builder = readFileSync("lib/report/build.ts", "utf8");
     expect(status).toContain("setStatus(draft.body)");
     expect(status).toContain("canAuthorRecord");
     expect(timeline).toContain("addTimelineEntry(draft.body)");
     expect(scope).toContain("upsertScopeItem(draft.body)");
     expect(tasks).toContain("upsertTask(draft.body)");
     expect(taskList).toContain("upsertTask(draft.body)");
-    expect(report).toContain("attorney-client privileged messages");
+    expect(legal).toContain("recordDiscovery(draft.body)");
+    expect(legal).toContain("recordMateriality(draft.body)");
+    expect(legal).toContain("updateDeadline(draft.body)");
+    expect(report).toContain("buildIncidentReport");
+    expect(report).toContain("attorney-client privileged");
     expect(report).not.toContain("state.channels");
     expect(report).not.toContain("safetyCode");
-    for (const file of [status, timeline, scope, tasks, taskList, report]) {
+    expect(builder).not.toContain("safetyCode");
+    for (const file of [status, timeline, scope, tasks, taskList, legal, report, builder]) {
       expect(file).not.toMatch(/console\./);
       expect(file).not.toContain("dangerouslySetInnerHTML");
     }

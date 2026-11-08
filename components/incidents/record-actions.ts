@@ -5,6 +5,9 @@ import {
   ASSET_TYPES,
   CSF_CATEGORIES,
   DATA_TYPES,
+  DEADLINE_STATUSES,
+  DeadlineBodySchema,
+  DiscoveryBodySchema,
   isKindAllowed,
   PHASES,
   SCOPE_STATUSES,
@@ -14,6 +17,8 @@ import {
   TASK_STATUSES,
   TaskBodySchema,
   TimelineBodySchema,
+  type DeadlineBody,
+  type DiscoveryBody,
   type ScopeBody,
   type StatusBody,
   type TaskBody,
@@ -21,7 +26,14 @@ import {
 } from "@/lib/protocol/events";
 import type { MemberStateName, Role } from "@/spacetimedb/src/shared/policy";
 
-export type RecordKind = "status.set" | "timeline.add" | "scope.set" | "task.set";
+export type RecordKind =
+  | "status.set"
+  | "timeline.add"
+  | "scope.set"
+  | "task.set"
+  | "legal.discovery"
+  | "legal.materiality"
+  | "deadline.update";
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const IDENTITY_HEX = /^[0-9a-f]{64}$/;
@@ -41,6 +53,9 @@ export function canAuthorRecord(
 
 export function recordDenial(kind: RecordKind): string {
   if (kind === "status.set") return "Only the commander can change severity and phase.";
+  if (kind === "legal.discovery" || kind === "legal.materiality" || kind === "deadline.update") {
+    return "Only the commander and counsel can record discovery, materiality, and deadline status.";
+  }
   return "Only the commander, counsel, and technical can write the record.";
 }
 
@@ -230,6 +245,48 @@ export function draftTask(input: TaskDraftInput): DraftResult<TaskBody> {
     status: input.status,
     ...(assignee ? { assignee } : {}),
     ...(dueAt ? { dueAt } : {}),
+  });
+  if (!parsed.success) return { ok: false, reason: "That update does not match the incident record." };
+  return { ok: true, body: parsed.data };
+}
+
+export interface DiscoveryDraftInput {
+  determinedAt: string;
+  basis: string;
+}
+
+export function draftDiscovery(input: DiscoveryDraftInput): DraftResult<DiscoveryBody> {
+  const determinedAt = toIsoTimestamp(input.determinedAt);
+  if (!determinedAt) return { ok: false, reason: "Enter the determination time." };
+  const basis = input.basis.trim();
+  if (basis.length > 1000) return { ok: false, reason: "The basis is limited to 1000 characters." };
+  const parsed = DiscoveryBodySchema.safeParse({ determinedAt, basis });
+  if (!parsed.success) return { ok: false, reason: "That update does not match the incident record." };
+  return { ok: true, body: parsed.data };
+}
+
+export interface DeadlineDraftInput {
+  ruleId: string;
+  status: string;
+  owner: string;
+  note: string;
+}
+
+export function draftDeadline(input: DeadlineDraftInput): DraftResult<DeadlineBody> {
+  const ruleId = input.ruleId.trim();
+  if (!/^[a-z0-9-]{1,40}$/.test(ruleId)) {
+    return { ok: false, reason: "That rule cannot be updated from this form." };
+  }
+  if (!inList(input.status, DEADLINE_STATUSES)) return { ok: false, reason: "Choose a status." };
+  const owner = input.owner.trim().toLowerCase();
+  if (owner && !IDENTITY_HEX.test(owner)) return { ok: false, reason: "Choose an owner from the room." };
+  const note = input.note.trim();
+  if (note.length > 1000) return { ok: false, reason: "Notes are limited to 1000 characters." };
+  const parsed = DeadlineBodySchema.safeParse({
+    ruleId,
+    status: input.status,
+    note,
+    ...(owner ? { owner } : {}),
   });
   if (!parsed.success) return { ok: false, reason: "That update does not match the incident record." };
   return { ok: true, body: parsed.data };

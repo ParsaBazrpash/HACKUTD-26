@@ -55,6 +55,9 @@ test("commander invites counsel, counsel joins, commander admits, they exchange 
   const waiting = commander.getByRole("region", { name: "WAITING FOR ADMISSION" });
   await expect(waiting.getByText("Link verified", { exact: true })).toBeVisible();
   const admit = waiting.getByRole("button", { name: "Admit" });
+  // Admit needs the commander to confirm the safety code first.
+  await expect(admit).toBeDisabled();
+  await waiting.getByLabel(/I confirmed this safety code/).check();
   await expect(admit).toBeEnabled();
   await admit.click();
   await expect(commander.getByText("Admitted Counsel Test.")).toBeVisible();

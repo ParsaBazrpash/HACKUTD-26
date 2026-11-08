@@ -34,15 +34,23 @@ export function fingerprintFromEnrollFragment(fragment: string | null): string |
   }
 }
 
+export const CARD_PURPOSE = "Use it when company email, chat or laptops are down or hacked.";
 export const CARD_FOOTER = "HAVEN never asks for a code. This card cannot sign you in or let anyone in.";
-export const CARD_NO_FINGERPRINT = "Admin fingerprint: open the Org page after your admin approves you";
+export const CARD_REPLACE = "Lost or damaged? Ask IT or your admin for a new one.";
+export const CARD_NO_FINGERPRINT = "Shown on the Org page after your admin approves you.";
 
 export const CARD_HOW_TO = {
+  handyTitle: "WHEN IT COMES IN HANDY",
+  handy: [
+    "Company email, chat or laptops are down, or may be in the attacker's hands, and you still need to reach the response team.",
+    "HAVEN calls or texts you, and you want to open it without trusting a link someone sent.",
+    "You want to check that the admin in HAVEN is really your admin.",
+  ],
   whenTitle: "WHEN TO SAVE IT",
-  when: "Now, right after you enroll. You need this card on the day company systems cannot be trusted, which is exactly when you cannot look it up. You can save it again later from the Org page.",
+  when: "Now, while HAVEN is working. On the day you need this card, company systems may not be there to look it up. You can save it again any time from the Org page.",
   whereTitle: "WHERE TO KEEP IT",
   where:
-    "Print it and keep it in your wallet, or save the image to Photos on your personal phone. Do not keep it only on a work laptop or in work email: those may be the systems under attack. Losing it is safe, because nothing on it lets anyone in.",
+    "Print it and keep it in your wallet, or save the image to Photos on your personal phone. Do not keep it only on a work laptop or in work email: those may be the systems under attack. If you lose it or it gets damaged, tell IT or your admin and save a new one. Nothing on it lets anyone in, so a lost card is not a break-in.",
   howTitle: "HOW TO USE IT",
   how: [
     "You get a call or text from HAVEN, or hear about an incident. Do not use links from company email or chat.",

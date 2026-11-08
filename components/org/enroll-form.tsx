@@ -49,6 +49,10 @@ export function EnrollForm() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<{ safetyCode: string; address: string } | null>(null);
+  // The card names the org this link enrolls into: the admin fingerprint the device pinned from the link.
+  // A name is shown only when the org this device can already see has that same admin.
+  const cardFingerprint = fingerprintFromEnrollFragment(fragment) ?? state.org?.adminFingerprint ?? null;
+  const cardOrg = state.org && state.org.adminFingerprint === cardFingerprint ? state.org : null;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -129,9 +133,9 @@ export function EnrollForm() {
       </div>
       {done ? (
         <BreakGlassCard
-          orgName={state.org?.name ?? null}
+          orgName={cardOrg ? cardOrg.name : null}
           address={done.address}
-          adminFingerprint={state.org?.adminFingerprint ?? fingerprintFromEnrollFragment(fragment)}
+          adminFingerprint={cardFingerprint}
         />
       ) : null}
     </div>

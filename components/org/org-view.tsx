@@ -38,7 +38,6 @@ export function OrgView() {
               {org.adminFingerprint}
             </p>
           </section>
-          {origin ? <BreakGlassCard orgName={org.name} address={origin} adminFingerprint={org.adminFingerprint} /> : null}
           {org.myRole === "admin" ? (
             <>
               <EnrollLinkPanel />
@@ -47,6 +46,7 @@ export function OrgView() {
           ) : (
             <p className="text-sm leading-6 text-muted">Only the org admin can manage the roster.</p>
           )}
+          {origin ? <BreakGlassCard orgName={org.name} address={origin} adminFingerprint={org.adminFingerprint} /> : null}
         </>
       ) : null}
     </div>

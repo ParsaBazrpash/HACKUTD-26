@@ -55,6 +55,9 @@ describe('BreakGlassCard markup', () => {
     expect(html).not.toMatch(/<[^>]*\sonerror=/);
     expect(html).toContain('NOT A KEY');
     expect(html).toContain('cannot sign you in or let anyone in');
+    expect(html).toContain('Lost or damaged? Ask IT or your admin for a new one.');
+    expect(html).toContain('company email, chat or laptops are down or hacked');
+    expect(html).not.toMatch(/one-time|single use|single-use/i);
     expect(html).toContain(ADDRESS);
     expect(html).toContain(FP);
     expect(html).not.toMatch(/\b\d{3} \d{3} \d{3} \d{3}\b|\b\d{12}\b/);
@@ -63,13 +66,13 @@ describe('BreakGlassCard markup', () => {
   it('uses a default heading and explains a missing fingerprint', () => {
     const html = render({ orgName: null, adminFingerprint: null });
     expect(html).toContain('Your HAVEN card');
-    expect(html).toContain('open the Org page after your admin approves you');
+    expect(html).toContain('Shown on the Org page after your admin approves you.');
   });
   it('has the buttons and the how-to text, without dashes', () => {
     const html = render({ orgName: 'Acme', adminFingerprint: FP });
     expect(html).toContain('Save as image');
     expect(html).toContain('>Print<');
-    for (const text of [CARD_HOW_TO.when, CARD_HOW_TO.where, ...CARD_HOW_TO.how]) {
+    for (const text of [...CARD_HOW_TO.handy, CARD_HOW_TO.when, CARD_HOW_TO.where, ...CARD_HOW_TO.how]) {
       expect(html).toContain(text.replace(/'/g, '&#x27;'));
       expect(text).not.toMatch(/[–—]/);
     }

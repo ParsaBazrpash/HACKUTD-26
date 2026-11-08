@@ -1,4 +1,4 @@
-import { CARD_FOOTER, CARD_NO_FINGERPRINT } from "@/components/org/break-glass-model";
+import { CARD_FOOTER, CARD_NO_FINGERPRINT, CARD_PURPOSE, CARD_REPLACE } from "@/components/org/break-glass-model";
 
 const W = 1050;
 const H = 660;
@@ -80,12 +80,22 @@ export async function renderCardCanvas(input: CardImageInput): Promise<HTMLCanva
   ctx.font = `600 44px ${SANS}`;
   const heading = input.orgName?.trim() ? input.orgName : "Your HAVEN card";
   let y = 160;
-  for (const line of wrap(ctx, heading, W - 112, 2)) {
+  // One line may use the full width; two lines stay left of the QR.
+  const headingLines = ctx.measureText(heading).width <= W - 112 ? [heading] : wrap(ctx, heading, leftW, 2);
+  for (const line of headingLines) {
     ctx.fillText(line, 56, y);
     y += 54;
   }
 
-  y = Math.max(y + 24, 250);
+  ctx.fillStyle = MUTED;
+  ctx.font = `22px ${SANS}`;
+  y -= 14;
+  for (const line of wrap(ctx, CARD_PURPOSE, leftW, 2)) {
+    ctx.fillText(line, 56, y);
+    y += 30;
+  }
+
+  y = Math.max(y + 30, 270);
   ctx.fillStyle = MUTED;
   ctx.font = `20px ${SANS}`;
   ctx.fillText("HAVEN address", 56, y);
@@ -113,6 +123,8 @@ export async function renderCardCanvas(input: CardImageInput): Promise<HTMLCanva
       y += 34;
     }
   } else {
+    ctx.fillText("Admin fingerprint", 56, y);
+    y += 34;
     for (const line of wrap(ctx, CARD_NO_FINGERPRINT, leftW, 3)) {
       ctx.fillText(line, 56, y);
       y += 28;
@@ -143,12 +155,15 @@ export async function renderCardCanvas(input: CardImageInput): Promise<HTMLCanva
     }
   }
 
-  ctx.fillStyle = TEXT;
   ctx.font = `22px ${SANS}`;
-  const foot = wrap(ctx, CARD_FOOTER, W - 112, 2);
-  let fy = H - 56 - (foot.length - 1) * 30;
+  const foot = [
+    ...wrap(ctx, CARD_FOOTER, W - 112, 2).map((text) => ({ text, color: TEXT })),
+    ...wrap(ctx, CARD_REPLACE, W - 112, 1).map((text) => ({ text, color: MUTED })),
+  ];
+  let fy = H - 48 - (foot.length - 1) * 30;
   for (const line of foot) {
-    ctx.fillText(line, 56, fy);
+    ctx.fillStyle = line.color;
+    ctx.fillText(line.text, 56, fy);
     fy += 30;
   }
   return canvas;

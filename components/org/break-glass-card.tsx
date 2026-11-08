@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { primaryButtonClass, secondaryButtonClass } from "@/components/incidents/form-ui";
 import { saveCardImage } from "@/components/org/break-glass-image";
-import { CARD_FOOTER, CARD_HOW_TO, CARD_NO_FINGERPRINT, cardQrText } from "@/components/org/break-glass-model";
+import { CARD_FOOTER, CARD_HOW_TO, CARD_NO_FINGERPRINT, CARD_PURPOSE, CARD_REPLACE, cardQrText } from "@/components/org/break-glass-model";
 
 const labelClass = "font-mono text-[11px] tracking-[0.18em] text-muted";
 
@@ -69,9 +69,12 @@ export function BreakGlassCard({
             NOT A KEY
           </span>
         </div>
-        <h2 id="break-glass-heading" className="text-lg font-medium">
-          {orgName?.trim() ? orgName : "Your HAVEN card"}
-        </h2>
+        <div className="grid gap-1">
+          <h2 id="break-glass-heading" className="text-lg font-medium">
+            {orgName?.trim() ? orgName : "Your HAVEN card"}
+          </h2>
+          <p className="text-sm leading-6 text-muted print:text-black">{CARD_PURPOSE}</p>
+        </div>
         <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
           <dl className="grid content-start gap-3 text-sm">
             <div>
@@ -81,13 +84,11 @@ export function BreakGlassCard({
               </dd>
             </div>
             <div>
+              <dt className="text-xs text-muted print:text-black">Admin fingerprint</dt>
               {adminFingerprint ? (
-                <>
-                  <dt className="text-xs text-muted print:text-black">Admin fingerprint</dt>
-                  <dd translate="no" className="break-all font-mono">
-                    {adminFingerprint}
-                  </dd>
-                </>
+                <dd translate="no" className="break-words font-mono">
+                  {adminFingerprint}
+                </dd>
               ) : (
                 <dd className="text-sm text-muted print:text-black">{CARD_NO_FINGERPRINT}</dd>
               )}
@@ -106,7 +107,10 @@ export function BreakGlassCard({
             </div>
           ) : null}
         </div>
-        <p className="text-sm leading-6">{CARD_FOOTER}</p>
+        <div className="grid gap-1 text-sm leading-6">
+          <p>{CARD_FOOTER}</p>
+          <p className="text-muted print:text-black">{CARD_REPLACE}</p>
+        </div>
       </div>
       <div className="no-print flex flex-wrap gap-3">
         <button type="button" onClick={() => void save()} className={primaryButtonClass}>
@@ -120,6 +124,14 @@ export function BreakGlassCard({
         {status?.text ?? ""}
       </p>
       <div className="no-print grid gap-4 rounded-2xl border border-line bg-panel px-4 py-4 text-sm leading-6">
+        <div>
+          <h3 className={labelClass}>{CARD_HOW_TO.handyTitle}</h3>
+          <ul className="mt-2 grid list-disc gap-2 pl-5">
+            {CARD_HOW_TO.handy.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
         <div>
           <h3 className={labelClass}>{CARD_HOW_TO.whenTitle}</h3>
           <p className="mt-2">{CARD_HOW_TO.when}</p>

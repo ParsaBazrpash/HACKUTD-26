@@ -62,3 +62,30 @@ describe('IncidentStore (IndexedDB)', () => {
     expect(await b.getChannelKey('record', 0)).toBeDefined();
   });
 });
+
+describe('OrgStore', () => {
+  it('stores only locked org keys, never replaces a cached roster entry, and stays out of the incident lock list', async () => {
+    const { OrgStore, lockedIncidentIds, orgIdsOnDevice } = await import('./store');
+    const { deriveVault, generateLockedOrgKeys, newVaultId } = await import('./vault');
+    const db = useStoreForTests('org1');
+    const o = new OrgStore(A, db);
+    const { key } = await deriveVault(new Uint8Array(32).fill(1), newVaultId());
+    const { record } = await generateLockedOrgKeys(key, A);
+    await o.setLockedKeys(record);
+    await expect(o.setLockedKeys({ ...record, v: 2 } as never)).rejects.toThrow();
+    expect(await orgIdsOnDevice(db)).toEqual([A]);
+    expect(await lockedIncidentIds(db)).toEqual([]);
+
+    const e = { identityHex: 'aa', signPub: new Uint8Array(65).fill(4), ecdhPub: new Uint8Array(65).fill(4), sealedContactHash: new Uint8Array(32) };
+    await o.addToRoster({ '1': e });
+    await o.addToRoster({ '1': { ...e, identityHex: 'bb' }, '2': e });
+    const r = await o.getRoster();
+    expect(r['1'].identityHex).toBe('aa');
+    expect(Object.keys(r).sort()).toEqual(['1', '2']);
+
+    await new OrgStore(B, db).setPin({ adminFingerprint: new Uint8Array(32), role: 'member' });
+    await o.wipe();
+    expect(await o.getLockedKeys()).toBeUndefined();
+    expect(await new OrgStore(B, db).getPin()).toBeDefined();
+  });
+});

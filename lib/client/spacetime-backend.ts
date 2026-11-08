@@ -15,6 +15,9 @@ import type {
   ConnectionState,
   IncidentBackend,
   MemberRow,
+  OrgBackend,
+  OrgMemberRow,
+  OrgRows,
 } from './backend';
 
 const TOKEN_KEY = 'zh-spacetime-token';
@@ -43,6 +46,40 @@ export const localTokenStore: TokenStore = {
 };
 
 const micros = (t: { microsSinceUnixEpoch: bigint }) => t.microsSinceUnixEpoch;
+
+type OrgMemberWire = {
+  id: bigint;
+  orgId: string;
+  identity: Identity;
+  displayName: string;
+  signPub: Uint8Array;
+  ecdhPub: Uint8Array;
+  joinTag: Uint8Array;
+  sealedContact: Uint8Array;
+  state: string;
+  enrollSig: Uint8Array;
+  revokeSig: Uint8Array;
+  enrolledAt: { microsSinceUnixEpoch: bigint };
+  approvedAt?: { microsSinceUnixEpoch: bigint } | undefined;
+  revokedAt?: { microsSinceUnixEpoch: bigint } | undefined;
+};
+
+const orgMemberRow = (m: OrgMemberWire): OrgMemberRow => ({
+  orgMemberId: m.id,
+  orgId: m.orgId,
+  identityHex: m.identity.toHexString(),
+  displayName: m.displayName,
+  signPub: m.signPub,
+  ecdhPub: m.ecdhPub,
+  joinTag: m.joinTag,
+  sealedContact: m.sealedContact,
+  state: m.state,
+  enrollSig: m.enrollSig,
+  revokeSig: m.revokeSig,
+  enrolledAtMicros: micros(m.enrolledAt),
+  approvedAtMicros: m.approvedAt ? micros(m.approvedAt) : undefined,
+  revokedAtMicros: m.revokedAt ? micros(m.revokedAt) : undefined,
+});
 
 export class SpacetimeBackend implements IncidentBackend {
   private conn: DbConnection | null = null;
@@ -78,6 +115,10 @@ export class SpacetimeBackend implements IncidentBackend {
           conn.db.myInvites,
           conn.db.myJoinAttempts,
           conn.db.myCheckpoints,
+          conn.db.myOrg,
+          conn.db.myOrgStatus,
+          conn.db.myRoster,
+          conn.db.myPages,
         ]) {
           t.onInsert(() => this.changed());
           t.onDelete(() => this.changed());
@@ -103,6 +144,10 @@ export class SpacetimeBackend implements IncidentBackend {
             tables.myInvites,
             tables.myJoinAttempts,
             tables.myCheckpoints,
+            tables.myOrg,
+            tables.myOrgStatus,
+            tables.myRoster,
+            tables.myPages,
           ]);
       })
       .onConnectError(() => {
@@ -249,6 +294,44 @@ export class SpacetimeBackend implements IncidentBackend {
     this.cache = out;
     return out;
   }
+
+  /** Org views and reducers. Fixed view names only. */
+  readonly org: OrgBackend = {
+    rows: (): OrgRows => {
+      const db = this.conn?.db;
+      if (!db) return { orgs: [], roster: [], own: [], pages: [] };
+      return {
+        orgs: [...db.myOrg.iter()].map((o) => ({
+          id: o.id,
+          name: o.name,
+          adminHex: o.admin.toHexString(),
+          adminSignPub: o.adminSignPub,
+          adminEcdhPub: o.adminEcdhPub,
+          createdAtMicros: micros(o.createdAt),
+        })),
+        roster: [...db.myRoster.iter()].map((m) => orgMemberRow(m)),
+        own: [...db.myOrgStatus.iter()].map((m) => orgMemberRow(m)),
+        pages: [...db.myPages.iter()].map((p) => ({
+          pageId: p.pageId,
+          incidentId: p.incidentId,
+          orgMemberId: p.orgMemberId,
+          status: p.status,
+          carrierReported: p.carrierReported,
+          requestedByHex: p.requestedBy.toHexString(),
+          createdAtMicros: micros(p.createdAt),
+          updatedAtMicros: micros(p.updatedAt),
+        })),
+      };
+    },
+    createOrg: (a) => this.reducers().createOrg(a),
+    createEnrollLink: (a) => this.reducers().createEnrollLink(a),
+    enrollMember: (a) => this.reducers().enrollMember(a),
+    approveMember: (a) => this.reducers().approveMember(a),
+    revokeOrgMember: (a) => this.reducers().revokeOrgMember(a),
+    linkIncidentOrg: (a) => this.reducers().linkIncidentOrg(a),
+    addFromRoster: (a) => this.reducers().addFromRoster(a),
+    requestPage: (a) => this.reducers().requestPage(a),
+  };
 
   private reducers() {
     if (!this.conn || this.state === 'offline' || this.state === 'error') throw new Error('not connected');

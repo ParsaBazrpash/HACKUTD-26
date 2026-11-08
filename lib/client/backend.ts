@@ -93,6 +93,93 @@ export interface BackendRows {
 
 export type ConnectionState = 'connecting' | 'ready' | 'offline' | 'error';
 
+// --- Org roster and paging (WP1 views and reducers) --------------------------------
+
+export interface OrgRow {
+  id: string;
+  name: string;
+  adminHex: string;
+  adminSignPub: Uint8Array;
+  adminEcdhPub: Uint8Array;
+  createdAtMicros: bigint;
+}
+
+export interface OrgMemberRow {
+  orgMemberId: bigint;
+  orgId: string;
+  identityHex: string;
+  displayName: string;
+  signPub: Uint8Array;
+  ecdhPub: Uint8Array;
+  joinTag: Uint8Array;
+  /** Ciphertext sealed to the pager key. The server never holds a number in clear. */
+  sealedContact: Uint8Array;
+  state: string; // 'pending' | 'active' | 'revoked'
+  enrollSig: Uint8Array;
+  revokeSig: Uint8Array;
+  enrolledAtMicros: bigint;
+  approvedAtMicros?: bigint;
+  revokedAtMicros?: bigint;
+}
+
+export interface PageRow {
+  pageId: string;
+  incidentId: string;
+  orgMemberId: bigint;
+  status: string;
+  carrierReported: boolean;
+  requestedByHex: string;
+  createdAtMicros: bigint;
+  updatedAtMicros: bigint;
+}
+
+export interface OrgRows {
+  /** `my_org`: orgs where I am active. */
+  orgs: OrgRow[];
+  /** `my_roster`: rows of those orgs (the admin also sees pending rows). */
+  roster: OrgMemberRow[];
+  /** `my_org_status`: my own rows in any state, so a pending phone can show where it stands. */
+  own: OrgMemberRow[];
+  /** `my_pages`: pages of incidents I am an active member of. */
+  pages: PageRow[];
+}
+
+export interface PickWire {
+  orgMemberId: bigint;
+  role: string;
+  admitSig: Uint8Array;
+  envelopes: { kind: string; epoch: number; wrapped: Uint8Array; iv: Uint8Array }[];
+}
+
+/** Org reducers and views. Optional on a backend, so the incident-only backends keep working. */
+export interface OrgBackend {
+  rows(): OrgRows;
+  createOrg(a: {
+    orgId: string;
+    name: string;
+    displayName: string;
+    signPub: Uint8Array;
+    ecdhPub: Uint8Array;
+    sealedContact: Uint8Array;
+    enrollSig: Uint8Array;
+  }): Promise<void>;
+  createEnrollLink(a: { orgId: string; codeHash: Uint8Array; ttlHours: number }): Promise<void>;
+  enrollMember(a: {
+    orgId: string;
+    code: Uint8Array;
+    displayName: string;
+    signPub: Uint8Array;
+    ecdhPub: Uint8Array;
+    joinTag: Uint8Array;
+    sealedContact: Uint8Array;
+  }): Promise<void>;
+  approveMember(a: { orgId: string; orgMemberId: bigint; enrollSig: Uint8Array }): Promise<void>;
+  revokeOrgMember(a: { orgId: string; orgMemberId: bigint; reason: string; revokeSig: Uint8Array }): Promise<void>;
+  linkIncidentOrg(a: { incidentId: string; orgId: string }): Promise<void>;
+  addFromRoster(a: { incidentId: string; picks: PickWire[] }): Promise<void>;
+  requestPage(a: { incidentId: string; pageId: string; orgMemberIds: bigint[] }): Promise<void>;
+}
+
 export interface IncidentBackend {
   connection(): ConnectionState;
   /** Lowercase hex of my Spacetime identity, once connected. */
@@ -145,4 +232,6 @@ export interface IncidentBackend {
     signature: Uint8Array;
   }): Promise<void>;
   postCheckpoint(a: { incidentId: string; kind: string; seq: bigint; signature: Uint8Array }): Promise<void>;
+  /** Org roster and paging. Absent on a backend that only speaks incidents. */
+  org?: OrgBackend;
 }

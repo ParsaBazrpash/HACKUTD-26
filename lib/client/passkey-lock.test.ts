@@ -210,3 +210,18 @@ describe('browser WebAuthn calls', () => {
     expect(await browserWebAuthn().supported()).toBe(false);
   });
 });
+
+describe('passkey lock with org keys', () => {
+  it('cannot be turned off while the device holds org keys', async () => {
+    const { OrgStore } = await import('@/lib/crypto/store');
+    const { generateLockedOrgKeys } = await import('@/lib/crypto/vault');
+    const auth = fakeAuthenticator();
+    const { vault, store } = vaultWith(auth);
+    await vault.enable();
+    const { record } = await generateLockedOrgKeys(vault.key()!, A);
+    await new OrgStore(A, store).setLockedKeys(record);
+    await expect(vault.disable()).rejects.toThrow(/organization/);
+    expect(await vault.isEnabled()).toBe(true);
+    expect(vault.getState().lockedIncidents).toBe(0);
+  });
+});

@@ -8,7 +8,8 @@ import { LocalTime } from "@/components/local-time";
 import { useIncident } from "@/hooks/use-incident";
 import { getIncidentClient } from "@/lib/client";
 import { clientErrorMessage } from "@/lib/client/errors";
-import { cleanFileName } from "@/lib/import/clean";
+import { cleanFileName, cleanText } from "@/lib/import/clean";
+import { canSend, findDuplicate, startsChecked } from "@/lib/import/gate";
 import { parseCsv, type Row } from "@/lib/import/csv";
 import { FIELD_KEYS, suggestMapping, type FieldKey, type Mapping } from "@/lib/import/fields";
 import { parseJson, parseNdjson } from "@/lib/import/json";
@@ -77,7 +78,7 @@ function ImportPanelInner() {
     });
   }, [loaded, mapping, custodian]);
 
-  const duplicate = loaded ? state.evidence.find((e) => e.body.sha256 === loaded.sha256) : undefined;
+  const duplicate = loaded ? findDuplicate(state.evidence, loaded.sha256) : undefined;
 
   function reset() {
     setLoaded(null);
@@ -125,7 +126,7 @@ function ImportPanelInner() {
     }
   }
 
-  const isOn = (key: string, flags: readonly string[]) => overrides.get(key) ?? flags.length === 0;
+  const isOn = (key: string, flags: readonly string[]) => overrides.get(key) ?? startsChecked(flags);
   const toggle = (key: string, flags: readonly string[]) => {
     const next = new Map(overrides);
     next.set(key, !isOn(key, flags));
@@ -135,11 +136,11 @@ function ImportPanelInner() {
   const chosenSystems = plan ? plan.systems.filter((s) => isOn(s.key, s.flags)) : [];
   const chosenLines = plan ? plan.lines.filter((l) => isOn(l.key, l.flags)) : [];
   const total = chosenSystems.length + chosenLines.length;
-  const needAgain = Boolean(duplicate) && !again;
   const sending = progress !== null && sent === null && failure === null;
+  const sendable = canSend({ total, duplicate: Boolean(duplicate), again, sending, sent: sent !== null });
 
   async function send() {
-    if (!plan || !loaded || total === 0 || needAgain || sending) return;
+    if (!plan || !loaded || !sendable) return;
     setError(null);
     setFailure(null);
     setProgress({ done: 0, total: total + 1 });
@@ -240,7 +241,7 @@ function ImportPanelInner() {
                       <option value="">Not in this file</option>
                       {loaded.columns.map((col) => (
                         <option key={col} value={col}>
-                          {col.slice(0, 80)}
+                          {cleanText(col, 80)}
                         </option>
                       ))}
                     </select>
@@ -298,7 +299,7 @@ function ImportPanelInner() {
               ) : null}
 
               <div className="flex flex-wrap gap-3">
-                <button type="button" onClick={send} disabled={total === 0 || needAgain || sending || sent !== null} className={primaryButtonClass}>
+                <button type="button" onClick={send} disabled={!sendable} className={primaryButtonClass}>
                   {sending ? "Signing…" : `Sign and add ${total + 1} entries`}
                 </button>
                 <button type="button" onClick={reset} disabled={sending} className={secondaryButtonClass}>

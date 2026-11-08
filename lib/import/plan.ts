@@ -58,18 +58,18 @@ export interface PlanInput {
   now?: number;
 }
 
-const SEVERITY_RANK: Record<string, number> = {
-  critical: 5,
-  fatal: 5,
-  high: 4,
-  error: 4,
-  medium: 3,
-  moderate: 3,
-  warning: 3,
-  low: 2,
-  info: 1,
-  informational: 1,
-};
+const SEVERITY_RANK = new Map<string, number>([
+  ['critical', 5],
+  ['fatal', 5],
+  ['high', 4],
+  ['error', 4],
+  ['medium', 3],
+  ['moderate', 3],
+  ['warning', 3],
+  ['low', 2],
+  ['info', 1],
+  ['informational', 1],
+]);
 
 function isServerName(host: string): boolean {
   const h = host.toLowerCase();
@@ -123,6 +123,7 @@ export function buildPlan(input: PlanInput): ImportPlan {
   const hostOrder: string[] = []; // lowercase host, first seen
   const hostNames = new Map<string, string>();
   const hostHasAlerts = new Set<string>();
+  const hostCleanAlerts = new Set<string>(); // hosts with at least one alert row that is not flagged
 
   for (const row of input.rows) {
     const rawHost = get(row, input.mapping.host);
@@ -156,6 +157,7 @@ export function buildPlan(input: PlanInput): ImportPlan {
       hostOrder.push(hostKey);
     }
     hostHasAlerts.add(hostKey);
+    if (time.flags.length === 0) hostCleanAlerts.add(hostKey);
 
     const gkey = `${hostKey}\u0000${title.toLowerCase()}`;
     let g = groups.get(gkey);
@@ -178,7 +180,7 @@ export function buildPlan(input: PlanInput): ImportPlan {
     for (const f of time.flags) g.flags.add(f);
     const sev = cleanSeverity(get(row, input.mapping.severity));
     if (sev !== null) {
-      const rank = SEVERITY_RANK[sev.toLowerCase()] ?? 0;
+      const rank = SEVERITY_RANK.get(sev.toLowerCase()) ?? 0;
       if (g.severity === null || rank > g.rank) {
         g.severity = sev;
         g.rank = rank;
@@ -211,7 +213,7 @@ export function buildPlan(input: PlanInput): ImportPlan {
       host,
       body,
       preview: `New system: ${host} (${body.assetType}, ${body.status}). ${source}`,
-      flags: [],
+      flags: hostHasAlerts.has(hostKey) && !hostCleanAlerts.has(hostKey) ? ['only flagged alerts'] : [],
     };
   };
 
@@ -297,6 +299,7 @@ export function evidenceIsValid(body: Omit<EvidenceBody, 'evidenceId'>): boolean
 // --- Sending -----------------------------------------------------------------
 
 export const MAX_RETRIES = 10;
+export const EVENT_SPACING_MS = 400;
 
 /** The three IncidentClient actions an import may call. Nothing else is ever sent. */
 export interface ImportSink {
@@ -329,6 +332,9 @@ export async function sendImport(
   ];
   opts.onProgress?.(0, steps.length);
   for (let i = 0; i < steps.length; i += 1) {
+    // The real client turns every append error into one generic message, so "slow down" can
+    // not be relied on. Spacing events out stays under the refill rate (3 per second).
+    if (i > 0) await sleep(EVENT_SPACING_MS);
     for (let attempt = 0; ; attempt += 1) {
       try {
         await steps[i].run();

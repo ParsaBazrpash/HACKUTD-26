@@ -35,10 +35,18 @@ describe('host names', () => {
     expect(cleanHost('\u2066FS-01\u2069')).toEqual({ ok: true, host: 'FS-01' });
   });
 
-  it('skips Latin plus Cyrillic or Greek look-alikes', () => {
-    expect(cleanHost('FS-CLINIC-01'.replace('C', '\u0421'))).toEqual({ ok: false, reason: 'unsafe host name' });
-    expect(cleanHost('PC-\u03b1')).toEqual({ ok: false, reason: 'unsafe host name' });
-    expect(cleanHost('Рабочая станция')).toEqual({ ok: true, host: 'Рабочая станция' });
+  it('skips every non-ASCII letter, so no look-alike of another system survives', () => {
+    const unsafe = { ok: false, reason: 'unsafe host name' };
+    expect(cleanHost('\u13ac\u13bb\u13a1-\u13aa\u13e2\u13e2-01')).toEqual(unsafe); // all Cherokee, looks like EHR-APP-01
+    expect(cleanHost('\u0420\u0410\u0421\u0405-\u0406\u041c\u050c-01')).toEqual(unsafe); // all Cyrillic, looks like PACS-IMG-01
+    expect(cleanHost('\u03a1\u0391\u03f9\u0405-\u0406\u039c-01')).toEqual(unsafe); // Greek plus Cyrillic, no Latin
+    expect(cleanHost('FS-CLINIC-01'.replace('C', '\u0421'))).toEqual(unsafe);
+    expect(cleanHost('PC-\u03b1')).toEqual(unsafe);
+    expect(cleanHost('Рабочая станция')).toEqual(unsafe);
+  });
+
+  it('still reads full-width letters as ASCII through NFKC', () => {
+    expect(cleanHost('\uff26\uff33-\uff23\uff2c\uff29\uff2e\uff29\uff23-01')).toEqual({ ok: true, host: 'FS-CLINIC-01' });
   });
 
   it('skips a host over 120 characters', () => {
@@ -142,5 +150,17 @@ describe('times', () => {
     parseTime('2026-11-08T02:13:05.' + '1'.repeat(19) + '+++', NOW);
     parseTime('1'.repeat(40), NOW);
     expect(Date.now() - start).toBeLessThan(50);
+  });
+});
+
+describe('invisible format characters and file name length', () => {
+  it('strips a soft hyphen and other format characters from titles', () => {
+    expect(cleanTitle('ht­tps://evil.example')).toBe('hxxps://evil.example');
+    expect(cleanText('a­b⁤c', 20)).toBe('abc');
+  });
+
+  it('keeps a file name within 100 UTF-16 units even for characters outside the BMP', () => {
+    const name = cleanFileName('\u{10300}'.repeat(100));
+    expect(name.length).toBeLessThanOrEqual(100);
   });
 });

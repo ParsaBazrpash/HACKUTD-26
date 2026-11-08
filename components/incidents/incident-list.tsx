@@ -25,6 +25,7 @@ export function IncidentList() {
   const [displayName, setDisplayName] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
 
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -41,6 +42,8 @@ export function IncidentList() {
   }
 
   const incident = state.incident;
+  // While a room is held here, creating another stays one click away instead of filling the page.
+  const holding = incident !== null && state.me?.state !== "revoked";
   const channelNames = [
     ...(state.me?.state === "active" ? ["Record log"] : []),
     ...state.channels.map((channel) => CHANNEL_LABELS[channel.kind]),
@@ -108,50 +111,60 @@ export function IncidentList() {
         <p className="text-sm text-muted">No incident is open in this tab.</p>
       ) : null}
 
-      <form onSubmit={create} className="grid max-w-xl gap-5 rounded-2xl border border-line bg-panel px-5 py-5">
-        <h2 className="text-xl font-medium tracking-tight">Create incident</h2>
-        <p className="text-sm leading-6 text-muted">
-          You become the commander. Everyone else receives a role from an invite, and this form cannot assign one.
-          {mock ? " Creating an incident replaces the open demo story in this tab." : ""}
-        </p>
-        <label className="grid gap-2 text-sm" htmlFor="incident-title">
-          Title
-          <input
-            id="incident-title"
-            name="title"
-            value={title}
-            required
-            maxLength={120}
-            onChange={(event) => setTitle(event.target.value)}
-            className={fieldClass}
-          />
-        </label>
-        <label className="grid gap-2 text-sm" htmlFor="commander-name">
-          Your display name
-          <input
-            id="commander-name"
-            name="display-name"
-            value={displayName}
-            required
-            maxLength={40}
-            autoComplete="off"
-            onChange={(event) => setDisplayName(event.target.value)}
-            className={fieldClass}
-          />
-        </label>
-        {error ? (
-          <p role="alert" className="text-sm text-alert">
-            {error}
-          </p>
-        ) : null}
+      {holding && !showCreate ? (
         <button
-          type="submit"
-          disabled={pending}
-          className="inline-flex min-h-11 w-fit items-center justify-center rounded-lg bg-signal px-4 py-2 text-sm font-medium text-signal-ink hover:bg-signal-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+          type="button"
+          onClick={() => setShowCreate(true)}
+          className="inline-flex min-h-11 w-fit items-center justify-center rounded-lg border border-line bg-panel-raised px-4 py-2 text-sm font-medium text-foreground hover:border-signal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
         >
-          {pending ? "Creating…" : "Create incident"}
+          New incident
         </button>
-      </form>
+      ) : (
+        <form onSubmit={create} className="grid max-w-xl gap-5 rounded-2xl border border-line bg-panel px-5 py-5">
+          <h2 className="text-xl font-medium tracking-tight">Create incident</h2>
+          <p className="text-sm leading-6 text-muted">
+            You become the commander. Everyone else receives a role from an invite, and this form cannot assign one.
+            {mock ? " Creating an incident replaces the open demo story in this tab." : ""}
+          </p>
+          <label className="grid gap-2 text-sm" htmlFor="incident-title">
+            Title
+            <input
+              id="incident-title"
+              name="title"
+              value={title}
+              required
+              maxLength={120}
+              onChange={(event) => setTitle(event.target.value)}
+              className={fieldClass}
+            />
+          </label>
+          <label className="grid gap-2 text-sm" htmlFor="commander-name">
+            Your display name
+            <input
+              id="commander-name"
+              name="display-name"
+              value={displayName}
+              required
+              maxLength={40}
+              autoComplete="off"
+              onChange={(event) => setDisplayName(event.target.value)}
+              className={fieldClass}
+            />
+          </label>
+          {error ? (
+            <p role="alert" className="text-sm text-alert">
+              {error}
+            </p>
+          ) : null}
+          <button
+            type="submit"
+            disabled={pending}
+            className="inline-flex min-h-11 w-fit items-center justify-center rounded-lg bg-signal px-4 py-2 text-sm font-medium text-signal-ink hover:bg-signal-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+          >
+            {pending ? "Creating…" : "Create incident"}
+          </button>
+        </form>
+      )}
     </div>
   );
 }

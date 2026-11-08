@@ -1,22 +1,24 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { Activity, Ban, Calendar, ClipboardList, Crosshair, Hash, Layers } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
-import { CHANNEL_BLURBS, CHANNEL_LABELS } from "@/components/incidents/labels";
+import { CircleCheck } from "lucide-react";
+import { attentionFor } from "@/components/incidents/attention";
+import { cardPreviewText } from "@/components/incidents/blast-radius-model";
+import { CHANNEL_LABELS, phaseLabel } from "@/components/incidents/labels";
 import { ReachableStrip } from "@/components/incidents/paging-status";
-import { MessageComposer } from "@/components/incidents/message-composer";
-import { authorizedChatChannels, canCompose, isChatChannel } from "@/components/incidents/room-controls";
+import { authorizedChatChannels } from "@/components/incidents/room-controls";
+import { canAuthorRecord } from "@/components/incidents/record-actions";
 import { incidentSectionHref } from "@/components/incidents/sections";
 import { SafeText } from "@/components/incidents/safe-text";
 import { StatusForm } from "@/components/incidents/status-form";
 import { exposedScope, failureLabel, formatLead, listIntegrityFindings, taskCounts } from "@/components/incidents/situation";
+import { secondaryButtonClass } from "@/components/incidents/form-ui";
 import { useBrowserNow } from "@/hooks/use-browser-now";
 import { useIncident } from "@/hooks/use-incident";
 import { isMockIncidentClient } from "@/lib/client";
 import type { ChannelMessage, IncidentState } from "@/lib/client/types";
 import { computeDeadlines, nextCountdown } from "@/lib/legal";
-import type { ClockStatus } from "@/lib/legal";
 import { LocalTime } from "@/components/local-time";
 
 const linkClass =
@@ -24,28 +26,18 @@ const linkClass =
 
 const panelClass = "min-w-0 rounded-xl border border-line bg-panel p-4 sm:p-5";
 
-function Stat({
-  icon: Icon,
-  label,
-  value,
-  hint,
-  tone,
-}: {
-  icon: LucideIcon;
-  label: string;
-  value: string;
-  hint: string;
-  tone?: string;
-}) {
+const RECENT_LIMIT = 4;
+
+function Stat({ label, value, hint, tone, href }: { label: string; value: string; hint: string; tone?: string; href: string }) {
   return (
-    <div className="min-w-0 rounded-xl border border-line bg-panel px-4 py-4">
-      <dt className="flex items-center gap-2 text-[10px] font-medium tracking-[0.14em] text-muted">
-        <Icon aria-hidden="true" className="size-3.5 shrink-0" />
-        {label}
-      </dt>
-      <dd className={`mt-3 break-words text-3xl font-medium tracking-tight ${tone ?? "text-foreground"}`}>{value}</dd>
-      <dd className="mt-1 break-words text-xs leading-5 text-muted">{hint}</dd>
-    </div>
+    <Link
+      href={href}
+      className="block min-w-0 rounded-xl border border-line bg-panel px-4 py-4 transition-colors hover:border-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+    >
+      <span className="block text-[10px] font-medium tracking-[0.14em] text-muted">{label}</span>
+      <span className={`mt-2 block break-words text-3xl font-medium tracking-tight ${tone ?? "text-foreground"}`}>{value}</span>
+      <span className="mt-1 block break-words text-xs leading-5 text-muted">{hint}</span>
+    </Link>
   );
 }
 
@@ -62,8 +54,8 @@ type ActivityItem = {
 
 function latestMessage(state: IncidentState): { kind: "command" | "privileged" | "technical"; message: ChannelMessage } | null {
   let found: { kind: "command" | "privileged" | "technical"; message: ChannelMessage } | null = null;
-  for (const channel of state.channels) {
-    if (!isChatChannel(channel.kind)) continue;
+  // Only channels this member's role may read, even though the client already filters them.
+  for (const channel of authorizedChatChannels(state.me?.role, state.me?.state, state.channels)) {
     for (const message of channel.messages) {
       if (!found || message.sentAt.getTime() >= found.message.sentAt.getTime()) {
         found = { kind: channel.kind, message };
@@ -84,7 +76,8 @@ function activityItems(state: IncidentState, mock: boolean): ActivityItem[] {
     items.push({
       id: `message-${message.message.messageId}`,
       title: failed ? "Secure channel check failed" : "Secure channel message",
-      detail: message.message.text,
+      // Privileged text stays on the Secure Channels page; the Overview never quotes it.
+      detail: message.kind === "privileged" ? "Privileged message" : cardPreviewText(message.message.text),
       meta: `Message in ${CHANNEL_LABELS[message.kind]} by ${author}`,
       at: message.message.sentAt,
       tone: failed ? "alert" : "good",
@@ -148,24 +141,113 @@ function dotClass(tone: ActivityTone): string {
   return "border border-muted bg-background";
 }
 
+function NeedsAttention({ incidentId }: { incidentId: string }) {
+  const state = useIncident();
+  const now = useBrowserNow();
+  const { items } = attentionFor(state, now);
+
+  return (
+    <section className={panelClass} aria-labelledby="attention-heading">
+      <h2 id="attention-heading" className="text-base font-semibold tracking-tight">
+        Needs attention
+      </h2>
+      {items.length === 0 ? (
+        <p className="mt-2 inline-flex items-center gap-2 text-sm text-muted">
+          <CircleCheck aria-hidden="true" className="size-4 text-verified" />
+          Nothing needs you right now.
+        </p>
+      ) : (
+        <ul className="mt-3 divide-y divide-line">
+          {items.map((item) => (
+            <li key={item.id}>
+              <Link
+                href={incidentSectionHref(incidentId, item.slug)}
+                className="grid grid-cols-[0.75rem_minmax(0,1fr)_auto] items-start gap-3 py-2.5 hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+              >
+                <span
+                  aria-hidden="true"
+                  className={`mt-1.5 size-2.5 rounded-full ${item.tone === "alert" ? "bg-alert" : "bg-signal"}`}
+                />
+                <span className="min-w-0">
+                  <span className="block break-words text-sm font-medium text-foreground">{item.title}</span>
+                  {/* Plain text: the row is already a link, and SafeText would nest a second anchor. */}
+                  <span className="block break-words text-sm text-muted">{item.detail}</span>
+                </span>
+                <span aria-hidden="true" className="text-sm text-muted">
+                  →
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function LatestUpdate() {
+  const state = useIncident();
+  const [editing, setEditing] = useState(false);
+  const canSet = canAuthorRecord(state.me?.role, state.me?.state, "status.set");
+  const status = state.status;
+
+  return (
+    <section className={panelClass} aria-labelledby="situation-heading">
+      <div className="flex items-start justify-between gap-3">
+        <h2 id="situation-heading" className="text-base font-semibold tracking-tight">
+          Latest update
+        </h2>
+        {canSet && !editing ? (
+          <button type="button" onClick={() => setEditing(true)} className={`${secondaryButtonClass} min-h-9 px-3 py-1`}>
+            Change status
+          </button>
+        ) : null}
+      </div>
+      {editing && canSet ? (
+        <div className="mt-4">
+          <StatusForm onSaved={() => setEditing(false)} />
+          <button
+            type="button"
+            onClick={() => setEditing(false)}
+            className="mt-3 text-sm text-muted hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+          >
+            Cancel
+          </button>
+        </div>
+      ) : status ? (
+        <>
+          <p className="mt-3 whitespace-pre-line break-words text-sm leading-6 text-foreground">
+            {status.summary ? <SafeText text={status.summary} /> : "No summary written yet."}
+          </p>
+          <p className="mt-3 text-xs text-muted">
+            {status.severity} · {phaseLabel(status.phase)} · by {status.by?.displayName || "unknown"} ·{" "}
+            <LocalTime value={status.at} />
+          </p>
+        </>
+      ) : (
+        <p className="mt-3 text-sm text-muted">
+          {canSet ? "No status yet. Set severity and phase so everyone starts from the same picture." : "The commander has not set a status yet."}
+        </p>
+      )}
+    </section>
+  );
+}
+
 function RecentActivity({ incidentId }: { incidentId: string }) {
   const state = useIncident();
   const mock = isMockIncidentClient();
-  const items = activityItems(state, mock);
+  const items = activityItems(state, mock).slice(0, RECENT_LIMIT);
 
   return (
     <section className={panelClass} aria-labelledby="activity-heading">
       <div className="flex items-start justify-between gap-3">
         <h2 id="activity-heading" className="text-base font-semibold tracking-tight">
-          Recent Activity
+          Recent activity
         </h2>
         <Link href={incidentSectionHref(incidentId, "timeline")} className={linkClass}>
-          View timeline <span aria-hidden="true">→</span>
+          Timeline <span aria-hidden="true">→</span>
         </Link>
       </div>
-      <p className="mt-1 text-sm leading-6 text-muted">
-        Key events and updates for this incident. #record is the structured event log.
-      </p>
       {items.length === 0 ? (
         <p className="mt-4 text-sm text-muted">No activity yet.</p>
       ) : (
@@ -199,45 +281,6 @@ function RecentActivity({ incidentId }: { incidentId: string }) {
   );
 }
 
-function ChannelPreview() {
-  const state = useIncident();
-  const channels = authorizedChatChannels(state.me?.role, state.me?.state, state.channels);
-  const compose =
-    channels.find((channel) => channel.kind === "command" && canCompose(state.me?.role, state.me?.state, channel.kind)) ??
-    channels.find((channel) => canCompose(state.me?.role, state.me?.state, channel.kind));
-
-  if (channels.length === 0) {
-    return <p className="mt-4 text-sm text-muted">No chat channel is open for this role.</p>;
-  }
-
-  return (
-    <div>
-      <ul className="mt-4 space-y-4">
-        {channels.map((channel) => {
-          const live = channel.messages.length > 0 && channel.messages.every((message) => message.verdict.ok);
-          return (
-            <li key={channel.kind} className="flex min-w-0 items-start gap-3">
-              <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-background text-muted">
-                <Hash aria-hidden="true" className="size-4" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-foreground">{CHANNEL_LABELS[channel.kind]}</p>
-                <p className="text-xs leading-5 text-muted">{CHANNEL_BLURBS[channel.kind]}</p>
-                {channel.waitingForKeys ? <p className="mt-1 text-xs text-muted">Waiting for channel keys.</p> : null}
-              </div>
-              <span
-                aria-hidden="true"
-                className={`mt-1.5 size-2 shrink-0 rounded-full ${live ? "bg-signal" : "bg-muted/50"}`}
-              />
-            </li>
-          );
-        })}
-      </ul>
-      {compose ? <MessageComposer channel={compose.kind} compact /> : null}
-    </div>
-  );
-}
-
 export function IncidentOverview() {
   const state = useIncident();
   const now = useBrowserNow();
@@ -246,74 +289,59 @@ export function IncidentOverview() {
 
   const exposed = exposedScope(state.scope);
   const counts = taskCounts(state.tasks);
+  const active = counts.open + counts.inProgress;
   const deadlines = now === null ? null : computeDeadlines(state, new Date(now));
   const urgent = deadlines ? nextCountdown(deadlines) : null;
   const urgentLead = urgent?.dueAt && now !== null ? formatLead(urgent.dueAt.getTime() - now) : null;
-  const urgentTone = urgentStatusTone(urgent?.clockStatus);
+  const inRoom = state.members.filter((member) => member.state === "active").length;
+  const id = incident.id;
 
   return (
-    <div className="min-w-0">
+    <div className="grid min-w-0 gap-3">
       <h2 className="sr-only">Overview</h2>
-      <dl className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <Stat icon={Layers} label="AFFECTED" value={String(state.scope.length)} hint="Systems on the record" />
+      <NeedsAttention incidentId={id} />
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat
-          icon={Crosshair}
-          label="BLAST RADIUS"
-          value={String(exposed.length)}
-          hint="Still suspected, encrypted, or exfiltrated"
+          href={incidentSectionHref(id, "systems")}
+          label="AFFECTED SYSTEMS"
+          value={String(state.scope.length)}
+          hint={exposed.length > 0 ? `${exposed.length} still suspected, encrypted, or exfiltrated` : "None still exposed"}
           tone={exposed.length > 0 ? "text-signal" : undefined}
         />
-        <Stat icon={ClipboardList} label="OPEN TASKS" value={String(counts.open)} hint="Tasks not started" />
-        <Stat icon={Activity} label="IN PROGRESS" value={String(counts.inProgress)} hint="Tasks underway" />
         <Stat
-          icon={Ban}
-          label="BLOCKED"
-          value={String(counts.blocked)}
-          hint="Tasks that cannot move"
+          href={incidentSectionHref(id, "tasks")}
+          label="ACTIVE TASKS"
+          value={String(active)}
+          hint={counts.blocked > 0 ? `${counts.blocked} blocked, ${counts.done} done` : `${counts.done} done`}
           tone={counts.blocked > 0 ? "text-alert" : undefined}
         />
         <Stat
-          icon={Calendar}
+          href={incidentSectionHref(id, "legal")}
           label="NEXT DEADLINE"
           value={urgent ? urgentLead ?? "Scheduled" : "None"}
           hint={urgent ? urgent.rule.citation : "No clock has a due time"}
-          tone={urgentTone}
+          tone={urgentStatusTone(urgent?.clockStatus)}
         />
-      </dl>
+        <Stat
+          href={incidentSectionHref(id, "people")}
+          label="IN THE ROOM"
+          value={String(inRoom)}
+          hint={inRoom === 1 ? "Active member" : "Active members"}
+        />
+      </div>
 
       <ReachableStrip />
 
-      <div className="mt-3 grid items-start gap-3 lg:grid-cols-3">
-        <section className={panelClass} aria-labelledby="situation-heading">
-          <h2 id="situation-heading" className="text-base font-semibold tracking-tight">
-            Situation Update
-          </h2>
-          <p className="mt-1 text-sm leading-6 text-muted">Update the incident status for all participants.</p>
-          <div className="mt-4">
-            <StatusForm />
-          </div>
-        </section>
-
-        <RecentActivity incidentId={incident.id} />
-
-        <section className={panelClass} aria-labelledby="channels-heading">
-          <div className="flex items-start justify-between gap-3">
-            <h2 id="channels-heading" className="text-base font-semibold tracking-tight">
-              Secure Channels
-            </h2>
-            <Link href={incidentSectionHref(incident.id, "channels")} className={linkClass}>
-              All channels <span aria-hidden="true">→</span>
-            </Link>
-          </div>
-          <p className="mt-1 text-sm leading-6 text-muted">Only channels open for your role are shown.</p>
-          <ChannelPreview />
-        </section>
+      <div className="grid items-start gap-3 lg:grid-cols-2">
+        <LatestUpdate />
+        <RecentActivity incidentId={id} />
       </div>
     </div>
   );
 }
 
-function urgentStatusTone(status: ClockStatus | undefined): string | undefined {
+function urgentStatusTone(status: string | undefined): string | undefined {
   if (status === "elapsed") return "text-alert";
   if (status === "due_soon") return "text-signal";
   return undefined;

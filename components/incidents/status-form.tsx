@@ -9,7 +9,7 @@ import { getIncidentClient } from "@/lib/client";
 import { clientErrorMessage } from "@/lib/client/errors";
 import { PHASES, SEVERITIES } from "@/lib/protocol/events";
 
-export function StatusForm() {
+export function StatusForm({ onSaved }: { onSaved?: () => void } = {}) {
   const state = useIncident();
   const allowed = canAuthorRecord(state.me?.role, state.me?.state, "status.set");
   const [severity, setSeverity] = useState<string>(state.status?.severity ?? "SEV2");
@@ -37,6 +37,7 @@ export function StatusForm() {
     try {
       await getIncidentClient().setStatus(draft.body);
       setSaved("Status updated.");
+      onSaved?.();
     } catch (cause) {
       setSaved(null);
       setError(clientErrorMessage(cause));

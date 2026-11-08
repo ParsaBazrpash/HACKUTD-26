@@ -243,8 +243,12 @@ describe("control wiring", () => {
     expect(access).toContain("<AdmissionControls");
     expect(channels).toContain("<MessageComposer");
     expect(channels).toContain("authorizedChatChannels");
-    expect(overview).toContain("<MessageComposer");
-    expect(overview).toContain("authorizedChatChannels");
+    // The Overview no longer composes chat; status changes stay behind the record policy check.
+    expect(overview).not.toContain("<MessageComposer");
+    expect(overview).toContain('canAuthorRecord(state.me?.role, state.me?.state, "status.set")');
+    // Recent activity reads only authorized channels and never quotes #privileged text.
+    expect(overview).toContain("authorizedChatChannels(state.me?.role, state.me?.state, state.channels)");
+    expect(overview).toContain('message.kind === "privileged" ? "Privileged message"');
     expect(admission).toContain("revokeMember(member.memberId, DECLINE_REASON)");
     const revoke = readFileSync("components/incidents/revoke-control.tsx", "utf8");
     const people = readFileSync("components/incidents/people-board.tsx", "utf8");

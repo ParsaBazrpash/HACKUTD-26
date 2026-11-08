@@ -92,6 +92,22 @@ h1 {
   .haven-s3 {
     animation-range: cover 9% cover 30%;
   }
+
+  .haven-slow {
+    animation-range: cover 0% cover 42%;
+  }
+
+  .haven-slow.haven-s1 {
+    animation-range: cover 6% cover 50%;
+  }
+
+  .haven-slow.haven-s2 {
+    animation-range: cover 12% cover 58%;
+  }
+
+  .haven-slow.haven-s3 {
+    animation-range: cover 18% cover 66%;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

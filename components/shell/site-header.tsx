@@ -3,8 +3,7 @@
 import { Suspense, useEffect, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, User, X } from "lucide-react";
-import { InstallAppControl } from "@/components/pwa/install-app";
+import { Menu, X } from "lucide-react";
 
 function incidentIdFromPath(pathname: string | null): string | null {
   if (!pathname) return null;
@@ -111,24 +110,6 @@ function PrimaryNav({ onNavigate, stacked = false }: { onNavigate?: () => void; 
   return <PrimaryLinks pathname={pathname} onNavigate={onNavigate} stacked={stacked} />;
 }
 
-function AccountLink({ pathname }: { pathname: string | null }) {
-  const membersHref = useMembersHref(pathname);
-  return (
-    <Link
-      href={membersHref}
-      aria-label="People and access"
-      className="grid size-9 place-items-center rounded-full border border-white/15 text-white/70 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
-    >
-      <User aria-hidden="true" className="size-4" />
-    </Link>
-  );
-}
-
-function AccountSlot() {
-  const pathname = usePathname();
-  return <AccountLink pathname={pathname} />;
-}
-
 const getStartedClass =
   "inline-flex h-10 shrink-0 items-center justify-center rounded-full border border-signal px-5 text-sm font-medium text-signal transition-colors hover:bg-signal/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal";
 
@@ -147,15 +128,7 @@ export function SiteHeader() {
             <PrimaryNav />
           </Suspense>
         </nav>
-        <div className="ml-auto hidden lg:ml-0 lg:block">
-          <InstallAppControl />
-        </div>
         <div className="ml-auto flex items-center gap-2 sm:gap-3 lg:ml-0">
-          <div className="hidden sm:block">
-            <Suspense fallback={<AccountLink pathname={null} />}>
-              <AccountSlot />
-            </Suspense>
-          </div>
           <Link href="/incidents" className={getStartedClass}>
             Get Started
           </Link>
@@ -171,14 +144,6 @@ export function SiteHeader() {
                   <PrimaryNav stacked />
                 </Suspense>
               </nav>
-              <div className="mt-3 flex items-center gap-3 border-t border-white/10 pt-3 sm:hidden">
-                <Suspense fallback={<AccountLink pathname={null} />}>
-                  <AccountSlot />
-                </Suspense>
-              </div>
-              <div className="mt-3 border-t border-white/10 pt-3">
-                <InstallAppControl />
-              </div>
             </div>
           </details>
         </div>

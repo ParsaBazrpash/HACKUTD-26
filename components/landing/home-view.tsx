@@ -127,14 +127,16 @@ function HeroGlow() {
 
 function BottomGlow() {
   return (
-    <div aria-hidden="true" className="haven-reveal pointer-events-none relative mt-10 h-40 overflow-hidden sm:mt-16 sm:h-52">
-      <div
-        className="absolute -bottom-[155%] left-[-8%] h-[260%] w-[116%] rounded-[50%] border-2 border-[#f2ffb0]"
-        style={{
-          boxShadow:
-            "0 0 8px 1px #f6ffd0, 0 0 22px 4px rgba(210,255,70,0.9), 0 0 64px 14px rgba(130,255,40,0.45)",
-        }}
-      />
+    <div aria-hidden="true" className="haven-reveal haven-slow pointer-events-none relative mt-10 h-40 sm:mt-16 sm:h-52">
+      <div className="absolute inset-0 overflow-hidden">
+        <div
+          className="absolute -bottom-[155%] left-[-8%] h-[260%] w-[116%] rounded-[50%] border-2 border-[#f2ffb0]"
+          style={{
+            boxShadow:
+              "0 0 8px 1px #f6ffd0, 0 0 22px 4px rgba(210,255,70,0.9), 0 0 64px 14px rgba(130,255,40,0.45)",
+          }}
+        />
+      </div>
     </div>
   );
 }
@@ -197,18 +199,17 @@ export function HomeView() {
           </div>
           <ul className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {roles.map((role, index) => (
-              <li
-                key={role.index}
-                className={`haven-reveal ${stagger[index]} relative overflow-hidden rounded-2xl border border-white/[0.08] bg-[#070707] px-5 py-6`}
-              >
-                <div
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-0 bg-[radial-gradient(90%_80%_at_100%_0%,rgba(190,255,70,0.22),transparent_55%)]"
-                />
-                <div className="relative">
-                  <p className="font-mono text-[11px] tracking-wide text-[#8a8a8a]">{role.index}</p>
-                  <h3 className="mt-6 text-lg font-semibold text-white">{role.title}</h3>
-                  <p className="mt-3 text-sm leading-6 text-[#9a9a9a]">{role.copy}</p>
+              <li key={role.index} className={`haven-reveal ${stagger[index]}`}>
+                <div className="relative h-full overflow-hidden rounded-2xl border border-white/[0.08] bg-[#070707] px-5 py-6">
+                  <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-0 bg-[radial-gradient(90%_80%_at_100%_0%,rgba(190,255,70,0.22),transparent_55%)]"
+                  />
+                  <div className="relative">
+                    <p className="font-mono text-[11px] tracking-wide text-[#8a8a8a]">{role.index}</p>
+                    <h3 className="mt-6 text-lg font-semibold text-white">{role.title}</h3>
+                    <p className="mt-3 text-sm leading-6 text-[#9a9a9a]">{role.copy}</p>
+                  </div>
                 </div>
               </li>
             ))}
@@ -216,7 +217,7 @@ export function HomeView() {
         </section>
 
         <section className="py-8 sm:py-16" aria-labelledby="clocks-heading">
-          <div className="haven-reveal flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="haven-reveal haven-slow flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-[11px] font-medium tracking-[0.22em] text-[#a3a3a3] sm:text-xs">PUBLIC NOTICE CLOCKS</p>
               <h2
@@ -232,7 +233,7 @@ export function HomeView() {
           </div>
           <ul className="mt-10 divide-y divide-white/10 border-y border-white/10">
             {glanceRules.map((row) => (
-              <li key={row.rule.id} className="haven-reveal grid gap-4 py-5 lg:grid-cols-[16rem_minmax(0,1fr)_11rem] lg:items-center lg:gap-8">
+              <li key={row.rule.id} className="haven-reveal haven-slow grid gap-4 py-5 lg:grid-cols-[16rem_minmax(0,1fr)_11rem] lg:items-center lg:gap-8">
                 <div>
                   <a
                     href={row.rule.sourceUrl}
@@ -260,7 +261,7 @@ export function HomeView() {
               </li>
             ))}
           </ul>
-          <div className="haven-reveal mt-6 max-w-3xl space-y-2 text-sm leading-6 text-[#8d8d8d]">
+          <div className="haven-reveal haven-slow mt-6 max-w-3xl space-y-2 text-sm leading-6 text-[#8d8d8d]">
             <p>
               A clock starts only from a recorded discovery or materiality time, and only when the incident profile
               brings that rule on. HIPAA notice to HHS is an annual log when fewer than 500 people are affected.
@@ -272,7 +273,7 @@ export function HomeView() {
         </section>
 
         <section className="relative pb-4 pt-20 sm:pt-28" aria-labelledby="space-heading">
-          <div className="haven-reveal relative z-10">
+          <div className="haven-reveal haven-slow relative z-10">
             <p className="text-[11px] font-medium tracking-[0.22em] text-[#a3a3a3] sm:text-xs">BUILT FOR INCIDENT RESPONSE</p>
             <h2
               id="space-heading"
@@ -283,13 +284,13 @@ export function HomeView() {
           </div>
           <ol className="relative z-10 mt-12 grid gap-10 sm:grid-cols-3 sm:gap-8">
             {pillars.map((pillar, index) => (
-              <li key={pillar.title} className={`haven-reveal ${stagger[index]}`}>
+              <li key={pillar.title} className={`haven-reveal haven-slow ${stagger[index]}`}>
                 <h3 className="text-base font-semibold text-white">{pillar.title}</h3>
                 <p className="mt-3 max-w-xs text-sm leading-6 text-[#9a9a9a]">{pillar.copy}</p>
               </li>
             ))}
           </ol>
-          <p className="haven-reveal relative z-10 mt-12 max-w-3xl text-sm leading-6 text-[#8d8d8d]">
+          <p className="haven-reveal haven-slow relative z-10 mt-12 max-w-3xl text-sm leading-6 text-[#8d8d8d]">
             Demo mode shows the Lakeside Family Clinic story in this tab. Private keys stay on the device. Incident
             pages are read in the browser.
           </p>

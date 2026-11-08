@@ -1,27 +1,103 @@
 import { expect, test } from "@playwright/test";
 
+test.describe.configure({ timeout: 90_000 });
+
+async function noHorizontalOverflow(page: import("@playwright/test").Page): Promise<void> {
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+}
+
 test("shell routes render the clinic incident", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toContainText("held in this browser");
 
   await page.getByRole("link", { name: "Open incidents" }).click();
   await expect(page).toHaveURL("/incidents");
+  await expect(page.getByRole("button", { name: "Create incident" })).toBeVisible();
+  await expect(page.getByText("Demo data").first()).toBeVisible();
+
   await page.getByRole("link", { name: /Lakeside Family Clinic/ }).click();
   await expect(page.getByRole("heading", { level: 1 })).toContainText("Lakeside Family Clinic");
+  await expect(page.getByText("Demo data").first()).toBeVisible();
+  await expect(page.getByText("structured event log")).toBeVisible();
+  await expect(page.getByText("Demo sequence check passed").first()).toBeVisible();
+  await expect(page.getByText("still exposed")).toBeVisible();
+  await expect(page.getByText("#privileged").first()).toBeVisible();
+  await expect(page.getByText("Privileged communication").first()).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("PRIVATE KEY");
+
+  await page.getByLabel("Summary").fill("E2E status summary for the clinic.");
+  await page.getByRole("button", { name: "Update status" }).click();
+  await expect(page.getByText("E2E status summary for the clinic.").first()).toBeVisible();
+
+  const composer = page.getByRole("form", { name: "Message #command" });
+  await composer.getByRole("textbox").fill("E2E command note: clinics remain on paper.");
+  await composer.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByText("E2E command note: clinics remain on paper.")).toBeVisible();
+
+  const nav = page.getByRole("navigation", { name: "Incident sections" });
+
+  await nav.getByRole("link", { name: "Timeline", exact: true }).click();
+  await expect(page).toHaveURL(/\/timeline$/);
+  await page.getByRole("textbox", { name: "Entry", exact: true }).fill("E2E timeline note from the commander.");
+  await page.getByRole("button", { name: "Add entry" }).click();
+  await expect(page.getByText("E2E timeline note from the commander.", { exact: true })).toBeVisible();
+
+  await nav.getByRole("link", { name: "Affected Systems", exact: true }).click();
+  await expect(page).toHaveURL(/\/systems$/);
+  await expect(page.getByRole("listitem").filter({ hasText: "FS-CLINIC-01" }).first()).toBeVisible();
+  await page.getByRole("textbox", { name: "System", exact: true }).fill("E2E-WORKSTATION");
+  await page.getByRole("button", { name: "Save system" }).click();
+  await expect(page.getByRole("listitem").filter({ hasText: "E2E-WORKSTATION" }).first()).toBeVisible();
+
+  await nav.getByRole("link", { name: "Tasks", exact: true }).click();
+  await expect(page).toHaveURL(/\/tasks$/);
+  await page.getByRole("textbox", { name: "Title", exact: true }).fill("E2E confirm the downtime roster");
+  await page.getByRole("button", { name: "Save task" }).click();
+  await expect(page.getByRole("listitem").filter({ hasText: "E2E confirm the downtime roster" }).first()).toBeVisible();
+
+  await nav.getByRole("link", { name: "Secure Channels", exact: true }).click();
+  await expect(page).toHaveURL(/\/channels$/);
+  await expect(page.getByText("#command").first()).toBeVisible();
+  await expect(page.getByText("#privileged").first()).toBeVisible();
+  await expect(page.getByText("#technical").first()).toBeVisible();
+  await expect(page.getByText("Privileged communication").first()).toBeVisible();
+  await expect(page.getByText("structured event log")).toBeVisible();
+
+  await nav.getByRole("link", { name: "People & Access" }).click();
+  await expect(page).toHaveURL(/\/people$/);
   await expect(page.getByText("Commander").first()).toBeVisible();
   await expect(page.getByText("Counsel").first()).toBeVisible();
   await expect(page.getByText("Technical").first()).toBeVisible();
   await expect(page.getByText("Executive").first()).toBeVisible();
-  await expect(page.getByText("#command")).toBeVisible();
-  await expect(page.getByText("#privileged")).toBeVisible();
-  await expect(page.getByText("#technical")).toBeVisible();
-  await expect(page.getByText("#record")).toBeVisible();
-  await expect(page.getByText("Demo data").first()).toBeVisible();
-  await expect(page.getByText("structured event log")).toBeVisible();
-  await expect(page.locator("body")).not.toContainText("PRIVATE KEY");
+  await expect(page.getByText("Noah Ellis").first()).toBeVisible();
+
+  await nav.getByRole("link", { name: "Legal Deadlines" }).click();
+  await expect(page).toHaveURL(/\/legal$/);
+  await expect(page.getByRole("heading", { name: "Legal deadlines" })).toBeVisible();
+  await expect(page.getByText("GDPR Article 33").first()).toBeVisible();
+
+  await nav.getByRole("link", { name: "Report", exact: true }).click();
+  await expect(page).toHaveURL(/\/report$/);
+  await expect(page.getByText("E2E status summary for the clinic.").first()).toBeVisible();
+  await expect(page.getByText("E2E command note: clinics remain on paper.")).toHaveCount(0);
+  await expect(page.getByText("Do not forward")).toHaveCount(0);
 
   await page.goto("/join");
   await expect(page.getByRole("heading", { level: 1 })).toContainText("Join with an invite link");
   await expect(page.getByLabel("Role")).toHaveCount(0);
   await expect(page.getByText("This page cannot assign a role.")).toBeVisible();
+});
+
+test("incident sections fit a 375px screen", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/incidents");
+  await noHorizontalOverflow(page);
+  await page.getByRole("link", { name: /Lakeside Family Clinic/ }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("Lakeside Family Clinic");
+  const nav = page.getByRole("navigation", { name: "Incident sections" });
+  for (const name of ["Overview", "Timeline", "Affected Systems", "Tasks", "Secure Channels", "People & Access", "Legal Deadlines", "Report"]) {
+    await nav.getByRole("link", { name, exact: true }).click();
+    await noHorizontalOverflow(page);
+  }
 });

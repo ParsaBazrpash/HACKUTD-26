@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { DemoBanner } from "@/components/incidents/demo-banner";
-import { CHANNEL_LABELS, phaseLabel } from "@/components/incidents/labels";
+import { CHANNEL_LABELS, connectionLabel, phaseLabel } from "@/components/incidents/labels";
+import { IntegrityMark } from "@/components/ui/integrity-mark";
 import { getIncidentClient, isMockIncidentClient } from "@/lib/client";
 import { clientErrorMessage } from "@/lib/client/errors";
 import { formatTimestamp } from "@/lib/time";
@@ -45,6 +46,12 @@ export function IncidentList() {
   return (
     <div className="grid gap-8">
       <DemoBanner />
+      <div className="grid gap-2 text-sm">
+        <span className="font-mono text-[11px] tracking-[0.16em] text-muted">
+          {connectionLabel(state.connection, mock).toUpperCase()}
+        </span>
+        {incident ? <IntegrityMark report={state.integrity} mock={mock} /> : null}
+      </div>
       {state.connection === "connecting" ? (
         <p className="text-sm text-muted">Opening the incident client…</p>
       ) : null}
@@ -63,27 +70,34 @@ export function IncidentList() {
       ) : null}
 
       {incident && state.me?.state !== "revoked" ? (
-        <ul className="border-t border-line">
-          <li className="border-b border-line">
+        <ul>
+          <li>
             <Link
               href={`/incidents/${incident.id}`}
-              className="grid gap-2 px-1 py-4 transition-colors hover:bg-panel focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal sm:grid-cols-[7.5rem_1fr_auto] sm:items-center"
+              className="grid gap-3 rounded-2xl border border-line bg-panel px-4 py-4 transition-colors hover:border-signal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal sm:grid-cols-[5.5rem_minmax(0,1fr)_auto] sm:items-center"
             >
-              <span className="font-mono text-xs tracking-[0.14em] text-signal uppercase">
+              <span
+                className={`font-mono text-xs tracking-[0.14em] uppercase ${
+                  state.status?.severity === "SEV1" ? "text-alert" : "text-signal"
+                }`}
+              >
                 {state.status ? state.status.severity : "Open"}
               </span>
-              <span>
-                <span className="block text-sm text-foreground">
+              <span className="min-w-0">
+                <span className="block break-words text-sm text-foreground">
                   {incident.title || "Untitled incident"}
                 </span>
-                <span className="mt-1 block text-sm text-muted">
+                <span className="mt-1 block break-words text-sm text-muted">
                   {state.status ? phaseLabel(state.status.phase) : "No status yet"}
                   {" · "}
                   {formatTimestamp(incident.createdAt)}
                   {channelNames.length > 0 ? ` · ${channelNames.join(" · ")}` : ""}
                 </span>
               </span>
-              <span className="font-mono text-xs text-muted">{state.members.length} members</span>
+              <span className="font-mono text-xs text-muted">
+                {state.members.length} members
+                <span className="mt-1 block text-signal">Open</span>
+              </span>
             </Link>
           </li>
         </ul>
@@ -91,8 +105,8 @@ export function IncidentList() {
         <p className="text-sm text-muted">No incident is open in this tab.</p>
       ) : null}
 
-      <form onSubmit={create} className="grid max-w-xl gap-5">
-        <h2 className="font-mono text-[11px] tracking-[0.18em] text-muted">CREATE AN INCIDENT</h2>
+      <form onSubmit={create} className="grid max-w-xl gap-5 rounded-2xl border border-line bg-panel px-5 py-5">
+        <h2 className="text-xl font-medium tracking-tight">Create incident</h2>
         <p className="text-sm leading-6 text-muted">
           You become the commander. Everyone else receives a role from an invite, and this form cannot assign one.
           {mock ? " Creating an incident replaces the open demo story in this tab." : ""}
@@ -130,7 +144,7 @@ export function IncidentList() {
         <button
           type="submit"
           disabled={pending}
-          className="inline-flex w-fit items-center justify-center rounded-lg bg-signal px-4 py-2 text-sm font-medium text-signal-ink hover:bg-signal-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+          className="inline-flex min-h-11 w-fit items-center justify-center rounded-lg bg-signal px-4 py-2 text-sm font-medium text-signal-ink hover:bg-signal-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
         >
           {pending ? "Creating…" : "Create incident"}
         </button>

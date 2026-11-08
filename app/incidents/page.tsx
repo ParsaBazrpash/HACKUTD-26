@@ -12,7 +12,7 @@ export default function IncidentsPage() {
       <p className="font-mono text-[11px] tracking-[0.18em] text-muted">WAR ROOM</p>
       <h1 className="mt-3 text-4xl font-medium tracking-tight">Incidents</h1>
       <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">
-        The incident open in this browser. Record, command, privileged, and technical stay inside the room.
+        The incident open in this browser. Create a room, or return to the one already held here.
       </p>
       <div className="mt-8">
         <IncidentList />

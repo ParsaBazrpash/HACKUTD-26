@@ -18,7 +18,7 @@ function linkClass(active: boolean): string {
 
 function PrimaryNavLinks({ pathname }: { pathname: string | null }) {
   return (
-    <nav aria-label="Primary" className="flex items-center gap-1 text-sm">
+    <nav aria-label="Primary" className="flex shrink-0 items-center gap-1 text-sm">
       {links.map((link) => {
         const active =
           pathname !== null && (pathname === link.href || pathname.startsWith(`${link.href}/`));
@@ -45,20 +45,20 @@ function PrimaryNav() {
 export function SiteHeader() {
   return (
     <header className="border-b border-line bg-background">
-      <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-5 py-4 sm:px-8">
+      <div className="mx-auto flex w-full min-w-0 max-w-6xl items-center justify-between gap-3 px-5 py-4 sm:px-8">
         <Link
           href="/"
-          className="flex items-center gap-3 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-signal"
+          className="flex min-w-0 items-center gap-3 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-signal"
         >
           <span
             aria-hidden="true"
-            className="grid size-9 place-items-center rounded-lg bg-signal font-mono text-sm font-semibold tracking-tight text-signal-ink"
+            className="grid size-9 shrink-0 place-items-center rounded-lg bg-signal font-mono text-sm font-semibold tracking-tight text-signal-ink"
           >
             HV
           </span>
-          <span>
+          <span className="min-w-0">
             <span className="block text-sm font-semibold tracking-tight">HAVEN</span>
-            <span className="block font-mono text-[10px] tracking-[0.18em] text-muted">
+            <span className="block truncate font-mono text-[10px] tracking-[0.18em] text-muted">
               FIRST 72 HOURS
               {isMockIncidentClient() ? " · DEMO DATA" : ""}
             </span>

@@ -172,7 +172,9 @@ describe("control wiring", () => {
     const invite = readFileSync("components/incidents/invite-controls.tsx", "utf8");
     const admission = readFileSync("components/incidents/admission-controls.tsx", "utf8");
     const composer = readFileSync("components/incidents/message-composer.tsx", "utf8");
-    const detail = readFileSync("components/incidents/incident-detail.tsx", "utf8");
+    const access = readFileSync("components/incidents/access-controls.tsx", "utf8");
+    const channels = readFileSync("components/incidents/channels-board.tsx", "utf8");
+    const overview = readFileSync("components/incidents/overview.tsx", "utf8");
     expect(invite).toContain("createInvite(inviteRequest(role, ttlMinutes))");
     expect(invite).not.toMatch(/console\./);
     expect(invite).not.toMatch(/sendBeacon|gtag|analytics|fetch\(/);
@@ -181,9 +183,11 @@ describe("control wiring", () => {
     expect(composer).toContain("postMessage(channel, draft.body)");
     expect(composer).not.toMatch(/console\./);
     expect(composer).not.toContain("record");
-    expect(detail).toContain("<InviteControls");
-    expect(detail).toContain("<AdmissionControls");
-    expect(detail).toContain("<MessageComposer");
-    expect(detail).toContain("authorizedChatChannels");
+    expect(access).toContain("<InviteControls");
+    expect(access).toContain("<AdmissionControls");
+    expect(channels).toContain("<MessageComposer");
+    expect(channels).toContain("authorizedChatChannels");
+    expect(overview).toContain("<AccessControls");
+    expect(overview).toContain("<ChannelsBoard");
   });
 });

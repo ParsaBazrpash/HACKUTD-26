@@ -12,7 +12,7 @@ export function HourClock({ startedAt }: { startedAt: string }) {
   return (
     <section className="rounded-2xl border border-line bg-panel px-5 py-4" aria-label="72 hour window">
       <p className="font-mono text-[11px] tracking-[0.18em] text-muted">72-HOUR WINDOW</p>
-      <p className="mt-3 font-mono text-4xl tracking-tight text-signal sm:text-5xl">
+      <p className="mt-3 font-mono text-3xl tracking-tight text-signal">
         {remaining === null ? "--:--:--" : formatDuration(remaining)}
       </p>
       <p className="mt-3 text-sm text-muted">

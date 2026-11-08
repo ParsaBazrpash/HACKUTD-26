@@ -50,6 +50,16 @@ const TASK_LABELS: Record<string, string> = {
   blocked: "Blocked",
 };
 
+const CSF_LABELS: Record<string, string> = {
+  "DE.AE": "DE.AE Adverse events",
+  "RS.MA": "RS.MA Management",
+  "RS.AN": "RS.AN Analysis",
+  "RS.CO": "RS.CO Communication",
+  "RS.MI": "RS.MI Mitigation",
+  "RC.RP": "RC.RP Recovery",
+  "RC.CO": "RC.CO Recovery communication",
+};
+
 const DATA_LABELS: Record<string, string> = {
   ssn: "SSN",
   drivers_license: "Driver license",
@@ -75,6 +85,7 @@ function label(table: Record<string, string>, value: string): string {
 }
 
 export const phaseLabel = (value: string) => label(PHASE_LABELS, value);
+export const csfLabel = (value: string) => label(CSF_LABELS, value);
 export const scopeStatusLabel = (value: string) => label(SCOPE_STATUS_LABELS, value);
 export const assetLabel = (value: string) => label(ASSET_LABELS, value);
 export const taskStatusLabel = (value: string) => label(TASK_LABELS, value);

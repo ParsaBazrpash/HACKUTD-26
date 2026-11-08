@@ -8,7 +8,7 @@ export function SafeText({ text }: { text: string }) {
         key={index}
         href={part.href}
         rel="noopener noreferrer"
-        className="text-signal underline decoration-signal/40 underline-offset-2"
+        className="break-all text-signal underline decoration-signal/40 underline-offset-2"
       >
         {part.href}
       </a>

@@ -1,12 +1,23 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
 import { DemoBanner } from "@/components/incidents/demo-banner";
+import { BreakGlassCard } from "@/components/org/break-glass-card";
 import { CreateOrgForm } from "@/components/org/create-org-form";
 import { EnrollLinkPanel } from "@/components/org/enroll-link-panel";
 import { RosterBoard } from "@/components/org/roster-board";
 import { useIncident } from "@/hooks/use-incident";
 
+const noopSubscribe = () => () => {};
+const clientOrigin = () => window.location.origin;
+const serverOrigin = () => "";
+
+function useOrigin(): string {
+  return useSyncExternalStore(noopSubscribe, clientOrigin, serverOrigin);
+}
+
 export function OrgView() {
+  const origin = useOrigin();
   const state = useIncident();
   const { org } = state;
   return (
@@ -35,6 +46,7 @@ export function OrgView() {
           ) : (
             <p className="text-sm leading-6 text-muted">Only the org admin can manage the roster.</p>
           )}
+          {origin ? <BreakGlassCard orgName={org.name} address={origin} adminFingerprint={org.adminFingerprint} /> : null}
         </>
       ) : null}
     </div>

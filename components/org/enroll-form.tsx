@@ -4,6 +4,7 @@ import { useCallback, useRef, useState, useSyncExternalStore, type FormEvent } f
 import { DemoBanner } from "@/components/incidents/demo-banner";
 import { FormError, fieldClass, primaryButtonClass } from "@/components/incidents/form-ui";
 import { BreakGlassCard } from "@/components/org/break-glass-card";
+import { fingerprintFromEnrollFragment } from "@/components/org/break-glass-model";
 import { PhoneField } from "@/components/org/phone-field";
 import { applyEnrollHash, PHONE_ERROR, PHONE_HINT, toUsE164 } from "@/components/org/org-link";
 import { usePasskeyGate } from "@/components/org/use-passkey-ready";
@@ -48,6 +49,10 @@ export function EnrollForm() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<{ safetyCode: string; address: string } | null>(null);
+  // The card names the org this link enrolls into: the admin fingerprint the device pinned from the link.
+  // A name is shown only when the org this device can already see has that same admin.
+  const cardFingerprint = fingerprintFromEnrollFragment(fragment) ?? state.org?.adminFingerprint ?? null;
+  const cardOrg = state.org && state.org.adminFingerprint === cardFingerprint ? state.org : null;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -128,9 +133,9 @@ export function EnrollForm() {
       </div>
       {done ? (
         <BreakGlassCard
-          orgName={state.org?.name ?? "Your organization"}
+          orgName={cardOrg ? cardOrg.name : null}
           address={done.address}
-          adminFingerprint={state.org?.adminFingerprint ?? null}
+          adminFingerprint={cardFingerprint}
         />
       ) : null}
     </div>

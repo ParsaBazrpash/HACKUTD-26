@@ -33,7 +33,8 @@ test("commander invites counsel, counsel joins, commander admits, they exchange 
   await expect(commander).toHaveURL(/\/incidents\/[^/]+$/);
   await expect(commander.getByText(title).first()).toBeVisible();
 
-  // 2. Commander makes a counsel invite.
+  // 2. Commander makes a counsel invite (invites live under People & Access).
+  await commander.getByRole("link", { name: "People & Access" }).click();
   await commander.getByLabel("Role").selectOption("counsel");
   await commander.getByRole("button", { name: "Create invite" }).click();
   const inviteUrl = (await commander.locator("#invite-url").innerText()).trim();
@@ -66,15 +67,19 @@ test("commander invites counsel, counsel joins, commander admits, they exchange 
   await counsel.goto("/incidents");
   await counsel.getByRole("link", { name: new RegExp(title) }).click();
   await expect(counsel.getByText(title).first()).toBeVisible();
+  await counsel.getByRole("link", { name: "Secure Channels" }).click();
   const composer = counsel.getByRole("form", { name: /Message .*privileged/i });
   await composer.getByRole("textbox").fill(secret);
   await composer.getByRole("button", { name: "Send" }).click();
   await expect(counsel.getByText(secret).first()).toBeVisible();
+  await commander.getByRole("link", { name: "Secure Channels" }).click();
   await expect(commander.getByText(secret).first()).toBeVisible();
 
-  // 6. Both screens report integrity, and the invite is gone from the page.
-  await expect(commander.getByText("Integrity checked").first()).toBeVisible();
-  await expect(counsel.getByText("Integrity checked").first()).toBeVisible();
+  // 6. Both Overview pages report that the integrity check passed.
+  await commander.getByRole("link", { name: "Overview" }).click();
+  await counsel.getByRole("link", { name: "Overview" }).click();
+  await expect(commander.getByText("Integrity check passed").first()).toBeVisible();
+  await expect(counsel.getByText("Integrity check passed").first()).toBeVisible();
   expect(pageErrors).toEqual([]);
 
   await commanderCtx.close();

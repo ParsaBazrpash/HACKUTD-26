@@ -3,6 +3,7 @@
 
 import { capCodePoints, cleanHost, cleanSeverity, cleanTitle, parseTime } from '@/lib/import/clean';
 import type { Mapping } from '@/lib/import/fields';
+import { convertSeverity, type PlatformId } from '@/lib/import/platforms';
 import { sourceLine } from '@/lib/import/label';
 import type { Row } from '@/lib/import/csv';
 import {
@@ -56,6 +57,8 @@ export interface PlanInput {
   /** Names of systems already on the record. */
   existingSystems: readonly string[];
   now?: number;
+  /** The tool the export came from. Converts that tool's severity scale into words. */
+  platform?: PlatformId;
 }
 
 const SEVERITY_RANK = new Map<string, number>([
@@ -181,7 +184,7 @@ export function buildPlan(input: PlanInput): ImportPlan {
     g.firstMs = Math.min(g.firstMs, time.ms);
     g.lastMs = Math.max(g.lastMs, time.ms);
     for (const f of time.flags) g.flags.add(f);
-    const sev = cleanSeverity(get(row, input.mapping.severity));
+    const sev = cleanSeverity(convertSeverity(input.platform ?? 'generic', get(row, input.mapping.severity)));
     if (sev !== null) {
       const rank = SEVERITY_RANK.get(sev.toLowerCase()) ?? 0;
       if (g.severity === null || rank > g.rank) {

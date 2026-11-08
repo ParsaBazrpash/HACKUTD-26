@@ -40,9 +40,11 @@ export function ReportView() {
               <p className="mt-2 inline-flex items-center gap-2 text-xs text-muted" role="status">
                 <span
                   aria-hidden="true"
-                  className={`size-2 rounded-full ${state.connection === "ready" ? "bg-signal" : "bg-muted"}`}
+                  className={`size-2 rounded-full ${state.connection === "ready" && !isMockIncidentClient() ? "bg-signal" : "bg-muted"}`}
                 />
-                {state.connection === "ready"
+                {isMockIncidentClient()
+                  ? "Demo data: this report follows the demo dashboard in this browser."
+                  : state.connection === "ready"
                   ? "Live: this report follows the dashboard and updates as the record changes."
                   : "Not live right now: showing the last record this client holds."}
               </p>

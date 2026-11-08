@@ -1,48 +1,9 @@
 "use client";
 
-import { Suspense, useEffect, useSyncExternalStore } from "react";
+import { Suspense, type MouseEvent } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
-
-function incidentIdFromPath(pathname: string | null): string | null {
-  if (!pathname) return null;
-  const match = /^\/incidents\/([^/]+)/.exec(pathname);
-  return match?.[1] ?? null;
-}
-
-const LAST_INCIDENT_KEY = "haven.lastIncident";
-
-function readLastIncident(): string | null {
-  try {
-    const v = window.sessionStorage.getItem(LAST_INCIDENT_KEY);
-    return v && /^[A-Za-z0-9_-]{1,64}$/.test(v) ? v : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Members: the open incident's People & Access tab. Off an incident page it returns to the last incident
- * seen this session, and with none it opens the org roster, so the link always goes somewhere different
- * from where the person already is.
- */
-function useMembersHref(pathname: string | null): string {
-  const current = incidentIdFromPath(pathname);
-  useEffect(() => {
-    if (!current) return;
-    try {
-      window.sessionStorage.setItem(LAST_INCIDENT_KEY, current);
-    } catch {
-      // Storage can be blocked; the link then falls back to the org roster.
-    }
-  }, [current]);
-  const last = useSyncExternalStore(subscribeNever, readLastIncident, () => null);
-  const id = current ?? last;
-  return id ? `/incidents/${id}/people` : "/org";
-}
-
-const subscribeNever = (): (() => void) => () => {};
 
 function itemClass(active: boolean): string {
   return active
@@ -50,7 +11,7 @@ function itemClass(active: boolean): string {
     : "text-[15px] text-white transition-colors hover:text-white/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-signal";
 }
 
-function HavenMark() {
+export function HavenMark() {
   return (
     <span className="flex flex-col items-center leading-none">
       <svg aria-hidden="true" viewBox="0 0 36 14" className="h-2.5 w-9 text-signal">
@@ -68,25 +29,20 @@ function HavenMark() {
   );
 }
 
-function PrimaryLinks({
-  pathname,
-  onNavigate,
-  stacked = false,
-}: {
-  pathname: string | null;
-  onNavigate?: () => void;
-  stacked?: boolean;
-}) {
-  const membersHref = useMembersHref(pathname);
-  const onPeople = pathname !== null && /\/people(?:\/|$)/.test(pathname);
-  const onIncidents = pathname !== null && pathname.startsWith("/incidents") && !onPeople;
-  const onJoin = pathname === "/join" || (pathname !== null && pathname.startsWith("/join/"));
-  const onOrg = pathname === "/org" || (pathname !== null && pathname.startsWith("/org/"));
+/** Closes the phone menu (a <details>) once a link in it is tapped. */
+function closeMenu(event: MouseEvent<HTMLAnchorElement>): void {
+  event.currentTarget.closest("details")?.removeAttribute("open");
+}
+
+function startsWith(pathname: string | null, base: string): boolean {
+  return pathname === base || (pathname !== null && pathname.startsWith(`${base}/`));
+}
+
+function PrimaryLinks({ pathname, stacked = false }: { pathname: string | null; stacked?: boolean }) {
   const links = [
-    { href: "/incidents", label: "Incidents", active: onIncidents },
-    { href: membersHref, label: "Members", active: onPeople },
-    { href: "/org", label: "Org", active: onOrg },
-    { href: "/join", label: "Join", active: onJoin },
+    { href: "/incidents", label: "Incidents", active: startsWith(pathname, "/incidents") },
+    { href: "/org", label: "Org", active: startsWith(pathname, "/org") },
+    { href: "/join", label: "Join", active: startsWith(pathname, "/join") },
   ];
   return (
     <>
@@ -96,7 +52,7 @@ function PrimaryLinks({
           href={link.href}
           aria-current={link.active ? "page" : undefined}
           className={stacked ? `${itemClass(link.active)} py-2` : itemClass(link.active)}
-          onClick={onNavigate}
+          onClick={stacked ? closeMenu : undefined}
         >
           {link.label}
         </Link>
@@ -105,17 +61,18 @@ function PrimaryLinks({
   );
 }
 
-function PrimaryNav({ onNavigate, stacked = false }: { onNavigate?: () => void; stacked?: boolean }) {
+function PrimaryNav({ stacked = false }: { stacked?: boolean }) {
   const pathname = usePathname();
-  return <PrimaryLinks pathname={pathname} onNavigate={onNavigate} stacked={stacked} />;
+  return <PrimaryLinks pathname={pathname} stacked={stacked} />;
 }
 
-const getStartedClass =
-  "inline-flex h-10 shrink-0 items-center justify-center rounded-full border border-signal px-5 text-sm font-medium text-signal transition-colors hover:bg-signal/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal";
-
+/**
+ * Site-wide header. Inside an incident the room's own sidebar takes over, so the header hides
+ * itself whenever the page holds the incident room.
+ */
 export function SiteHeader() {
   return (
-    <header className="relative z-30">
+    <header className="relative z-30 [body:has(#incident-room)_&]:hidden">
       <div className="mx-auto flex h-20 w-full max-w-[1440px] items-center gap-3 px-5 sm:px-10 lg:px-14">
         <Link
           href="/"
@@ -123,30 +80,25 @@ export function SiteHeader() {
         >
           <HavenMark />
         </Link>
-        <nav aria-label="Primary" className="ml-auto hidden items-center gap-9 lg:flex">
+        <nav aria-label="Primary" className="ml-auto hidden items-center gap-9 sm:flex">
           <Suspense fallback={<PrimaryLinks pathname={null} />}>
             <PrimaryNav />
           </Suspense>
         </nav>
-        <div className="ml-auto flex items-center gap-2 sm:gap-3 lg:ml-0">
-          <Link href="/incidents" className={getStartedClass}>
-            Get Started
-          </Link>
-          <details className="group relative lg:hidden">
-            <summary className="grid size-10 cursor-pointer list-none place-items-center rounded-full text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal [&::-webkit-details-marker]:hidden">
-              <Menu aria-hidden="true" className="size-5 group-open:hidden" />
-              <X aria-hidden="true" className="hidden size-5 group-open:block" />
-              <span className="sr-only">Menu</span>
-            </summary>
-            <div className="absolute right-0 top-full z-40 mt-2 w-[min(18rem,calc(100vw-2.5rem))] rounded-2xl border border-white/10 bg-black p-4 shadow-2xl">
-              <nav aria-label="Primary" className="flex flex-col">
-                <Suspense fallback={<PrimaryLinks pathname={null} stacked />}>
-                  <PrimaryNav stacked />
-                </Suspense>
-              </nav>
-            </div>
-          </details>
-        </div>
+        <details className="group relative ml-auto sm:hidden">
+          <summary className="grid size-10 cursor-pointer list-none place-items-center rounded-full text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal [&::-webkit-details-marker]:hidden">
+            <Menu aria-hidden="true" className="size-5 group-open:hidden" />
+            <X aria-hidden="true" className="hidden size-5 group-open:block" />
+            <span className="sr-only">Menu</span>
+          </summary>
+          <div className="absolute right-0 top-full z-40 mt-2 w-[min(18rem,calc(100vw-2.5rem))] rounded-2xl border border-white/10 bg-black p-4 shadow-2xl">
+            <nav aria-label="Primary" className="flex flex-col">
+              <Suspense fallback={<PrimaryLinks pathname={null} stacked />}>
+                <PrimaryNav stacked />
+              </Suspense>
+            </nav>
+          </div>
+        </details>
       </div>
     </header>
   );

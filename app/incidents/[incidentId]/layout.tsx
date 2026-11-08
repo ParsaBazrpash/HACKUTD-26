@@ -15,10 +15,10 @@ export default function IncidentLayout({
   params: Promise<{ incidentId: string }>;
 }) {
   return (
-    <Main wide>
+    <Main bleed>
       <Suspense
         fallback={
-          <div>
+          <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-8">
             <p className="font-mono text-[11px] tracking-[0.18em] text-muted">OPENING</p>
             <h1 className="mt-3 text-3xl font-medium tracking-tight">Opening the incident…</h1>
           </div>

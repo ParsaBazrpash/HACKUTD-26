@@ -13,6 +13,8 @@ test("shell routes render the clinic incident", async ({ page }) => {
 
   await page.getByRole("main").getByRole("link", { name: "Get Started" }).click();
   await expect(page).toHaveURL("/incidents");
+  // A demo room is already held, so creating another sits behind one button.
+  await page.getByRole("button", { name: "New incident" }).click();
   await expect(page.getByRole("button", { name: "Create incident" })).toBeVisible();
   await expect(page.getByText("Demo data").first()).toBeVisible();
 
@@ -20,21 +22,18 @@ test("shell routes render the clinic incident", async ({ page }) => {
   await expect(page.getByRole("heading", { level: 1 })).toContainText("SEV1");
   await expect(page.getByText("Lakeside Family Clinic").first()).toBeVisible();
   await expect(page.getByText("Demo data").first()).toBeVisible();
-  await expect(page.getByText("structured event log")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Needs attention" })).toBeVisible();
   await expect(page.getByText("Demo sequence check passed").first()).toBeVisible();
-  await expect(page.getByText("Still suspected, encrypted, or exfiltrated")).toBeVisible();
-  await expect(page.getByText("#privileged").first()).toBeVisible();
-  await expect(page.getByText("Privileged communication").first()).toBeVisible();
+  await expect(page.getByText("still suspected, encrypted, or exfiltrated")).toBeVisible();
   await expect(page.locator("body")).not.toContainText("PRIVATE KEY");
 
+  // The commander changes status from a single button; the form stays closed until asked for.
+  await expect(page.getByLabel("Summary")).toHaveCount(0);
+  await page.getByRole("button", { name: "Change status" }).click();
   await page.getByLabel("Summary").fill("E2E status summary for the clinic.");
   await page.getByRole("button", { name: "Update status" }).click();
   await expect(page.getByText("E2E status summary for the clinic.").first()).toBeVisible();
-
-  const composer = page.getByRole("form", { name: "Message #command" });
-  await composer.getByRole("textbox").fill("E2E command note: clinics remain on paper.");
-  await composer.getByRole("button", { name: "Send" }).click();
-  await expect(page.getByText("E2E command note: clinics remain on paper.")).toBeVisible();
+  await expect(page.getByLabel("Summary")).toHaveCount(0);
 
   const nav = page.getByRole("navigation", { name: "Incident sections" });
 
@@ -64,6 +63,10 @@ test("shell routes render the clinic incident", async ({ page }) => {
   await expect(page.getByText("#technical").first()).toBeVisible();
   await expect(page.getByText("Privileged communication").first()).toBeVisible();
   await expect(page.getByText("structured event log")).toBeVisible();
+  const composer = page.getByRole("form", { name: "Message #command" });
+  await composer.getByRole("textbox").fill("E2E command note: clinics remain on paper.");
+  await composer.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByText("E2E command note: clinics remain on paper.")).toBeVisible();
 
   await nav.getByRole("link", { name: "People & Access" }).click();
   await expect(page).toHaveURL(/\/people$/);
@@ -128,4 +131,15 @@ test("the commander revokes an active member after typing their name", async ({ 
   await submit.click();
   await expect(page.getByText("Revoked Riley Patel in the demo.").first()).toBeVisible();
   await expect(page.getByRole("row", { name: /Riley Patel/ }).first()).toContainText("Revoked");
+});
+
+test("the phone menu closes after a link is tapped", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/");
+  const menu = page.locator("header details");
+  await menu.locator("summary").click();
+  await expect(menu).toHaveAttribute("open", "");
+  await menu.getByRole("link", { name: "Org" }).click();
+  await expect(page).toHaveURL("/org");
+  await expect(menu).not.toHaveAttribute("open", "");
 });

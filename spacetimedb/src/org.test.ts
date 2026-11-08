@@ -150,7 +150,8 @@ class Org {
 
   row(who: string) {
     const hex = this.people.get(who)?.hex ?? hexOf(this.h, who);
-    return [...this.h.db.org_member.iter()].find((m) => m.orgId === this.orgId && m.identity.toHexString() === hex)!;
+    const rows = [...this.h.db.org_member.iter()].filter((m) => m.orgId === this.orgId && m.identity.toHexString() === hex);
+    return rows.find((m) => m.state === 'pending') ?? rows.find((m) => m.state === 'active') ?? rows[rows.length - 1]!;
   }
 
   async certSig(who: string, signer = this.admin.keys) {
@@ -388,6 +389,40 @@ describe('enroll_member', () => {
     expect(o.h.db.org_member.count()).toBe(2n);
   });
 
+  it('a revoked person can enroll again with the same name, and the old row stays revoked', async () => {
+    const o = await Org.create();
+    await o.enrollApproved('alice', 'Alice');
+    const oldId = o.row('alice').id;
+    call(o.h, 'admin', mod.revoke_org_member, { orgId: o.orgId, orgMemberId: oldId, reason: 'lost phone', revokeSig: await o.revokeSig('alice') });
+    await o.enroll('alice', 'Alice', '+15551230009');
+    const rows = [...o.h.db.org_member.iter()].filter((m) => m.orgId === o.orgId && m.identity.toHexString() === o.people.get('alice')!.hex);
+    expect(rows.map((m) => m.state).sort()).toEqual(['pending', 'revoked']);
+    expect(rows.find((m) => m.state === 'revoked')!.id).toBe(oldId);
+    expect(rows.find((m) => m.state === 'pending')!.displayName).toBe('Alice');
+    await o.approve('alice');
+    expect(o.row('alice').state).toBe('active');
+    expect(o.row('alice').id).not.toBe(oldId);
+    expect([...o.h.db.org_member.iter()].find((m) => m.id === oldId)!.state).toBe('revoked');
+    // While the new row is active the name is taken again.
+    await o.enroll('carol', 'Alice', '+15551230008');
+    expect([...o.h.db.org_member.iter()].some((m) => m.identity.toHexString() === hexOf(o.h, 'carol'))).toBe(false);
+  });
+
+  it('a different person can enroll under a name that only a revoked row still holds', async () => {
+    const o = await Org.create();
+    await o.enrollApproved('alice', 'Alice');
+    call(o.h, 'admin', mod.revoke_org_member, {
+      orgId: o.orgId,
+      orgMemberId: o.row('alice').id,
+      reason: 'lost phone',
+      revokeSig: await o.revokeSig('alice'),
+    });
+    await o.enroll('carol', 'Alice', '+15551230008');
+    const carol = [...o.h.db.org_member.iter()].find((m) => m.identity.toHexString() === hexOf(o.h, 'carol'))!;
+    expect(carol.state).toBe('pending');
+    expect(carol.displayName).toBe('Alice');
+  });
+
   it('rejects malformed input outright', async () => {
     const o = await Org.create();
     const keys = await generateDeviceKeys();
@@ -596,6 +631,45 @@ describe('add_from_roster', () => {
       envelopes: CHANNELS.map((kind) => ({ kind, wrapped: new Uint8Array(48), iv: new Uint8Array(12) })),
     });
     bad(() => call(o.h, 'admin', mod.add_from_roster, { incidentId: unlinked, picks: [alicePick] }));
+  });
+
+  it('admits a person again after the old incident membership is revoked, and keeps that old row', async () => {
+    const room = await Room.create();
+    const o = room.org;
+    await o.enrollApproved('alice', 'Alice');
+    await room.add('alice');
+    const first = [...room.h.db.member.iter()].find((m) => m.incidentId === room.incidentId && m.displayName === 'Alice')!;
+    const oldOrgId = o.row('alice').id;
+    call(o.h, 'admin', mod.revoke_org_member, { orgId: o.orgId, orgMemberId: oldOrgId, reason: 'lost phone', revokeSig: await o.revokeSig('alice') });
+    await o.enroll('alice', 'Alice');
+    await o.approve('alice');
+    await expect(room.add('alice')).rejects.toThrow(); // still an active incident member
+    await room.revokeFromIncident('alice');
+    const role = 'technical' as const;
+    const person = o.people.get('alice')!;
+    const rosterRow = o.row('alice');
+    const envelopes = readableChannels(role).flatMap((kind) =>
+      [0, 1].map((epoch) => ({ kind, epoch, wrapped: new Uint8Array(48), iv: new Uint8Array(12) })),
+    );
+    const admitSig = await sign(
+      o.admin.keys.signPriv,
+      admitStatement(room.incidentId, person.hex, role, rosterRow.displayName, rosterRow.signPub, rosterRow.ecdhPub),
+    );
+    call(room.h, 'admin', mod.add_from_roster, {
+      incidentId: room.incidentId,
+      picks: [{ orgMemberId: rosterRow.id, role, admitSig, envelopes }],
+    });
+    const rows = [...room.h.db.member.iter()].filter((m) => m.incidentId === room.incidentId && m.identity.toHexString() === person.hex);
+    expect(rows.map((m) => m.state).sort()).toEqual(['active', 'revoked']);
+    const active = rows.find((m) => m.state === 'active')!;
+    expect(active.id).not.toBe(first.id);
+    expect(active.role).toBe('technical');
+    expect(active.inviteCodeHash).toBe(`roster:${rosterRow.id}`);
+    expect(active.lastCounter).toBe(first.lastCounter);
+    expect([...room.h.db.org_member.iter()].find((m) => m.id === oldOrgId)!.state).toBe('revoked');
+    room.page([rosterRow.id]);
+    expect([...room.h.db.page.iter()].some((p) => p.orgMemberId === rosterRow.id)).toBe(true);
+    bad(() => room.page([oldOrgId]));
   });
 
   it('refuses a forged or mismatched admission signature', async () => {

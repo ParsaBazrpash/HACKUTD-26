@@ -198,6 +198,28 @@ interface OrgSnapshot {
 /** Marker the module stores in member.inviteCodeHash for people admitted through the roster. */
 const ROSTER_MARKER_PREFIX = 'roster:';
 
+function membershipRank(state: string): number {
+  if (state === 'active') return 3;
+  if (state === 'pending') return 2;
+  if (state === 'revoked') return 1;
+  return 0;
+}
+
+/** Prefer a live membership over an older revoked row for the same person. */
+function preferOwnRow<T extends { state: string; memberId: bigint }>(rows: T[]): T | undefined {
+  let best: T | undefined;
+  for (const row of rows) {
+    if (
+      !best ||
+      membershipRank(row.state) > membershipRank(best.state) ||
+      (membershipRank(row.state) === membershipRank(best.state) && row.memberId > best.memberId)
+    ) {
+      best = row;
+    }
+  }
+  return best;
+}
+
 /**
  * The reason inside every org revocation signature. The module stores only the
  * signature, not the reason, so a verifier can rebuild the signed statement
@@ -530,7 +552,7 @@ export class RealIncidentClient implements IncidentClient {
     if (!id || !store) return emptyState(connection, at);
 
     const rows = this.backend.rows();
-    const mine = rows.status.find((r) => r.incidentId === id);
+    const mine = preferOwnRow(rows.status.filter((r) => r.incidentId === id));
     if (!mine) {
       return emptyState(
         connection,
@@ -595,7 +617,9 @@ export class RealIncidentClient implements IncidentClient {
     const extraFailures: IntegrityReport['rosterFailures'] = [];
 
     // Unwrap any channel keys we do not hold yet (active members only).
+    // An older enrollment can leave an envelope this key cannot open. That is a failure only when no envelope for that epoch opens.
     if (mine.state === 'active') {
+      const missed = new Map<string, string>();
       for (const env of rows.envelopes) {
         if (env.incidentId !== id || env.recipientHex !== meHex || !isChannel(env.kind)) continue;
         const k = keyOf(env.kind, env.epoch);
@@ -603,11 +627,12 @@ export class RealIncidentClient implements IncidentClient {
         const stored = await store.getChannelKey(env.kind, env.epoch);
         if (stored) {
           this.keys.set(k, stored);
+          missed.delete(k);
           continue;
         }
         const tag = `${k}/${bytesToHex(env.wrapped)}`;
         if (this.failedEnvelopes.has(tag)) {
-          extraFailures.push({ identity: pinned ? bytesToHex(pinned.fingerprint).slice(0, 16) : '', reason: `key envelope ${k} did not authenticate` });
+          missed.set(k, `key envelope ${k} did not authenticate`);
           continue;
         }
         const raw = await unwrapChannelKey(
@@ -618,14 +643,16 @@ export class RealIncidentClient implements IncidentClient {
         );
         if (!raw) {
           this.failedEnvelopes.add(tag);
-          extraFailures.push({ identity: '', reason: `key envelope ${k} did not authenticate` });
+          missed.set(k, `key envelope ${k} did not authenticate`);
           continue;
         }
         const ck = await importChannelKey(raw);
         raw.fill(0);
         await store.setChannelKey(env.kind, env.epoch, ck);
         this.keys.set(k, ck);
+        missed.delete(k);
       }
+      for (const reason of missed.values()) extraFailures.push({ identity: '', reason });
     }
 
     // Verify.
@@ -704,7 +731,7 @@ export class RealIncidentClient implements IncidentClient {
     views.sort((a, b) =>
       a.role === 'commander' ? -1 : b.role === 'commander' ? 1 : Number(a.joinedAt) - Number(b.joinedAt),
     );
-    const me = views.find((v) => v.identity === meHex) ?? null;
+    const me = views.find((v) => v.memberId === mine.memberId) ?? views.find((v) => v.identity === meHex) ?? null;
     const commander = views.find((v) => v.role === 'commander' && inc && v.identity === inc.commanderHex) ?? null;
 
     const folded = foldEvents(out.events, views, readable);
@@ -729,7 +756,7 @@ export class RealIncidentClient implements IncidentClient {
     const store = this.store;
     if (!id || !store) throw new ClientError('No incident is open');
     const rows = this.backend.rows();
-    const mine = rows.status.find((r) => r.incidentId === id);
+    const mine = preferOwnRow(rows.status.filter((r) => r.incidentId === id));
     if (!mine || mine.state !== 'active' || !isRole(mine.role)) {
       throw new ClientError('You are not an active member of this incident');
     }
@@ -952,8 +979,12 @@ export class RealIncidentClient implements IncidentClient {
   }
 
   async revokeMember(memberId: bigint, reason: string): Promise<void> {
-    return this.exclusive(async () => {
-      const c = await this.commanderCtx();
+    return this.exclusive(() => this.revokeMemberInChain(memberId, reason));
+  }
+
+  /** Caller already holds the exclusive lock. */
+  private async revokeMemberInChain(memberId: bigint, reason: string): Promise<void> {
+    const c = await this.commanderCtx();
       const target = c.rows.members.find((m) => m.incidentId === c.id && m.memberId === memberId);
       if (!target || !isRole(target.role) || target.role === 'commander' || target.state === 'revoked') {
         throw new ClientError('That member cannot be revoked');
@@ -1018,7 +1049,6 @@ export class RealIncidentClient implements IncidentClient {
         this.payload('roster.revoke', { memberIdentity: target.identityHex, reason: reason.slice(0, 500) }),
         true,
       );
-    });
   }
 
   // --- appending events -------------------------------------------------------
@@ -1293,8 +1323,9 @@ export class RealIncidentClient implements IncidentClient {
         }
         await store.addToRoster(fresh);
         await store.addRevoked(newlyRevoked);
-        const mine = [...members.values()].find((m) => m.row.identityHex === myHex);
-        if (!mine || mine.row.state !== 'active') continue;
+        // A newer active enrollment wins. A row this device has already accepted as revoked never becomes live again.
+        const mine = [...members.values()].find((m) => m.row.identityHex === myHex && m.row.state === 'active' && !m.revoked);
+        if (!mine) continue;
         snaps.set(o.id, {
           orgId: o.id,
           name: o.name,
@@ -1320,20 +1351,24 @@ export class RealIncidentClient implements IncidentClient {
       }
 
       // Not active anywhere yet (or any more): show my own row so the screen can say where I stand.
+      // A new pending enrollment is shown ahead of an older revoked row, and only a revoked row with no live enrollment wipes keys.
       if (!org) {
+        const pinned: OrgMemberRow[] = [];
         for (const r of rows.own) {
-          if (!(await this.orgStore(r.orgId).getPin())) continue;
-          roster = [view(r.orgId, r, false)];
-          // Only an admin-signed revocation wipes the keys. A server that merely says "revoked" cannot destroy them.
-          const adminPub = (await this.orgStore(r.orgId).getPin())?.adminSignPub;
-          if (r.state === 'revoked' && adminPub && !this.orgWiped.has(r.orgId)) {
-            if (r.revokeSig.length === 64 && (await verifyRevocation(adminPub, this.revocationFields(r.orgId, r), r.revokeSig))) {
-              this.orgWiped.add(r.orgId);
-              this.orgKeyCache.delete(r.orgId);
-              await this.orgStore(r.orgId).wipe();
+          if (await this.orgStore(r.orgId).getPin()) pinned.push(r);
+        }
+        const live = pinned.find((r) => r.state === 'pending' || r.state === 'active');
+        const shown = live ?? pinned.find((r) => r.state === 'revoked');
+        if (shown) {
+          roster = [view(shown.orgId, shown, false)];
+          const adminPub = (await this.orgStore(shown.orgId).getPin())?.adminSignPub;
+          if (!live && shown.state === 'revoked' && adminPub && !this.orgWiped.has(shown.orgId)) {
+            if (shown.revokeSig.length === 64 && (await verifyRevocation(adminPub, this.revocationFields(shown.orgId, shown), shown.revokeSig))) {
+              this.orgWiped.add(shown.orgId);
+              this.orgKeyCache.delete(shown.orgId);
+              await this.orgStore(shown.orgId).wipe();
             }
           }
-          break;
         }
       }
       this.orgSnaps = snaps;
@@ -1495,9 +1530,10 @@ export class RealIncidentClient implements IncidentClient {
     const ob = this.orgBackend();
     const myHex = await this.waitReady();
     const store = this.orgStore(frag.orgId);
-    // Already enrolled on this device: report where it stands. Never replace live keys.
+    // Already enrolled on this device: report where it stands. A revoked row does not count, so the same person can enroll again.
     const existing = await store.getLockedKeys();
-    if (existing && ob.rows().own.some((r) => r.orgId === frag.orgId)) {
+    const live = ob.rows().own.find((r) => r.orgId === frag.orgId && (r.state === 'pending' || r.state === 'active'));
+    if (existing && live && bytesEqual(existing.signPub, live.signPub) && bytesEqual(existing.ecdhPub, live.ecdhPub)) {
       return { safetyCode: orgSafetyCode(frag.orgId, myHex, existing.signPub, existing.ecdhPub) };
     }
     const vk = await this.requireVault();
@@ -1528,8 +1564,10 @@ export class RealIncidentClient implements IncidentClient {
         await store.wipe();
         throw new ClientError('This enrollment link could not be used');
       }
-      // The module records failures and returns normally, so look for the result.
-      const joined = await this.waitFor(() => ob.rows().own.some((r) => r.orgId === frag.orgId));
+      // The module records failures and returns normally, so look for a new pending row. An older revoked row does not count.
+      const joined = await this.waitFor(() =>
+        ob.rows().own.some((r) => r.orgId === frag.orgId && r.state === 'pending' && bytesEqual(r.signPub, keys.signPub)),
+      );
       if (!joined) {
         await store.wipe();
         throw new ClientError('This enrollment link could not be used. It may be expired or already used, or the name may be taken.');
@@ -1621,13 +1659,26 @@ export class RealIncidentClient implements IncidentClient {
       const { c, snap } = await this.rosterCtx();
       // 1. Verify everyone before anything is signed or sent.
       const targets: { row: OrgMemberRow; role: Role }[] = [];
+      const replacements: bigint[] = [];
       for (const p of picks) {
         const row = await this.checkedRosterRow(snap, p.orgMemberId);
-        if (row.identityHex === c.myHex || c.rows.members.some((m) => m.incidentId === c.id && m.identityHex === row.identityHex)) {
-          throw new ClientError(`${row.displayName} is already in this incident`);
+        if (row.identityHex === c.myHex) throw new ClientError(`${row.displayName} is already in this incident`);
+        const live = c.rows.members.find((m) => m.incidentId === c.id && m.identityHex === row.identityHex && m.state !== 'revoked');
+        if (live) {
+          const markerId = live.inviteCodeHash.startsWith(ROSTER_MARKER_PREFIX) ? live.inviteCodeHash.slice(ROSTER_MARKER_PREFIX.length) : '';
+          const prior = snap.members.get(markerId);
+          // Only a new enrollment may replace an incident membership that points at a revoked roster row.
+          if (!prior?.revoked || prior.row.identityHex !== row.identityHex || prior.row.orgMemberId === row.orgMemberId) {
+            throw new ClientError(`${row.displayName} is already in this incident`);
+          }
+          replacements.push(live.memberId);
         }
         targets.push({ row, role: p.role });
       }
+      for (const memberId of replacements) {
+        await this.revokeMemberInChain(memberId, 'Replaced by a new enrollment');
+      }
+      const current = { ...c, rows: this.backend.rows() };
       // 2. Link the incident to the org once.
       const linked =
         (await c.store.getOrgLink()) === snap.orgId ||
@@ -1645,10 +1696,10 @@ export class RealIncidentClient implements IncidentClient {
       for (const { row, role } of targets) {
         const envelopes: { kind: string; epoch: number; wrapped: Uint8Array; iv: Uint8Array }[] = [];
         for (const kind of readableChannels(role)) {
-          const ch = c.rows.channels.find((x) => x.incidentId === c.id && x.kind === kind);
+          const ch = current.rows.channels.find((x) => x.incidentId === c.id && x.kind === kind);
           if (!ch) throw new ClientError('Channel state is missing');
           for (let e = 0; e <= ch.currentEpoch; e++) {
-            const raw = await this.rawChannelKey(c, kind, e);
+            const raw = await this.rawChannelKey(current, kind, e);
             const w = await wrapChannelKey(
               c.device.ecdhPriv,
               row.ecdhPub,

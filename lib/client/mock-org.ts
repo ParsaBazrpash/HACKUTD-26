@@ -231,7 +231,7 @@ export class MockOrg {
     if (link.expiresAt <= now) throw new Error("This demo enrollment link has expired.");
     const displayName = this.hooks.cleanName(input.displayName);
     if (!isE164(input.phone)) throw new Error("Enter the phone number in international format, like +15555550123.");
-    if (org.members.some((m) => displayNameKey(m.displayName) === displayNameKey(displayName))) {
+    if (org.members.some((m) => m.state !== "revoked" && displayNameKey(m.displayName) === displayNameKey(displayName))) {
       throw new Error("That display name is already in use.");
     }
     if (org.members.length >= MAX_ROSTER) throw new Error("This org cannot add another person.");

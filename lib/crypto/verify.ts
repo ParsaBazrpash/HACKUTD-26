@@ -83,13 +83,24 @@ export interface VerifyInput {
   checkpoints?: RawCheckpoint[];
 }
 
+/** One certified key an identity has held. A re-enrollment adds another. Old events keep verifying under the old key. */
+interface HeldKey {
+  signPub: Uint8Array;
+  role: Role;
+  certified: boolean;
+  /** Set when this row is revoked and the revocation signature verifies. */
+  revokedAtMicros?: bigint;
+}
+
 export interface CertifiedMember {
   member: RosterMember;
   ref: MemberRef;
-  /** admitSig verifies under the pinned commander key. */
+  /** admitSig verifies under the pinned commander key for the row this entry displays. */
   certified: boolean;
-  /** Revocation time (server micros) when state is revoked and revokeSig verifies. */
+  /** Revocation time of the displayed row, when that row is revoked and revokeSig verifies. */
   revokedAtMicros?: bigint;
+  /** Every roster row for this identity, including an older revoked enrollment. */
+  keys: HeldKey[];
 }
 
 export interface VerifyOutput {
@@ -154,12 +165,30 @@ export async function verifyRoster(
       else if (m.revokedAtMicros === undefined) failures.push({ identity: m.identityHex, reason: 'revocation has no time' });
       else revokedAtMicros = m.revokedAtMicros;
     }
-    roster.set(m.identityHex, {
-      member: m,
-      ref: { identity: m.identityHex, displayName: m.displayName, role: m.role },
+    const held: HeldKey = {
+      signPub: m.signPub,
+      role: m.role,
       certified,
-      revokedAtMicros,
-    });
+      ...(revokedAtMicros !== undefined ? { revokedAtMicros } : {}),
+    };
+    const prev = roster.get(m.identityHex);
+    const keys = prev ? [...prev.keys, held] : [held];
+    const rank = (state: string) => (state === 'active' ? 3 : state === 'pending' ? 2 : state === 'revoked' ? 1 : 0);
+    const showThis =
+      !prev ||
+      rank(m.state) > rank(prev.member.state) ||
+      (rank(m.state) === rank(prev.member.state) && m.memberId >= prev.member.memberId);
+    if (!showThis && prev) {
+      roster.set(m.identityHex, { ...prev, keys });
+    } else {
+      roster.set(m.identityHex, {
+        member: m,
+        ref: { identity: m.identityHex, displayName: m.displayName, role: m.role },
+        certified,
+        keys,
+        ...(revokedAtMicros !== undefined ? { revokedAtMicros } : {}),
+      });
+    }
   }
   return { roster, failures };
 }
@@ -189,16 +218,14 @@ export async function verifyIncident(input: VerifyInput): Promise<VerifyOutput> 
     commanderKey = null; // already reported by verifyRoster
   }
   const keyCache = new Map<string, CryptoKey | null>();
-  const signKeyFor = async (hex: string): Promise<CryptoKey | null> => {
+  const pubKey = async (signPub: Uint8Array): Promise<CryptoKey | null> => {
+    const hex = bytesToHex(signPub);
     if (keyCache.has(hex)) return keyCache.get(hex) ?? null;
     let k: CryptoKey | null = null;
-    const cm = roster.get(hex);
-    if (cm) {
-      try {
-        k = await importSignPub(cm.member.signPub);
-      } catch {
-        k = null;
-      }
+    try {
+      k = await importSignPub(signPub);
+    } catch {
+      k = null;
     }
     keyCache.set(hex, k);
     return k;
@@ -246,32 +273,42 @@ export async function verifyIncident(input: VerifyInput): Promise<VerifyOutput> 
       if (raw.epoch < maxEpoch) fail(w, 'stale_epoch');
       maxEpoch = Math.max(maxEpoch, raw.epoch);
 
-      // 3: author certified and not revoked before this event
-      const cm = roster.get(raw.author);
-      if (!cm || !cm.certified) {
+      // 3 and 4: some certified key for this identity must sign the event, still be allowed to write, and not be revoked yet.
+      // A later enrollment does not erase the key that signed earlier events.
+      const held = (roster.get(raw.author)?.keys ?? []).filter((k) => k.certified);
+      if (held.length === 0) {
         fail(w, 'unknown_author');
       } else {
-        if (cm.revokedAtMicros !== undefined && raw.serverTsMicros >= cm.revokedAtMicros) fail(w, 'revoked_author');
-        if (!canWrite(cm.member.role, channel)) fail(w, 'not_permitted', 'role cannot write this channel');
-        // 4: signature
-        const key = await signKeyFor(raw.author);
-        const sigOk =
-          key !== null &&
-          (await verifySig(
-            key,
-            eventSigInput({
-              incidentId,
-              channel,
-              epoch: raw.epoch,
-              author: raw.author,
-              clientEventId: raw.clientEventId,
-              authorCounter: raw.authorCounter,
-              iv: raw.iv,
-              ciphertext: raw.ciphertext,
-            }),
-            raw.signature,
-          ));
-        if (!sigOk) fail(w, 'bad_signature');
+        const sigInput = eventSigInput({
+          incidentId,
+          channel,
+          epoch: raw.epoch,
+          author: raw.author,
+          clientEventId: raw.clientEventId,
+          authorCounter: raw.authorCounter,
+          iv: raw.iv,
+          ciphertext: raw.ciphertext,
+        });
+        let matched = false;
+        let authorized = false;
+        let sawRevoked = false;
+        let sawRole = false;
+        for (const k of held) {
+          const revoked = k.revokedAtMicros !== undefined && raw.serverTsMicros >= k.revokedAtMicros;
+          const roleOk = canWrite(k.role, channel);
+          const key = await pubKey(k.signPub);
+          const sigOk = key !== null && (await verifySig(key, sigInput, raw.signature));
+          if (sigOk) matched = true;
+          if (revoked) sawRevoked = true;
+          if (!roleOk) sawRole = true;
+          if (sigOk && !revoked && roleOk) authorized = true;
+        }
+        if (!authorized) {
+          const allRevoked = held.every((k) => k.revokedAtMicros !== undefined && raw.serverTsMicros >= k.revokedAtMicros);
+          if (sawRevoked && (allRevoked || matched)) fail(w, 'revoked_author');
+          if (!matched) fail(w, 'bad_signature');
+          else if (sawRole) fail(w, 'not_permitted', 'role cannot write this channel');
+        }
       }
 
       // 5 and 6: decrypt, parse, kind and role
@@ -302,6 +339,7 @@ export async function verifyIncident(input: VerifyInput): Promise<VerifyOutput> 
             w.payloadParsed = parsed.payload;
             const sent = new Date(parsed.payload.sentAt);
             w.sentAt = Number.isNaN(sent.getTime()) ? null : sent;
+            const cm = roster.get(raw.author);
             if (cm && cm.certified && !isKindAllowed(parsed.payload.kind, channel, cm.member.role)) {
               fail(w, 'not_permitted', `${parsed.payload.kind} not allowed for ${cm.member.role} in #${channel}`);
             }

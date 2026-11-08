@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { admitStatement } from '@/spacetimedb/src/shared/encoding';
 import type { ChannelKind } from '@/spacetimedb/src/shared/policy';
 import type { FailureReason } from '@/lib/client/types';
+import { generateDeviceKeys } from './keys';
+import { sign } from './sign';
 import { genesisHash } from './chain';
 import { chat, TestIncident, timeline } from './testkit';
-import { verifyIncident, type RawEvent } from './verify';
+import { verifyIncident, type RawEvent, type RosterMember } from './verify';
 
 const reasons = (r: Awaited<ReturnType<typeof verifyIncident>>, ch: ChannelKind) =>
   r.report.channels[ch]!.failures.map((f) => `${f.seq}:${f.reason}`);
@@ -377,6 +380,42 @@ describe('verifyIncident: roster and authorization', () => {
     const r = await verifyIncident(t.input('commander'));
     expect(r.roster.get(impostor.identityHex)!.certified).toBe(false);
     expect(r.report.rosterFailures.some((f) => f.reason.includes('pinned'))).toBe(true);
+  });
+
+  it('a later enrollment keeps earlier messages valid under the old key', async () => {
+    const t = await TestIncident.create();
+    const tech = await t.addMember('technical', 'Sam Tech');
+    const before = await t.append(tech, 'record', timeline('before'));
+    await t.revoke(tech, before.serverTsMicros + 1n);
+    const keys = await generateDeviceKeys();
+    const admitSig = await sign(
+      t.commander.keys.signPriv,
+      admitStatement(t.incidentId, tech.identityHex, 'technical', 'Sam Tech', keys.signPub, keys.ecdhPub),
+    );
+    const second: RosterMember = {
+      memberId: 99n,
+      identityHex: tech.identityHex,
+      role: 'technical',
+      state: 'active',
+      displayName: 'Sam Tech',
+      signPub: keys.signPub,
+      ecdhPub: keys.ecdhPub,
+      admitSig,
+      revokeSig: new Uint8Array(0),
+    };
+    const saved = tech.keys;
+    tech.keys = keys;
+    const after = await t.append(tech, 'record', timeline('after'), { serverTsMicros: before.serverTsMicros + 10n });
+    tech.keys = saved;
+    const lateOld = await t.append(tech, 'record', timeline('old key again'), { serverTsMicros: before.serverTsMicros + 20n });
+    const input = t.input('commander');
+    input.members.push(second);
+    const r = await verifyIncident(input);
+    const byId = new Map(r.events.map((e) => [e.eventId, e]));
+    expect(byId.get(before.clientEventId)!.verdict.ok).toBe(true);
+    expect(byId.get(after.clientEventId)!.verdict.ok).toBe(true);
+    expect(byId.get(lateOld.clientEventId)!.verdict.failures).toContain('revoked_author');
+    expect(r.roster.get(tech.identityHex)!.member.state).toBe('active');
   });
 
   it('events after revocation are invalid, earlier ones stay valid (T13)', async () => {

@@ -110,6 +110,7 @@ Message and record content (including attorney-client privileged communications)
 
 - 2026-11-07 (Lane A): opt-in passkey lock (WebAuthn PRF) for device keys at rest. T20 is Done (opt-in). The lock card is mounted on the incidents page, the join page and the locked room. The PRF secret and the vault key are never stored or logged; there is no server step, so the WebAuthn challenge is random and unchecked on purpose (the passkey is not a login).
 - 2026-11-07: HAVEN can be installed as a progressive web app. The service worker does not cache incident data. T37 is Done.
+- 2026-11-07: A revoked org member can enroll again with a fresh link, including the same name and phone. The old roster row stays revoked and cannot be added or paged. The new row is pending until the admin approves it and checks the new safety code. If that person is already in the open incident, adding the new row revokes the old incident access (the channels they could read get a new key) and admits the new keys. Earlier messages still verify under the old key.
 
 ## Downgrades taken
 

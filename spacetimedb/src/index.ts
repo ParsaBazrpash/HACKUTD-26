@@ -348,13 +348,15 @@ function membersOf(ctx: Ctx | VCtx, incidentId: string) {
   return [...ctx.db.member.incidentId.filter(incidentId)];
 }
 
-/** The caller's member row in an incident, any state, or undefined. */
+/** The caller's member row in an incident, any state, or undefined. A live row wins over an older revoked one. */
 function myMemberRow(ctx: Ctx | VCtx, incidentId: string) {
   const me = ctx.sender.toHexString();
+  let found: ReturnType<typeof membersOf>[number] | undefined;
   for (const m of ctx.db.member.incidentId.filter(incidentId)) {
-    if (m.identity.toHexString() === me) return m;
+    if (m.identity.toHexString() !== me) continue;
+    if (!found || stateRank(m.state) > stateRank(found.state) || (stateRank(m.state) === stateRank(found.state) && m.id > found.id)) found = m;
   }
-  return undefined;
+  return found;
 }
 
 /** The caller's active member row, or throws 'not authorized'. */
@@ -387,9 +389,22 @@ function validName(raw: string): string {
   return n;
 }
 
-function nameTaken(ctx: Ctx, incidentId: string, name: string): boolean {
+function nameTaken(ctx: Ctx, incidentId: string, name: string, reclaimIdentity?: string): boolean {
   const key = displayNameKey(name);
-  return membersOf(ctx, incidentId).some((m) => displayNameKey(m.displayName) === key);
+  return membersOf(ctx, incidentId).some((m) => {
+    if (displayNameKey(m.displayName) !== key) return false;
+    // The same person may take their name back after that incident membership was revoked.
+    if (reclaimIdentity && m.state === 'revoked' && m.identity.toHexString() === reclaimIdentity) return false;
+    return true;
+  });
+}
+
+/** active, then pending, then revoked. Ties keep the newer row. */
+function stateRank(state: string): number {
+  if (state === 'active') return 3;
+  if (state === 'pending') return 2;
+  if (state === 'revoked') return 1;
+  return 0;
 }
 
 const micros = (ts: { microsSinceUnixEpoch: bigint }) => ts.microsSinceUnixEpoch;
@@ -920,13 +935,15 @@ function orgMembersOf(ctx: Ctx | VCtx, orgId: string) {
   return [...ctx.db.org_member.orgId.filter(orgId)];
 }
 
-/** The caller's org_member row in an org (any state), or undefined. */
+/** The caller's org_member row in an org (any state), or undefined. A live row wins over an older revoked one. */
 function myOrgRow(ctx: Ctx | VCtx, orgId: string) {
   const me = ctx.sender.toHexString();
+  let found: ReturnType<typeof orgMembersOf>[number] | undefined;
   for (const m of ctx.db.org_member.orgId.filter(orgId)) {
-    if (m.identity.toHexString() === me) return m;
+    if (m.identity.toHexString() !== me) continue;
+    if (!found || stateRank(m.state) > stateRank(found.state) || (stateRank(m.state) === stateRank(found.state) && m.id > found.id)) found = m;
   }
-  return undefined;
+  return found;
 }
 
 /** The caller as the org's admin with an active roster row, or throws 'not authorized'. */
@@ -941,7 +958,8 @@ function orgAdmin(ctx: Ctx, orgId: string) {
 
 function orgNameTaken(ctx: Ctx, orgId: string, name: string): boolean {
   const key = displayNameKey(name);
-  return orgMembersOf(ctx, orgId).some((m) => displayNameKey(m.displayName) === key);
+  // A revoked row keeps its history, but the name can be used again.
+  return orgMembersOf(ctx, orgId).some((m) => m.state !== 'revoked' && displayNameKey(m.displayName) === key);
 }
 
 const sealedOk = (b: Uint8Array) => bytesLen(b, SEALED_CONTACT_LEN);
@@ -1073,7 +1091,8 @@ export const enroll_member = spacetimedb.reducer(
     if (!link || !o || link.orgId !== orgId || link.used || micros(link.expiresAt) <= now) return failed();
     const members = orgMembersOf(ctx, orgId);
     const me = ctx.sender.toHexString();
-    if (members.some((m) => m.identity.toHexString() === me)) return failed();
+    // A revoked row does not block a new enrollment. The old row stays revoked.
+    if (members.some((m) => m.identity.toHexString() === me && m.state !== 'revoked')) return failed();
     if (members.length >= MAX_ORG_MEMBERS) return failed();
     if (orgNameTaken(ctx, orgId, name)) return failed();
 
@@ -1167,9 +1186,13 @@ export const add_from_roster = spacetimedb.reducer(
       if (!target || target.orgId !== link.orgId || target.state !== 'active') throw invalid();
       const members = membersOf(ctx, incidentId);
       const tHex = target.identity.toHexString();
-      if (members.some((m) => m.identity.toHexString() === tHex)) throw invalid(); // already in the incident (any state)
+      const prior = members.filter((m) => m.identity.toHexString() === tHex);
+      // A live incident membership still blocks. A revoked one stays in the log and a new row may be admitted.
+      if (prior.some((m) => m.state !== 'revoked')) throw invalid();
       if (members.length >= MAX_MEMBERS) throw invalid();
-      if (nameTaken(ctx, incidentId, target.displayName)) throw invalid();
+      if (nameTaken(ctx, incidentId, target.displayName, tHex)) throw invalid();
+      let priorCounter = 0n;
+      for (const m of prior) if (m.lastCounter > priorCounter) priorCounter = m.lastCounter;
       // Same certificate as admit_member, built from the roster keys.
       if (!sigOk(inc.commanderSignPub, admitStatement(incidentId, tHex, pick.role, target.displayName, target.signPub, target.ecdhPub), pick.admitSig)) {
         throw invalid();
@@ -1189,7 +1212,7 @@ export const add_from_roster = spacetimedb.reducer(
         inviteCodeHash: rosterMarker(target.id),
         admitSig: pick.admitSig,
         revokeSig: new Uint8Array(0),
-        lastCounter: 0n,
+        lastCounter: priorCounter,
         joinedAt: ctx.timestamp,
         admittedAt: ctx.timestamp,
         revokedAt: undefined,
@@ -1240,8 +1263,10 @@ export const request_page = spacetimedb.reducer(
       if (!target || target.orgId !== link.orgId || target.state !== 'active') throw invalid();
       const tHex = target.identity.toHexString();
       if (tHex === ctx.sender.toHexString()) throw invalid();
-      // Must be an active incident member who was added from the roster.
-      const m = incidentMembers.find((x) => x.identity.toHexString() === tHex);
+      // Must be an active incident member who was added from this roster row. An older revoked row for the same person does not count.
+      const m = incidentMembers
+        .filter((x) => x.identity.toHexString() === tHex)
+        .sort((a, b) => stateRank(b.state) - stateRank(a.state) || (a.id > b.id ? -1 : 1))[0];
       if (!m || m.state !== 'active' || m.inviteCodeHash !== rosterMarker(target.id)) throw invalid();
       // One page per target per 60 seconds.
       for (const p of ctx.db.page.orgMemberId.filter(id)) {

@@ -293,6 +293,29 @@ describe('org creation and enrollment', () => {
     expect(jordan.client.getState().org).toBeNull();
     expect(await new OrgStore(orgId, jordan.db).getLockedKeys()).toBeUndefined();
   });
+
+  it('a revoked person enrolls again with the same name and phone, and the old row stays revoked', async () => {
+    const hub = new HarnessHub();
+    const pager = await newPager();
+    const { admin, orgId } = await startOrg(hub, pager);
+    const jordan = await enrollPerson(hub, pager, admin, 'Jordan');
+    const oldId = rosterId(admin.client, 'Jordan');
+    await admin.client.revokeOrgMember(oldId, 'lost phone');
+    await settle();
+    const { url } = await admin.client.createEnrollLink({ ttlHours: 1 });
+    const { safetyCode } = await jordan.client.enroll({ fragment: fragmentOf(url), displayName: 'Jordan', phone: PHONES.Jordan });
+    await settle();
+    const rows = admin.client.getState().roster.filter((r) => r.displayName === 'Jordan');
+    expect(rows.map((r) => r.state).sort()).toEqual(['pending', 'revoked']);
+    const pending = rows.find((r) => r.state === 'pending')!;
+    expect(pending.orgMemberId).not.toBe(oldId);
+    expect(pending.safetyCode).toBe(safetyCode);
+    await admin.client.approveMember(pending.orgMemberId);
+    await settle();
+    expect(jordan.client.getState().org).toMatchObject({ orgId, myRole: 'member' });
+    expect(admin.client.getState().roster.find((r) => r.orgMemberId === oldId)!.state).toBe('revoked');
+    expect(await new OrgStore(orgId, jordan.db).getLockedKeys()).toBeDefined();
+  });
 });
 
 async function startIncident(hub: HarnessHub, pager: Pager, posts: string[] = []) {
@@ -447,6 +470,34 @@ describe('roster admission and paging', () => {
     await settle();
     await expect(admin.client.addFromRoster([{ orgMemberId: row.orgMemberId, role: 'technical' }])).rejects.toThrow(/certificate|keys changed/);
     expect(admin.client.getState().roster.find((r) => r.displayName === 'Sam')!.keyChanged).toBe(true);
+  });
+
+  it('adding the new enrollment retires the old incident access and admits the new keys', async () => {
+    const hub = new HarnessHub();
+    const pager = await newPager();
+    const { admin, jordan, incidentId } = await startIncident(hub, pager);
+    const oldId = rosterId(admin.client, 'Jordan');
+    await admin.client.addFromRoster([{ orgMemberId: oldId, role: 'counsel' }]);
+    await settle();
+    await jordan.client.openIncident(incidentId);
+    await settle();
+    await admin.client.revokeOrgMember(oldId, 'lost phone');
+    await settle();
+    const { url } = await admin.client.createEnrollLink({ ttlHours: 1 });
+    await jordan.client.enroll({ fragment: fragmentOf(url), displayName: 'Jordan', phone: PHONES.Jordan });
+    await settle();
+    const pending = admin.client.getState().roster.find((r) => r.displayName === 'Jordan' && r.state === 'pending')!;
+    await admin.client.approveMember(pending.orgMemberId);
+    await settle();
+    await admin.client.addFromRoster([{ orgMemberId: pending.orgMemberId, role: 'technical' }]);
+    await settle();
+    await jordan.client.openIncident(incidentId);
+    await settle();
+    expect(jordan.client.getState().me).toMatchObject({ state: 'active', role: 'technical', verified: true });
+    expect(jordan.client.getState().integrity.ok).toBe(true);
+    expect(admin.client.getState().roster.find((r) => r.orgMemberId === oldId)!.state).toBe('revoked');
+    const states = admin.client.getState().members.filter((m) => m.displayName === 'Jordan').map((m) => m.state).sort();
+    expect(states).toEqual(['active', 'revoked']);
   });
 
   it('refuses a person already in the incident, and a pick that is not on the roster', async () => {

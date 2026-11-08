@@ -43,7 +43,7 @@ export type SectionBadges = Partial<Record<Slug, { count: number; tone: "alert" 
 
 function linkClass(active: boolean): string {
   const base =
-    "inline-flex min-h-9 shrink-0 items-center gap-2.5 rounded-lg px-3 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal lg:flex lg:w-full";
+    "inline-flex min-h-9 shrink-0 items-center gap-2.5 rounded-lg px-3 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal lg:flex lg:w-full relative lg:group-data-[collapsed=true]/room:justify-center lg:group-data-[collapsed=true]/room:px-0";
   return active
     ? `${base} bg-signal font-medium text-signal-ink`
     : `${base} text-muted hover:bg-panel-raised hover:text-foreground`;
@@ -71,7 +71,7 @@ function SectionLinks({
     >
       {GROUPS.map((group) => (
         <div key={group.label} className="flex shrink-0 gap-1 lg:flex-col">
-          <p aria-hidden="true" className="hidden px-3 pb-1 text-[10px] font-medium tracking-[0.16em] text-muted lg:block">
+          <p aria-hidden="true" className="hidden px-3 pb-1 text-[10px] font-medium tracking-[0.16em] text-muted lg:block lg:group-data-[collapsed=true]/room:sr-only">
             {group.label}
           </p>
           {group.slugs.map((slug) => {
@@ -82,13 +82,13 @@ function SectionLinks({
             const active = pathname !== null && incidentSectionActive(pathname, incidentId, slug);
             const badge = badges[slug];
             return (
-              <Link key={slug} href={href} aria-current={active ? "page" : undefined} className={linkClass(active)}>
+              <Link key={slug} href={href} title={section.label} aria-current={active ? "page" : undefined} className={linkClass(active)}>
                 <Icon aria-hidden="true" className="hidden size-4 shrink-0 lg:block" />
-                <span className="lg:min-w-0 lg:flex-1 lg:truncate">{section.label}</span>
+                <span className="lg:min-w-0 lg:flex-1 lg:truncate lg:group-data-[collapsed=true]/room:sr-only">{section.label}</span>
                 {badge && badge.count > 0 ? (
                   <span
                     aria-hidden="true"
-                    className={`rounded-full px-1.5 text-[11px] font-medium tabular-nums ${badgeClass(active, badge.tone)}`}
+                    className={`rounded-full px-1.5 text-[11px] font-medium tabular-nums ${badgeClass(active, badge.tone)} lg:group-data-[collapsed=true]/room:absolute lg:group-data-[collapsed=true]/room:right-1 lg:group-data-[collapsed=true]/room:top-0.5 lg:group-data-[collapsed=true]/room:px-1 lg:group-data-[collapsed=true]/room:text-[10px]`}
                   >
                     {badge.count}
                   </span>

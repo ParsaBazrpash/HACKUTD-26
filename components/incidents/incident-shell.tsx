@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
-import { CircleCheck } from "lucide-react";
+import { CircleCheck, ListChecks, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { useSidebarCollapsed } from "@/components/incidents/use-sidebar-collapsed";
 import { attentionFor } from "@/components/incidents/attention";
 import { HavenMark } from "@/components/shell/site-header";
 import { DemoBanner } from "@/components/incidents/demo-banner";
@@ -143,6 +144,7 @@ function Room({
   children: ReactNode;
 }) {
   const now = useBrowserNow();
+  const [collapsed, setCollapsed] = useSidebarCollapsed();
   const incident = state.incident;
   if (!incident) return <p className="text-sm text-muted">No incident is open in this tab.</p>;
   const findings = listIntegrityFindings(state.integrity);
@@ -153,35 +155,79 @@ function Room({
   const mock = isMockIncidentClient();
 
   return (
-    <div id="incident-room" className="min-w-0 lg:grid lg:min-h-dvh lg:grid-cols-[15rem_minmax(0,1fr)]">
-      <aside className="no-print min-w-0 border-line px-4 pt-4 sm:px-8 lg:sticky lg:top-0 lg:flex lg:h-dvh lg:flex-col lg:gap-8 lg:overflow-y-auto lg:border-r lg:bg-panel/40 lg:px-3 lg:py-6">
-        <div className="mb-3 flex items-center justify-between gap-3 lg:mb-0 lg:px-3">
+    <div
+      id="incident-room"
+      data-collapsed={collapsed ? "true" : "false"}
+      className={`group/room min-w-0 lg:grid lg:min-h-dvh ${
+        collapsed ? "lg:grid-cols-[4.25rem_minmax(0,1fr)]" : "lg:grid-cols-[15rem_minmax(0,1fr)]"
+      }`}
+    >
+      <aside id="incident-sidebar" className="no-print min-w-0 border-line px-4 pt-4 sm:px-8 lg:sticky lg:top-0 lg:flex lg:h-dvh lg:flex-col lg:gap-8 lg:overflow-y-auto lg:border-r lg:bg-panel/40 lg:px-3 lg:py-6">
+        <div className={`mb-3 flex items-center justify-between gap-3 lg:mb-0 ${collapsed ? "lg:flex-col lg:gap-4" : "lg:px-3"}`}>
           <Link
             href="/"
             className="shrink-0 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-signal"
           >
-            <HavenMark />
+            {collapsed ? (
+              <>
+                <span className="lg:hidden">
+                  <HavenMark />
+                </span>
+                <span className="hidden lg:block">
+                  <svg aria-hidden="true" viewBox="0 0 36 14" className="h-3 w-9 text-signal">
+                    <path d="M2 12 18 2l16 10" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.6" />
+                  </svg>
+                  <span className="sr-only">HAVEN</span>
+                </span>
+              </>
+            ) : (
+              <HavenMark />
+            )}
           </Link>
           <Link href="/incidents" className={`${quietLinkClass} lg:hidden`}>
             All incidents
           </Link>
+          <button
+            type="button"
+            onClick={() => setCollapsed(!collapsed)}
+            aria-expanded={!collapsed}
+            aria-controls="incident-sidebar"
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            className="hidden size-8 place-items-center rounded-lg text-muted hover:bg-panel-raised hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal lg:grid"
+          >
+            {collapsed ? <PanelLeftOpen aria-hidden="true" className="size-4" /> : <PanelLeftClose aria-hidden="true" className="size-4" />}
+            <span className="sr-only">{collapsed ? "Expand sidebar" : "Collapse sidebar"}</span>
+          </button>
         </div>
         <SectionNav incidentId={incidentId} badges={badges} />
-        <div className="mt-auto hidden space-y-3 border-t border-line px-3 pt-4 text-xs text-muted lg:block">
-          <p>
-            <span className="text-foreground">{state.me ? ROLE_LABELS[state.me.role] : "Member"}</span>
-            <span aria-hidden="true"> · </span>
-            {connectionLabel(state.connection, mock)}
-          </p>
-          <div className="flex gap-4">
-            <Link href="/incidents" className={quietLinkClass}>
-              All incidents
-            </Link>
-            <Link href="/org" className={quietLinkClass}>
-              Org
+        {collapsed ? (
+          <div className="mt-auto hidden justify-center border-t border-line pt-4 lg:flex">
+            <Link
+              href="/incidents"
+              title="All incidents"
+              className="grid size-9 place-items-center rounded-lg text-muted hover:bg-panel-raised hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+            >
+              <ListChecks aria-hidden="true" className="size-4" />
+              <span className="sr-only">All incidents</span>
             </Link>
           </div>
-        </div>
+        ) : (
+          <div className="mt-auto hidden space-y-3 border-t border-line px-3 pt-4 text-xs text-muted lg:block">
+            <p>
+              <span className="text-foreground">{state.me ? ROLE_LABELS[state.me.role] : "Member"}</span>
+              <span aria-hidden="true"> · </span>
+              {connectionLabel(state.connection, mock)}
+            </p>
+            <div className="flex gap-4">
+              <Link href="/incidents" className={quietLinkClass}>
+                All incidents
+              </Link>
+              <Link href="/org" className={quietLinkClass}>
+                Org
+              </Link>
+            </div>
+          </div>
+        )}
       </aside>
 
       <div className="min-w-0 px-4 pb-10 pt-5 sm:px-8 lg:pt-8">

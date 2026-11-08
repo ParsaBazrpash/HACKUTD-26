@@ -583,3 +583,13 @@ Take a fallback the moment a gate fails; do not keep fighting.
 - No plaintext, keys, codes or secrets in logs, URLs (except the invite fragment), commits or error messages.
 - `docs/THREAT_MODEL.md` status updated for anything you implemented, downgraded or deferred.
 - No em dashes in user-facing copy or docs (team style).
+
+## 13. Org roster and phone paging (as shipped)
+
+Added on 2026-11-07 and 2026-11-08 for the Winstead scenario (company phones down, email sporadic). Rows T38 to T45 in `docs/THREAT_MODEL.md` hold the proof.
+
+- **Org:** an org admin creates the org and enrollment links (fragment secret, single use). People enroll with a name and phone; the admin approves after matching a safety code and signs a certificate over the row. Org keys sit behind the passkey lock.
+- **Roster to room:** the incident commander picks active roster members; their client verifies each certificate and signs the admission (`add_from_roster`). Revoked keys never return to an incident.
+- **Paging:** `request_page` writes a `requested` row per person. The commander's client signs a page request and posts it to `/api/page`. The pager checks the pinned admin key, certificates, the commander signature, freshness and Spacetime state, opens the sealed numbers, then places Twilio calls. `/api/twilio/voice` takes Twilio's webhooks (signature and binding tag checked) and writes status through `pager_update`. Pressing 4 records `acknowledged`; `joined` needs a signed action in the room.
+- **Server secrets** exist only in the pager. See README "Pager setup" for names and rotation.
+- **Proof:** `tests/roster-scenario.test.ts` (mock story), `live/roster.live.ts` (real crypto on Maincloud), `live/page.live.ts` (real phone, `PW_PAGER_LIVE=1`).

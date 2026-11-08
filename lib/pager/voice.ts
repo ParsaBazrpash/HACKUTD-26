@@ -15,12 +15,12 @@ export interface VoiceResult {
 const xml = (body: string, status = 200): VoiceResult => ({ status, body, contentType: 'text/xml; charset=utf-8' });
 const deny = (status: number): VoiceResult => ({ status, body: '', contentType: 'text/plain; charset=utf-8' });
 
+// Only 'ringing' is written from the call. A busy, unanswered or failed call must not end the page, because the
+// same page was also texted and a reply of 4 can acknowledge until the module's 120 second sweep ends it.
+// (Terminal rows never change in the module.) A page where neither the call nor the text could be sent is
+// marked failed by /api/page itself.
 const STATUS_MAP: Record<string, PageStatus> = {
   ringing: 'ringing',
-  'no-answer': 'no_answer',
-  busy: 'busy',
-  failed: 'failed',
-  canceled: 'failed',
 };
 
 /**

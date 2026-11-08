@@ -21,7 +21,7 @@ test("only the pager routes exist and no server action is used", () => {
     .filter((file) => file.endsWith(`${path.sep}route.ts`) || file.endsWith(`${path.sep}route.tsx`))
     .map((file) => file.split(path.sep).join("/"))
     .sort();
-  const allowed = ["app/api/page/route.ts", "app/api/twilio/voice/route.ts"];
+  const allowed = ["app/api/page/route.ts", "app/api/twilio/voice/route.ts", "app/api/twilio/sms/route.ts"];
   for (const route of routes) expect(allowed, `unexpected route ${route}`).toContain(route);
   for (const file of files) {
     expect(readFileSync(file, "utf8"), file).not.toMatch(/["']use server["']/);

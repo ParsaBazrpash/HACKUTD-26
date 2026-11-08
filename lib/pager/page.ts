@@ -6,7 +6,7 @@ import { openContact, verifyEnrollment, verifyPageRequest } from '@/lib/crypto/o
 import { parsePageRequestBody, type PageRequestWire } from '@/lib/protocol/org';
 import type { PagerConfig } from './config';
 import { pagerReadProblems, pagerUpdate, readPagerState, type MemberRow } from './spacetime';
-import { placeCall } from './twilio';
+import { placeCall, sendSms } from './twilio';
 
 /** A request may be at most this far from the pager's clock, either way. */
 export const PAGE_MAX_SKEW_MS = 120_000;
@@ -27,7 +27,7 @@ export interface PageResult {
   status: number;
   /** Server log only, never sent to the browser. Names the check that refused. No secrets or numbers. */
   detail?: string;
-  body: { ok: true; dialed: number; failed: number } | { ok: false; error: Refusal };
+  body: { ok: true; dialed: number; failed: number; texted: number } | { ok: false; error: Refusal };
 }
 
 export interface PageDeps {
@@ -42,7 +42,7 @@ const refuse = (status: number, error: Refusal, detail?: string): PageResult => 
 
 export const newSeenPages = (): Map<string, number> => new Map();
 
-async function importPagerKey(pkcs8: string): Promise<CryptoKey | null> {
+export async function importPagerKey(pkcs8: string): Promise<CryptoKey | null> {
   try {
     const raw = b64urlDecode(pkcs8);
     return await crypto.subtle.importKey('pkcs8', raw as unknown as BufferSource, { name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveBits']);
@@ -134,16 +134,22 @@ export async function handlePage(rawBody: string, deps: PageDeps): Promise<PageR
     numbers.push({ orgMemberId: t.orgMemberId, to });
   }
 
-  // 7. Only now dial.
+  // 7. Only now dial and text. Both go out at the same time; a person counts as reached if either one is accepted.
   let dialed = 0;
   let failed = 0;
+  let texted = 0;
   await Promise.all(
     numbers.map(async ({ orgMemberId, to }) => {
-      const ok = await placeCall(cfg, deps.fetch, to, req.pageId, orgMemberId);
-      await pagerUpdate(cfg, deps.fetch, req.pageId, orgMemberId, ok ? 'calling' : 'failed');
-      if (ok) dialed++;
+      const [called, sent] = await Promise.all([placeCall(cfg, deps.fetch, to, req.pageId, orgMemberId), sendSms(cfg, deps.fetch, to)]);
+      await pagerUpdate(cfg, deps.fetch, req.pageId, orgMemberId, called || sent ? 'calling' : 'failed');
+      if (sent) texted++;
+      if (called || sent) dialed++;
       else failed++;
     }),
   );
-  return { status: 200, body: { ok: true, dialed, failed }, detail: failed > 0 ? `${failed} Twilio call(s) failed (credentials, TWILIO_FROM, or unverified number on a trial account)` : undefined };
+  return {
+    status: 200,
+    body: { ok: true, dialed, failed, texted },
+    detail: failed > 0 ? `${failed} page(s) failed on both the call and the text (credentials, TWILIO_FROM, or unverified number on a trial account)` : undefined,
+  };
 }

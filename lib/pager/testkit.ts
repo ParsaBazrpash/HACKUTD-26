@@ -135,21 +135,33 @@ const hex = (b: Uint8Array): string => `0x${bytesToHex(b)}`;
 export interface Recorder {
   fetch: typeof fetch;
   twilio: { to: string; twiml: string; callback: string }[];
+  /** Page texts sent through the Messages API. */
+  sms: { to: string; from: string; body: string }[];
   updates: { pageId: string; orgMemberId: string; status: string }[];
   /** Make the Spacetime SQL read fail. */
   failSql: boolean;
-  /** Make Twilio refuse calls. */
+  /** Make Twilio refuse calls and texts. */
   failTwilio: boolean;
+  /** Make Twilio refuse only texts. */
+  failSms: boolean;
+  /** Make Twilio refuse only calls. */
+  failCall: boolean;
 }
 
 /** One fetch for Twilio REST, Spacetime SQL and the pager_update reducer. Unknown URLs throw. */
 export function fakeNetwork(w: { cfg: PagerConfig; members: MemberRow[]; pages: PageRow[] }): Recorder {
-  const r: Recorder = { fetch: undefined as unknown as typeof fetch, twilio: [], updates: [], failSql: false, failTwilio: false };
+  const r: Recorder = { fetch: undefined as unknown as typeof fetch, twilio: [], sms: [], updates: [], failSql: false, failTwilio: false, failSms: false, failCall: false };
   r.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const body = typeof init?.body === 'string' ? init.body : '';
+    if (url.startsWith('https://api.twilio.com/') && url.endsWith('/Messages.json')) {
+      if (r.failTwilio || r.failSms) return new Response('{}', { status: 400 });
+      const f = new URLSearchParams(body);
+      r.sms.push({ to: f.get('To') ?? '', from: f.get('From') ?? '', body: f.get('Body') ?? '' });
+      return new Response('{}', { status: 201 });
+    }
     if (url.startsWith('https://api.twilio.com/')) {
-      if (r.failTwilio) return new Response('{}', { status: 400 });
+      if (r.failTwilio || r.failCall) return new Response('{}', { status: 400 });
       const f = new URLSearchParams(body);
       r.twilio.push({ to: f.get('To') ?? '', twiml: f.get('Twiml') ?? '', callback: f.get('StatusCallback') ?? '' });
       return new Response('{}', { status: 201 });

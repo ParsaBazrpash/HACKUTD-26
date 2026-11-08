@@ -117,6 +117,18 @@ export const OLD_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
 const ISO =
   /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:[.,](\d{1,9}))?)?)?\s?(Z|[+-]\d{2}(?::?\d{2})?)?$/;
 const EPOCH_S = /^\d{9,10}(?:\.\d{1,6})?$/;
+// Kibana Discover: "Nov 8, 2026 @ 08:13:05.123", and the older "November 8th 2026, 08:13:05.123".
+const KIBANA = /^([A-Za-z]{3,9}) (\d{1,2}), (\d{4}) @ (\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/;
+const KIBANA_OLD = /^([A-Za-z]{3,9}) (\d{1,2})(?:st|nd|rd|th) (\d{4}), (\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?$/;
+// US style: "11/8/2026 8:13", "11/8/2026, 8:13:05 PM".
+const US = /^(\d{1,2})\/(\d{1,2})\/(\d{4}),? (\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?(?: ?([AaPp][Mm]))?$/;
+const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+
+function monthNumber(word: string): number {
+  const w = word.toLowerCase();
+  const idx = MONTHS.findIndex((m) => m === w || (w.length === 3 && m.startsWith(w)));
+  return idx < 0 ? 0 : idx + 1;
+}
 const EPOCH_MS = /^\d{12,13}$/;
 
 export type TimeResult =
@@ -137,6 +149,32 @@ export function parseTime(raw: string, now: number): TimeResult {
     ms = Number(s);
   } else if (EPOCH_S.test(s)) {
     ms = Math.round(Number(s) * 1000);
+  } else if (KIBANA.test(s) || KIBANA_OLD.test(s) || US.test(s)) {
+    let parts: { y: number; mo: number; d: number; h: number; mi: number; sec: number; ms: number };
+    const k = KIBANA.exec(s);
+    const ko = k ? null : KIBANA_OLD.exec(s);
+    const u = k || ko ? null : US.exec(s);
+    if (k) {
+      parts = { y: Number(k[3]), mo: monthNumber(k[1]), d: Number(k[2]), h: Number(k[4]), mi: Number(k[5]), sec: Number(k[6] ?? 0), ms: Number((k[7] ?? '0').padEnd(3, '0')) };
+    } else if (ko) {
+      parts = { y: Number(ko[3]), mo: monthNumber(ko[1]), d: Number(ko[2]), h: Number(ko[4]), mi: Number(ko[5]), sec: Number(ko[6]), ms: Number((ko[7] ?? '0').padEnd(3, '0')) };
+    } else if (u) {
+      let hour = Number(u[4]);
+      const ampm = u[8]?.toLowerCase();
+      if (ampm) {
+        if (hour < 1 || hour > 12) return { ok: false, reason: 'unreadable time' };
+        hour = (hour % 12) + (ampm === 'pm' ? 12 : 0);
+      }
+      parts = { y: Number(u[3]), mo: Number(u[1]), d: Number(u[2]), h: hour, mi: Number(u[5]), sec: Number(u[6] ?? 0), ms: Number((u[7] ?? '0').padEnd(3, '0')) };
+      flags.push('read as month/day/year');
+    } else {
+      return { ok: false, reason: 'unreadable time' };
+    }
+    if (parts.mo < 1 || parts.mo > 12 || parts.d < 1 || parts.d > daysIn(parts.y, parts.mo) || parts.h > 23 || parts.mi > 59 || parts.sec > 59) {
+      return { ok: false, reason: 'unreadable time' };
+    }
+    flags.push('no time zone, read as UTC');
+    ms = Date.UTC(parts.y, parts.mo - 1, parts.d, parts.h, parts.mi, parts.sec, parts.ms);
   } else {
     const m = ISO.exec(s);
     if (!m) return { ok: false, reason: 'unreadable time' };

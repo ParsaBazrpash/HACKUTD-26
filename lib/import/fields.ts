@@ -5,8 +5,40 @@ export type FieldKey = (typeof FIELD_KEYS)[number];
 export type Mapping = Record<FieldKey, string | null>;
 
 export const SYNONYMS: Record<FieldKey, readonly string[]> = {
-  time: ['timestamp', '@timestamp', 'time', '_time', 'eventtime', 'created', 'createdtime', 'firstactivity', 'detect_time', 'alert_time'],
-  host: ['host', 'hostname', 'host.name', 'devicename', 'computername', 'device.hostname', 'device', 'dest', 'agent.name', 'endpoint'],
+  time: [
+    'timestamp',
+    '@timestamp',
+    'time',
+    '_time',
+    'eventtime',
+    'created',
+    'createdtime',
+    'firstactivity',
+    'detect_time',
+    'alert_time',
+    'timegenerated',
+    'createdtimestamp',
+    'createddatetime',
+    'metadata.eventcreationtime',
+    'createdat',
+    'date',
+  ],
+  host: [
+    'host',
+    'hostname',
+    'host.name',
+    'devicename',
+    'computername',
+    'device.hostname',
+    'device',
+    'dest',
+    'agent.name',
+    'endpoint',
+    'compromisedentity',
+    'event.computername',
+    'computer',
+    'evidence.0.devicednsname',
+  ],
   title: [
     'title',
     'alerttitle',
@@ -20,15 +52,37 @@ export const SYNONYMS: Record<FieldKey, readonly string[]> = {
     'threatname',
     'message',
     'event.action',
+    'rule.description',
+    'kibana.alert.rule.name',
+    'event.detectname',
+    'searchname',
   ],
-  severity: ['severity', 'severity_id', 'event.severity', 'priority', 'level', 'rule.level'],
+  // Names that carry the word ("High") come before ones that carry a number (70).
+  severity: [
+    'severityname',
+    'event.severityname',
+    'severity',
+    'severity_id',
+    'event.severity',
+    'priority',
+    'level',
+    'rule.level',
+    'alertseverity',
+    'kibana.alert.severity',
+    'urgency',
+  ],
 };
 
 const PREFIXES = ['_source.', 'result.', 'fields.'];
 
 /** Lowercase, drop wrapper prefixes, and ignore spaces, underscores and hyphens ("Device Name" = devicename). */
 export function normalizeKey(key: string): string {
-  let k = key.trim().toLowerCase();
+  let k = key.slice(0, 200).trim().toLowerCase();
+  // Azure portal headers end with a note such as " [UTC]".
+  if (k.endsWith(']')) {
+    const open = k.lastIndexOf('[');
+    if (open > 0 && k.length - open <= 22) k = k.slice(0, open).trimEnd();
+  }
   for (const p of PREFIXES) if (k.startsWith(p)) k = k.slice(p.length);
   let out = '';
   for (const ch of k) if (ch !== ' ' && ch !== '_' && ch !== '-') out += ch;

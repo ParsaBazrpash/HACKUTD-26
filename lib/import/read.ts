@@ -34,6 +34,10 @@ export function decodeBytes(bytes: Uint8Array): DecodeResult {
   } else if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
     start = 3;
   }
+  // Excel workbooks and other zip files start with "PK". They are never opened here.
+  if (bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] <= 0x08 && bytes[3] <= 0x08) {
+    return { ok: false, error: 'This looks like an Excel workbook or a zip file, which is never opened here. In Excel, use Save As and pick CSV UTF-8, then import that file.' };
+  }
   if (label === 'utf-8') {
     for (let i = start; i < bytes.length; i += 1) {
       if (bytes[i] === 0) return { ok: false, error: 'This looks like a binary file (it contains NUL bytes). Export it as CSV or JSON.' };
@@ -43,7 +47,7 @@ export function decodeBytes(bytes: Uint8Array): DecodeResult {
   try {
     text = new TextDecoder(label, { fatal: true }).decode(bytes.subarray(start));
   } catch {
-    return { ok: false, error: 'The file is not valid text. Save it as UTF-8 and try again.' };
+    return { ok: false, error: 'The file is not valid text. Save it as UTF-8 and try again. From Excel, use Save As and pick CSV UTF-8.' };
   }
   if (text.includes('\u0000')) {
     return { ok: false, error: 'This looks like a binary file (it contains NUL bytes). Export it as CSV or JSON.' };

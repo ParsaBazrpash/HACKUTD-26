@@ -3,6 +3,7 @@
 
 import { capCodePoints, cleanHost, cleanSeverity, cleanTitle, parseTime } from '@/lib/import/clean';
 import type { Mapping } from '@/lib/import/fields';
+import { convertSeverity, type PlatformId } from '@/lib/import/platforms';
 import { sourceLine } from '@/lib/import/label';
 import type { Row } from '@/lib/import/csv';
 import {
@@ -56,6 +57,8 @@ export interface PlanInput {
   /** Names of systems already on the record. */
   existingSystems: readonly string[];
   now?: number;
+  /** The tool the export came from. Converts that tool's severity scale into words. */
+  platform?: PlatformId;
 }
 
 const SEVERITY_RANK = new Map<string, number>([
@@ -79,9 +82,12 @@ function isServerName(host: string): boolean {
 /** Equal, or the existing name starts with the host plus a space ("FS-CLINIC-01 file server"). */
 export function matchesExisting(host: string, existing: readonly string[]): boolean {
   const h = host.toLowerCase();
+  // A full domain name (nurse-ws-12.lakeside.local) also matches by its first label. Addresses do not.
+  const dot = h.indexOf('.');
+  const short = dot > 1 && !/^\d+$/.test(h.slice(0, dot)) ? h.slice(0, dot) : null;
   return existing.some((e) => {
     const n = e.trim().toLowerCase();
-    return n === h || n.startsWith(`${h} `);
+    return n === h || n.startsWith(`${h} `) || (short !== null && (n === short || n.startsWith(`${short} `)));
   });
 }
 
@@ -178,7 +184,7 @@ export function buildPlan(input: PlanInput): ImportPlan {
     g.firstMs = Math.min(g.firstMs, time.ms);
     g.lastMs = Math.max(g.lastMs, time.ms);
     for (const f of time.flags) g.flags.add(f);
-    const sev = cleanSeverity(get(row, input.mapping.severity));
+    const sev = cleanSeverity(convertSeverity(input.platform ?? 'generic', get(row, input.mapping.severity), input.mapping.severity));
     if (sev !== null) {
       const rank = SEVERITY_RANK.get(sev.toLowerCase()) ?? 0;
       if (g.severity === null || rank > g.rank) {

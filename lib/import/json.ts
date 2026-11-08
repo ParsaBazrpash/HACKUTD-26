@@ -3,7 +3,7 @@
 
 import { MAX_CELL, MAX_COLUMNS, MAX_ROWS, type Row, type TableResult } from '@/lib/import/csv';
 
-const WRAPPER_KEYS = ['results', 'records', 'Records', 'alerts', 'data', 'value', 'events', 'hits'] as const;
+const WRAPPER_KEYS = ['results', 'records', 'Records', 'alerts', 'data', 'value', 'events', 'hits', 'resources', 'Findings'] as const;
 const IGNORED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 export const MAX_DEPTH = 6;
 
@@ -106,7 +106,7 @@ export function parseJson(text: string): TableResult {
   if (!items) {
     return {
       ok: false,
-      error: 'No list of records found. Use a JSON array, or an object with a list under results, records, alerts, data, value, events or hits.',
+      error: 'No list of records found. Use a JSON array, or an object with a list under results, records, alerts, data, value, events, hits, resources or Findings.',
     };
   }
   return finish(items);

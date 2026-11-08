@@ -11,9 +11,10 @@ import { clientErrorMessage } from "@/lib/client/errors";
 import { cleanFileName, cleanText } from "@/lib/import/clean";
 import { canSend, findDuplicate, startsChecked } from "@/lib/import/gate";
 import { parseCsv, type Row } from "@/lib/import/csv";
-import { FIELD_KEYS, suggestMapping, type FieldKey, type Mapping } from "@/lib/import/fields";
+import { FIELD_KEYS, type FieldKey, type Mapping } from "@/lib/import/fields";
 import { parseJson, parseNdjson } from "@/lib/import/json";
 import { buildPlan, sendImport, type ImportPlan } from "@/lib/import/plan";
+import { isPlatformId, missingFields, PLATFORM_IDS, PLATFORMS, suggestForPlatform, type PlatformId } from "@/lib/import/platforms";
 import type { ImportedSource } from "@/lib/import/label";
 import { readImportFile, type ImportFormat } from "@/lib/import/read";
 
@@ -56,6 +57,7 @@ function ImportPanelInner() {
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [mapping, setMapping] = useState<Mapping | null>(null);
+  const [platform, setPlatform] = useState<PlatformId>("generic");
   const [overrides, setOverrides] = useState<ReadonlyMap<string, boolean>>(new Map());
   const [again, setAgain] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,8 +77,9 @@ function ImportPanelInner() {
       sha256: loaded.sha256,
       custodian,
       existingSystems: loaded.existing,
+      platform,
     });
-  }, [loaded, mapping, custodian]);
+  }, [loaded, mapping, custodian, platform]);
 
   const duplicate = loaded ? findDuplicate(state.evidence, loaded.sha256) : undefined;
 
@@ -118,7 +121,7 @@ function ImportPanelInner() {
         rows: table.rows,
         existing: state.scope.map((item) => item.latest.system),
       });
-      setMapping(suggestMapping(table.columns));
+      setMapping(suggestForPlatform(platform, table.columns));
     } catch {
       setError("The file could not be read.");
     } finally {
@@ -171,9 +174,33 @@ function ImportPanelInner() {
           <h3 className="text-base font-semibold tracking-tight">Import from a monitoring export</h3>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">
             Pick a CSV, JSON or NDJSON export from your EDR, SIEM or monitoring console. The file is read in this browser and
-            never uploaded. Only the host, time, alert title and severity are used. Entries are added as your own signed claim,
+            never uploaded. From Excel, use Save As and pick CSV UTF-8. Only the host, time, alert title and severity are used. Entries are added as your own signed claim,
             marked unverified.
           </p>
+          <label className="mt-4 grid gap-1.5 text-xs font-medium text-muted" htmlFor="import-platform">
+            Platform
+            <select
+              id="import-platform"
+              value={platform}
+              disabled={busy || sending}
+              onChange={(e) => {
+                const next = isPlatformId(e.target.value) ? e.target.value : "generic";
+                setPlatform(next);
+                if (loaded) {
+                  setMapping(suggestForPlatform(next, loaded.columns));
+                  setOverrides(new Map());
+                }
+              }}
+              className={fieldClass}
+            >
+              {PLATFORM_IDS.map((id) => (
+                <option key={id} value={id}>
+                  {PLATFORMS[id].label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="mt-1.5 text-xs leading-5 text-muted">{PLATFORMS[platform].hint}</p>
           <label className="mt-4 grid gap-1.5 text-xs font-medium text-muted" htmlFor="import-file">
             Export file
             <input
@@ -225,7 +252,21 @@ function ImportPanelInner() {
                 </div>
               </dl>
 
-              <div className="grid gap-3 sm:grid-cols-2">
+              {platform !== "generic" ? (
+                <div className="grid gap-1 text-sm">
+                  <p className="text-muted">
+                    Read as {PLATFORMS[platform].label}:{" "}
+                    {FIELD_KEYS.map((f) => `${FIELD_LABEL[f].replace(" column", "").toLowerCase()} from ${mapping[f] ? cleanText(mapping[f] as string, 40) : "nothing"}`).join(", ")}.
+                  </p>
+                  {missingFields(platform, mapping).length > 0 ? (
+                    <p role="alert" className="text-alert">
+                      This file does not look like a {PLATFORMS[platform].label} export (no {missingFields(platform, mapping).join(", ")} column found). Pick the right platform, or Generic to choose the columns yourself.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+
+              <div className={platform === "generic" ? "grid gap-3 sm:grid-cols-2" : "hidden"}>
                 {FIELD_KEYS.map((field) => (
                   <label key={field} className="grid gap-1.5 text-xs font-medium text-muted" htmlFor={`import-map-${field}`}>
                     {FIELD_LABEL[field]}

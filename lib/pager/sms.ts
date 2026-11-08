@@ -8,8 +8,11 @@ import { pagerUpdate, readPagerState } from './spacetime';
 import { EMPTY_TWIML, SMS_ACK, SMS_HINT, SMS_RETRY, smsReplyTwiml, verifyTwilioSignature } from './twilio';
 
 const MAX_SMS_BODY = 16_384;
-/** A page row is open while the module still accepts an acknowledgement. Terminal rows never change. */
-const OPEN = new Set(['requested', 'calling', 'ringing']);
+/**
+ * Rows a text may acknowledge: only pages the pager actually sent. 'requested' is excluded because a page that
+ * /api/page refused stays 'requested' for 120 seconds with nothing dialed or texted. Terminal rows never change.
+ */
+const OPEN = new Set(['calling', 'ringing']);
 /** At most this many members with an open page are opened per text (the module caps pages at 20 per incident per hour). */
 const MAX_CANDIDATES = 100;
 /** Words Twilio handles itself for opt-out and help. We never act on them and never answer them. */

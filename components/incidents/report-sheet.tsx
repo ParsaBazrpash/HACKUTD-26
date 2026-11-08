@@ -69,12 +69,7 @@ export function ReportSheet({
       <div className="report-cover">
         <section className="report-hero" aria-label="Incident overview">
           <header className="flex items-center justify-between gap-6">
-            <div className="flex items-center gap-2.5">
-              <span className="flex size-8 items-center justify-center rounded-lg bg-[#6fd04a] text-[11px] font-extrabold tracking-tight text-[#0c1710]">
-                HV
-              </span>
-              <span className="text-[15px] font-bold tracking-[0.18em] text-white">HAVEN</span>
-            </div>
+            <HavenLogo tone="dark" />
             <p className="rounded-full border border-white/25 px-3 py-1 text-[10px] font-semibold tracking-[0.2em] text-[#bfe9ae]">
               CONFIDENTIAL · INCIDENT RESPONSE REPORT
             </p>
@@ -307,12 +302,7 @@ function RecordAppendix({ report }: { report: IncidentReport }) {
   return (
     <div className="report-appendix mt-10 border-t border-[#e7eae6] pt-8 print:mt-0 print:border-0 print:pt-0">
       <header className="flex items-center justify-between gap-6">
-        <div className="flex items-center gap-2.5">
-          <span className="flex size-8 items-center justify-center rounded-lg bg-[#1a1c1a] text-[11px] font-bold tracking-tight text-white">
-            HV
-          </span>
-          <span className="text-[15px] font-bold tracking-[0.08em]">HAVEN</span>
-        </div>
+        <HavenLogo tone="light" />
         <p className={`text-[11px] font-medium tracking-[0.16em] ${muted}`}>SUPPORTING RECORD</p>
       </header>
       <h2 className="mt-6 text-[22px] font-bold tracking-tight">Evidence, deadlines, and verification</h2>
@@ -485,6 +475,20 @@ function RecordAppendix({ report }: { report: IncidentReport }) {
           ) : null}
         </section>
       </div>
+    </div>
+  );
+}
+
+function HavenLogo({ tone }: { tone: "dark" | "light" }) {
+  const word = tone === "dark" ? "text-white" : "text-[#0a0c0b]";
+  return (
+    <div className="flex items-center gap-3">
+      <span className={`flex h-9 w-11 items-center justify-center rounded-lg ${tone === "dark" ? "" : "bg-[#080a09]"}`}>
+        <svg viewBox="0 0 40 24" className="h-5 w-9" aria-hidden="true" fill="none">
+          <path d="M5 17 L20 6 L35 17" stroke="#d8ff65" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </span>
+      <span className={`text-[17px] font-semibold tracking-[0.42em] ${word}`}>HAVEN</span>
     </div>
   );
 }

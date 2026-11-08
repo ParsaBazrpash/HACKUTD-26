@@ -49,18 +49,18 @@ The pager is three routes: `app/api/page` (a page request from the commander's b
 | `PAGER_PRIVATE_KEY` | secret | Matching private key. Opens sealed phone numbers only |
 | `TWILIO_ACCOUNT_SID` | secret | Twilio account id (`AC` plus 32 characters) |
 | `TWILIO_AUTH_TOKEN` | secret | Places calls and checks webhook signatures |
-| `TWILIO_FROM` | config | Twilio voice number, E.164 |
+| `TWILIO_FROM` | config | Twilio number that calls and texts, E.164 |
 | `SPACETIME_PAGER_TOKEN` | secret | Token of the pager's Spacetime identity |
 | `SPACETIME_HOST` | config | `https://` Spacetime host |
 | `SPACETIME_DB` | config | Database name |
 | `ORG_ADMIN_SIGN_PUB` | config | Org admin signing public keys the pager trusts, comma-separated, no spaces |
 | `PUBLIC_BASE_URL` | config | Production URL, `https://`, no trailing slash. Twilio webhooks and signatures use it |
-| `PAGER_ALLOWED_NUMBERS` | secret, optional | If set, the only numbers the pager will call, E.164, comma-separated |
+| `PAGER_ALLOWED_NUMBERS` | secret, optional | If set, the only numbers the pager will call or text, E.164, comma-separated |
 
 Setup steps:
 
 1. `node scripts/pager-keys.mjs` prints `NEXT_PUBLIC_PAGER_PUB` and `PAGER_PRIVATE_KEY`. It writes no file. Put both into Vercel and nowhere else.
-2. Create a Spacetime identity for the pager and keep the answer out of your terminal history: `curl -sS -X POST https://maincloud.spacetimedb.com/v1/identity > pager-identity.json`. The file holds the identity hex and the token. Copy the token into `SPACETIME_PAGER_TOKEN` in Vercel, put the hex into `PAGER_IDENTITY_HEX` in `spacetimedb/src/index.ts`, publish the module, then delete the file. Never commit it.
+2. Create a Spacetime identity for the pager and keep the answer out of your terminal history: `curl -sS -X POST https://maincloud.spacetimedb.com/v1/identity > /tmp/pager-identity.json`. The file (kept outside the repo) holds the identity hex and the token. Copy the token into `SPACETIME_PAGER_TOKEN` in Vercel, put the hex into `PAGER_IDENTITY_HEX` in `spacetimedb/src/index.ts`, publish the module, then delete the file.
 3. In Twilio, buy one number that can call and text, and allow voice calls to the United States only. Set the account values above. Calls carry their own webhook URLs under `PUBLIC_BASE_URL`. For replies to the text, set the number's messaging webhook (HTTP POST) to `<PUBLIC_BASE_URL>/api/twilio/sms`.
 4. After the org exists, read its admin key as the database owner. `spacetime sql` prints bytes as `0x` followed by 130 hex digits, so convert only the digits (the filter below ignores anything else). Use your org's name:
 

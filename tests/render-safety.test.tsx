@@ -251,6 +251,34 @@ function hostileScopeItem(itemId: string): ScopeItem {
   } as unknown as ScopeItem;
 }
 
+describe('render safety for the side chat (T21)', () => {
+  it('the side chat board renders hostile messages as escaped text and offers no #technical tab to an executive', () => {
+    const message: ChannelMessage = {
+      seq: 1n,
+      messageId: 'm9',
+      author: member,
+      sentAt: at,
+      serverTs: at,
+      text: HOSTILE,
+      mentions: [],
+      verdict: ok,
+    };
+    holder.state = {
+      ...baseState(),
+      me: { ...member, displayName: 'Me', role: 'executive', state: 'active' },
+      channels: [
+        { kind: 'command', messages: [message], waitingForKeys: false },
+        { kind: 'technical', messages: [message], waitingForKeys: false },
+      ],
+    } as unknown as IncidentState;
+    const html = renderToStaticMarkup(createElement(ChannelsBoard, { variant: 'panel', initialChannel: 'technical' }));
+    expectInert(html);
+    expect(html).toContain('aria-label="Chat channels"');
+    expect(html).toContain('#command');
+    expect(html).not.toContain('#technical');
+  });
+});
+
 describe('render safety for the card picker (T21)', () => {
   it('the paperclip list and the attached chip show hostile system names as escaped text', () => {
     const itemId = '00000000-0000-4000-8000-000000000005';

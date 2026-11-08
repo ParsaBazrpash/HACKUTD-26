@@ -25,6 +25,8 @@ export type Refusal =
 
 export interface PageResult {
   status: number;
+  /** Server log only, never sent to the browser. Names the check that refused. No secrets or numbers. */
+  detail?: string;
   body: { ok: true; dialed: number; failed: number } | { ok: false; error: Refusal };
 }
 
@@ -36,7 +38,7 @@ export interface PageDeps {
   seen: Map<string, number>;
 }
 
-const refuse = (status: number, error: Refusal): PageResult => ({ status, body: { ok: false, error } });
+const refuse = (status: number, error: Refusal, detail?: string): PageResult => ({ status, body: { ok: false, error }, detail });
 
 export const newSeenPages = (): Map<string, number> => new Map();
 
@@ -63,13 +65,13 @@ function matches(row: MemberRow, orgId: string, identity: string, rec: { signPub
 /** Verifies everything first. Twilio is called only after every check passes for every target. */
 export async function handlePage(rawBody: string, deps: PageDeps): Promise<PageResult> {
   const { cfg } = deps;
-  if (!cfg) return refuse(503, 'unavailable');
+  if (!cfg) return refuse(503, 'unavailable', 'pager config missing or malformed (see config problems)');
   const req: PageRequestWire | null = parsePageRequestBody(rawBody);
   if (!req) return refuse(400, 'bad_body');
 
   // 1. Trusted admin key (all certificates in a request use the one key in the body).
   const adminPub = b64urlDecode(req.adminSignPub);
-  if (!cfg.adminPins.some((p) => bytesEqual(p, adminPub))) return refuse(403, 'untrusted_admin');
+  if (!cfg.adminPins.some((p) => bytesEqual(p, adminPub))) return refuse(403, 'untrusted_admin', 'ORG_ADMIN_SIGN_PUB does not contain the key sent with the page');
 
   // 2. Freshness and replay (the replay check is recorded only after the commander signature passes).
   const now = deps.now();
@@ -107,26 +109,28 @@ export async function handlePage(rawBody: string, deps: PageDeps): Promise<PageR
 
   // 5. Spacetime must agree: commander and targets active and unchanged, a fresh 'requested' page row for each target.
   const state = await readPagerState(cfg, deps.fetch);
-  if (!state) return refuse(503, 'unavailable');
+  if (!state) return refuse(503, 'unavailable', 'could not read pager_org_member/pager_page from Spacetime (SPACETIME_PAGER_TOKEN, SPACETIME_HOST, SPACETIME_DB, or views)');
   const commanderRow = state.members.find((m) => m.orgId === req.orgId && m.identity === req.commander.identity);
-  if (!commanderRow || !matches(commanderRow, req.orgId, req.commander.identity, req.commander)) return refuse(403, 'state_mismatch');
+  if (!commanderRow || !matches(commanderRow, req.orgId, req.commander.identity, req.commander)) {
+    return refuse(403, 'state_mismatch', !commanderRow ? 'commander not in org_member view' : 'commander row differs from certificate or is not active');
+  }
   for (const t of req.targets) {
     const row = state.members.find((m) => m.orgId === req.orgId && m.orgMemberId === t.orgMemberId);
-    if (!row || !matches(row, req.orgId, t.identity, t)) return refuse(403, 'state_mismatch');
+    if (!row || !matches(row, req.orgId, t.identity, t)) return refuse(403, 'state_mismatch', !row ? 'target not in org_member view' : 'target row differs from certificate or is not active');
     const page = state.pages.find((p) => p.pageId === req.pageId && p.orgMemberId === t.orgMemberId);
     if (!page || page.status !== 'requested' || page.incidentId !== req.incidentId || page.requestedBy !== req.commander.identity) {
-      return refuse(403, 'state_mismatch');
+      return refuse(403, 'state_mismatch', !page ? 'no page row for target' : `page row status=${page.status} or incident/requester mismatch`);
     }
   }
 
   // 6. Open every sealed number (exactly 109 bytes, checked inside openContact) and apply the allowlist.
   const key = await importPagerKey(cfg.pagerPrivateKey);
-  if (!key) return refuse(503, 'unavailable');
+  if (!key) return refuse(503, 'unavailable', 'PAGER_PRIVATE_KEY is not a valid pkcs8 P-256 key');
   const numbers: { orgMemberId: string; to: string }[] = [];
   for (const t of req.targets) {
     const to = await openContact(key, req.orgId, t.identity, b64urlDecode(t.sealedContact));
-    if (to === null) return refuse(400, 'malformed_contact');
-    if (cfg.allowedNumbers.size > 0 && !cfg.allowedNumbers.has(to)) return refuse(403, 'not_allowed');
+    if (to === null) return refuse(400, 'malformed_contact', 'sealed contact did not open: PAGER_PRIVATE_KEY does not match NEXT_PUBLIC_PAGER_PUB used at enrollment');
+    if (cfg.allowedNumbers.size > 0 && !cfg.allowedNumbers.has(to)) return refuse(403, 'not_allowed', 'number not in PAGER_ALLOWED_NUMBERS');
     numbers.push({ orgMemberId: t.orgMemberId, to });
   }
 
@@ -141,5 +145,5 @@ export async function handlePage(rawBody: string, deps: PageDeps): Promise<PageR
       else failed++;
     }),
   );
-  return { status: 200, body: { ok: true, dialed, failed } };
+  return { status: 200, body: { ok: true, dialed, failed }, detail: failed > 0 ? `${failed} Twilio call(s) failed (credentials, TWILIO_FROM, or unverified number on a trial account)` : undefined };
 }

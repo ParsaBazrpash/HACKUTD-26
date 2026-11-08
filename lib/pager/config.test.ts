@@ -65,3 +65,14 @@ describe('pagerUpdate', () => {
     expect(await pagerUpdate(w.cfg, f, w.pageId, '01', 'ringing')).toBe(false);
   });
 });
+
+import { pagerConfigProblems } from './config';
+
+describe('pagerConfigProblems', () => {
+  it('lists setting names only, never values', () => {
+    const problems = pagerConfigProblems({ TWILIO_AUTH_TOKEN: 'super-secret-token', TWILIO_FROM: '5551234' });
+    expect(problems.join(' ')).toContain('TWILIO_FROM');
+    expect(problems.join(' ')).toContain('ORG_ADMIN_SIGN_PUB');
+    expect(problems.join(' ')).not.toContain('super-secret-token');
+  });
+});

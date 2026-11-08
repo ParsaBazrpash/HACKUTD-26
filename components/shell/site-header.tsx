@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { User } from "lucide-react";
@@ -12,10 +12,38 @@ function incidentIdFromPath(pathname: string | null): string | null {
   return match?.[1] ?? null;
 }
 
-function membersHref(pathname: string | null): string {
-  const incidentId = incidentIdFromPath(pathname);
-  return incidentId ? `/incidents/${incidentId}/people` : "/incidents";
+const LAST_INCIDENT_KEY = "haven.lastIncident";
+
+function readLastIncident(): string | null {
+  try {
+    const v = window.sessionStorage.getItem(LAST_INCIDENT_KEY);
+    return v && /^[A-Za-z0-9_-]{1,64}$/.test(v) ? v : null;
+  } catch {
+    return null;
+  }
 }
+
+/**
+ * Members: the open incident's People & Access tab. Off an incident page it returns to the last incident
+ * seen this session, and with none it opens the org roster, so the link always goes somewhere different
+ * from where the person already is.
+ */
+function useMembersHref(pathname: string | null): string {
+  const current = incidentIdFromPath(pathname);
+  useEffect(() => {
+    if (!current) return;
+    try {
+      window.sessionStorage.setItem(LAST_INCIDENT_KEY, current);
+    } catch {
+      // Storage can be blocked; the link then falls back to the org roster.
+    }
+  }, [current]);
+  const last = useSyncExternalStore(subscribeNever, readLastIncident, () => null);
+  const id = current ?? last;
+  return id ? `/incidents/${id}/people` : "/org";
+}
+
+const subscribeNever = (): (() => void) => () => {};
 
 function itemClass(active: boolean): string {
   return active
@@ -24,6 +52,7 @@ function itemClass(active: boolean): string {
 }
 
 function PrimaryNavLinks({ pathname }: { pathname: string | null }) {
+  const membersHref = useMembersHref(pathname);
   const onPeople = pathname !== null && /\/people(?:\/|$)/.test(pathname);
   const onIncidents = pathname !== null && pathname.startsWith("/incidents") && !onPeople;
   const onJoin = pathname === "/join" || (pathname !== null && pathname.startsWith("/join/"));
@@ -34,7 +63,7 @@ function PrimaryNavLinks({ pathname }: { pathname: string | null }) {
         Incidents
       </Link>
       <Link
-        href={membersHref(pathname)}
+        href={membersHref}
         aria-current={onPeople ? "page" : undefined}
         className={itemClass(onPeople)}
       >
@@ -56,9 +85,10 @@ function PrimaryNav() {
 }
 
 function AccountLink({ pathname }: { pathname: string | null }) {
+  const membersHref = useMembersHref(pathname);
   return (
     <Link
-      href={membersHref(pathname)}
+      href={membersHref}
       aria-label="People and access"
       className="grid size-9 place-items-center rounded-full border border-line text-muted hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
     >

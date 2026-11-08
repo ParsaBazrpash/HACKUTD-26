@@ -166,7 +166,7 @@ export interface RealClientOptions {
   /** The pager's public ECDH key (raw, 65 bytes). Phone numbers are sealed to it. Without it, createOrg and enroll refuse. */
   pagerPub?: Uint8Array;
   /** Sends the signed page body to /api/page. Defaults to a same-origin fetch. */
-  postPage?: (body: string) => Promise<{ ok: boolean }>;
+  postPage?: (body: string) => Promise<{ ok: boolean; status?: number; error?: string; dialed?: number }>;
 }
 
 /** Shown while org keys are passkey-locked. */
@@ -1735,13 +1735,16 @@ export class RealIncidentClient implements IncidentClient {
       };
       const raw = JSON.stringify(body);
       if (new TextEncoder().encode(raw).length > MAX_PAGE_BODY_BYTES) throw new ClientError('That page request is too large');
-      let res: { ok: boolean };
+      let res: { ok: boolean; status?: number; error?: string; dialed?: number };
       try {
         res = await post(raw);
       } catch {
         throw new ClientError('The paging service could not be reached. Try again in a minute.');
       }
-      if (!res.ok) throw new ClientError('The paging service refused the request. Try again in a minute.');
+      if (!res.ok) throw new ClientError(pagerRefusalMessage(res.error, res.status));
+      if (res.dialed === 0) {
+        throw new ClientError('The paging service accepted the request but the phone carrier call could not be placed. Check the Twilio settings in Vercel.');
+      }
       const names = targets.map((t) => `${t.row.displayName} (${roleLabel(t.role)})`).join(', ');
       await this.append(
         'record',
@@ -1763,9 +1766,45 @@ export class RealIncidentClient implements IncidentClient {
   }
 }
 
-async function defaultPostPage(body: string): Promise<{ ok: boolean }> {
+async function defaultPostPage(body: string): Promise<{ ok: boolean; status: number; error?: string; dialed?: number }> {
   const res = await fetch('/api/page', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, cache: 'no-store' });
-  return { ok: res.ok };
+  let error: string | undefined;
+  let dialed: number | undefined;
+  try {
+    const j = (await res.json()) as { error?: unknown; dialed?: unknown };
+    if (typeof j.error === 'string') error = j.error;
+    if (typeof j.dialed === 'number') dialed = j.dialed;
+  } catch {
+    // Non-JSON body (for example a platform error page): fall back to the status code.
+  }
+  return { ok: res.ok, status: res.status, error, dialed };
+}
+
+/** Turns the pager's refusal code into a message that says what to check. Codes carry no secrets. */
+export function pagerRefusalMessage(code: string | undefined, status?: number): string {
+  const tail = ` (pager: ${code ?? `HTTP ${status ?? 'unknown'}`})`;
+  switch (code) {
+    case 'unavailable':
+      return `The paging service is not fully configured or cannot reach the database. Check the Vercel pager settings.${tail}`;
+    case 'untrusted_admin':
+      return `The paging service does not trust this org's admin key. Set ORG_ADMIN_SIGN_PUB in Vercel to this org's key and redeploy.${tail}`;
+    case 'stale':
+      return `This device's clock is off by more than two minutes. Fix the clock and try again.${tail}`;
+    case 'replay':
+      return `That page was already sent. Try again.${tail}`;
+    case 'bad_certificate':
+    case 'bad_signature':
+    case 'state_mismatch':
+      return `The paging service could not verify this page against the org roster. Re-enroll or re-approve the person and try again.${tail}`;
+    case 'malformed_contact':
+      return `The paging service could not open the saved phone number. The pager key may have changed since enrollment: re-enroll and try again.${tail}`;
+    case 'not_allowed':
+      return `That phone number is not on the pager's allowed list (PAGER_ALLOWED_NUMBERS).${tail}`;
+    case 'bad_body':
+      return `The paging service rejected the request as malformed.${tail}`;
+    default:
+      return `The paging service refused the request. Try again in a minute.${tail}`;
+  }
 }
 
 function parsePagerPub(v: string | undefined): Uint8Array | undefined {

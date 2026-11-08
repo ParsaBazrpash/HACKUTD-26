@@ -55,7 +55,7 @@ export function canAuthorRecord(
 export function recordDenial(kind: RecordKind): string {
   if (kind === "status.set") return "Only the commander can change severity and phase.";
   if (kind === "profile.set" || kind === "legal.discovery" || kind === "legal.materiality" || kind === "deadline.update") {
-    return "Only the commander and counsel can record discovery, materiality, and deadline status.";
+    return "Only the commander and counsel can record the organization profile, discovery, materiality, and deadline status.";
   }
   return "Only the commander, counsel, and technical can write the record.";
 }

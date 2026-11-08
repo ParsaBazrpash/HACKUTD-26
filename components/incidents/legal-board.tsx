@@ -439,7 +439,7 @@ function ExposureFacts({ state }: { state: IncidentState }) {
   if (others.length > 0) rows.push(["Other states", others.join(", "), "Counsel checks each state"]);
   return (
     <>
-      <p className="text-xs leading-5 text-muted">Sensitive data on suspected or exfiltrated systems, counted the way the rules count it.</p>
+      <p className="text-xs leading-5 text-muted">Counted the way the rules count: residents on suspected or exfiltrated systems with sensitive data, and PHI on encrypted systems too.</p>
       <dl className="grid gap-2 text-sm">
         {rows.map(([label, value, line]) => (
           <div key={label} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 border-b border-line pb-2">

@@ -132,6 +132,15 @@ describe('platform safety', () => {
     expect(convertSeverity('datadog', 'INFO')).toBe('Informational');
     expect(convertSeverity('datadog', 'constructor')).toBe('constructor');
     expect(convertSeverity('splunk', '70')).toBe('70');
+    // GuardDuty's own scale (1 to 10) versus Security Hub's normalized score (0 to 100).
+    expect(convertSeverity('aws', '8', 'Severity')).toBe('High');
+    expect(convertSeverity('aws', '9.5', 'Severity')).toBe('Critical');
+    expect(convertSeverity('aws', '5.0', 'Severity')).toBe('Medium');
+    expect(convertSeverity('aws', '2', 'Severity')).toBe('Low');
+    expect(convertSeverity('aws', '70', 'Severity.Normalized')).toBe('High');
+    expect(convertSeverity('aws', '8', 'Severity.Normalized')).toBe('Informational');
+    expect(convertSeverity('crowdstrike', '65')).toBe('High');
+    expect(convertSeverity('elastic', '85')).toBe('Critical');
     expect(convertSeverity('crowdstrike', 'x'.repeat(5000))).toHaveLength(5000);
     expect(convertSeverity('wazuh', '<script>')).toBe('<script>');
   });
@@ -150,5 +159,20 @@ describe('platform safety', () => {
     if (!r.ok) expect(r.error).toMatch(/Excel/);
     // Plain text that happens to start with "PK" is still text.
     expect(decodeBytes(new TextEncoder().encode('PKI,host\n1,2')).ok).toBe(true);
+  });
+
+  it('a GuardDuty finding with a native 1 to 10 severity reads High, not Informational', () => {
+    const file = JSON.stringify({ Findings: [{ CreatedAt: '2026-11-08T08:13:05.000Z', Title: 'Unusual API calls', Severity: 8, Resource: { InstanceDetails: { InstanceId: 'i-0abc123' } } }] });
+    const a = run('aws', parseJson(file));
+    expect(a.mapping.severity).toBe('Severity');
+    expect(text(a)[0]).toContain('severity High');
+  });
+
+  it('a Splunk file with only a src column reports the host as missing, never the source address', () => {
+    const t = parseCsv('_time,src,rule_name,urgency\n2026-11-08T08:13:05.000+00:00,203.0.113.7,Scan,high\n');
+    const a = run('splunk', t);
+    expect(a.mapping.host).toBeNull();
+    expect(missingFields('splunk', a.mapping)).toEqual(['host']);
+    expect(a.plan.systems).toHaveLength(0);
   });
 });

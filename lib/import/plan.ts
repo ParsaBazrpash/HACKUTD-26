@@ -184,7 +184,7 @@ export function buildPlan(input: PlanInput): ImportPlan {
     g.firstMs = Math.min(g.firstMs, time.ms);
     g.lastMs = Math.max(g.lastMs, time.ms);
     for (const f of time.flags) g.flags.add(f);
-    const sev = cleanSeverity(convertSeverity(input.platform ?? 'generic', get(row, input.mapping.severity)));
+    const sev = cleanSeverity(convertSeverity(input.platform ?? 'generic', get(row, input.mapping.severity), input.mapping.severity));
     if (sev !== null) {
       const rank = SEVERITY_RANK.get(sev.toLowerCase()) ?? 0;
       if (g.severity === null || rank > g.rank) {

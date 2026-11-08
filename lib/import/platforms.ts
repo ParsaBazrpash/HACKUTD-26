@@ -31,7 +31,7 @@ export const PLATFORMS: Record<PlatformId, Platform> = {
     hint: 'Export results as CSV or JSON, or an Enterprise Security notable events export.',
     fields: {
       time: ['_time', 'time', 'timestamp'],
-      host: ['dest', 'host', 'dvc', 'src'],
+      host: ['dest', 'host', 'dvc'], // never src: that is the source of the activity, often the attacker
       title: ['rule_name', 'search_name', 'signature', 'name', 'message'],
       severity: ['urgency', 'severity'],
     },
@@ -174,13 +174,18 @@ const DATADOG_STATUS = new Map<string, string>([
 ]);
 
 /** Turns a platform's own severity scale into words. Anything it does not know is passed on unchanged. */
-export function convertSeverity(id: PlatformId, raw: string): string {
+export function convertSeverity(id: PlatformId, raw: string, column: string | null = null): string {
   const v = raw.trim();
   if (v.length > 20) return v;
   if (id === 'datadog') return DATADOG_STATUS.get(v.toLowerCase()) ?? v;
   if (!NUMBER.test(v)) return v;
   const n = Number(v);
   if (id === 'wazuh') return band(n, [12, 9, 6, 3]); // rule level 0 to 15
-  if (id === 'crowdstrike' || id === 'elastic' || id === 'aws') return band(n, [90, 70, 40, 20]); // score 0 to 100
+  if (id === 'aws') {
+    // Security Hub Severity.Normalized is 0 to 100. A native GuardDuty finding carries Severity as 1 to 10.
+    const normalized = column !== null && normalizeKey(column).endsWith('normalized');
+    return normalized ? band(n, [90, 70, 40, 20]) : band(n, [9, 7, 4, 1]);
+  }
+  if (id === 'crowdstrike' || id === 'elastic') return band(n, [80, 60, 40, 20]); // score 0 to 100
   return v;
 }

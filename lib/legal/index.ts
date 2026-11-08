@@ -1,6 +1,7 @@
 export {
   LEGAL_RULES,
   computeDeadlines,
+  exposureSummary,
   nextCountdown,
 } from "@/lib/legal/deadlines";
 
@@ -30,6 +31,8 @@ export {
 } from "@/lib/legal/display";
 
 export { COUNSEL_REVIEW_WARNING } from "@/lib/legal/types";
+
+export type { ExposureSummary } from "@/lib/legal/deadlines";
 
 export type {
   Applicability,

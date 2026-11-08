@@ -210,7 +210,7 @@ function previewClocks(
 /** The two profile facts the Winstead rules read. Other stored flags are passed through unchanged. */
 export function ProfileForm({ onSaved }: { onSaved?: (message: string) => void }) {
   const state = useIncident();
-  const allowed = canAuthorRecord(state.me?.role, state.me?.state, "legal.discovery");
+  const allowed = canAuthorRecord(state.me?.role, state.me?.state, "profile.set");
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -273,10 +273,22 @@ export function ProfileForm({ onSaved }: { onSaved?: (message: string) => void }
           </div>
         );
       })}
+      {OTHER_FLAGS.filter(([key]) => state.profile[key]).map(([key, label]) => (
+        <p key={key} className="text-xs leading-5 text-muted">
+          Also on record: {label}. Not computed here; see the counsel row above.
+        </p>
+      ))}
       <FormError message={error} />
     </div>
   );
 }
+
+const OTHER_FLAGS = [
+  ["euDataSubjects", "EU data subjects"],
+  ["nydfsRegulated", "NYDFS regulated"],
+  ["defenseContractor", "Defense contractor"],
+  ["bank", "Bank"],
+] as const;
 
 export function DeadlineStatusForm({
   ruleId,

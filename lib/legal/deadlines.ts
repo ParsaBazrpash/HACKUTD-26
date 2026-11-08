@@ -202,6 +202,7 @@ export function computeDeadlines(state: IncidentState, now: Date): ComputedDeadl
     finish(state, clock, TEXAS_INDIVIDUAL_RULE, texasIndividuals(exposure), "discovery"),
     finish(state, clock, TEXAS_AG_RULE, texasAttorneyGeneral(exposure), "discovery"),
     ...stateNotices(state, exposure),
+    ...outsideCatalog(state),
   ];
   const known = new Set(rows.map((row) => row.rule.id));
   for (const update of Object.values(state.deadlineUpdates ?? {})) {
@@ -363,6 +364,70 @@ function texasAttorneyGeneral(exposure: Exposure): Decision {
     return check(note, "The Texas resident count is incomplete or the sensitive-data facts are not closed. No attorney general countdown is started.");
   }
   return none(note, "The 250-resident line in section 521.053(i) is not met on this record.");
+}
+
+/** Counts the page shows next to the rules, read the same way the rules read them. */
+export interface ExposureSummary {
+  texasCount: number;
+  texasIncomplete: boolean;
+  /** Residents of other states on a suspected or exfiltrated system holding personal data. */
+  otherStates: Map<string, number>;
+  phiRecords: number;
+  phiRecordsIncomplete: boolean;
+}
+
+export function exposureSummary(state: IncidentState): ExposureSummary {
+  const exposure = readExposure(state);
+  const otherStates = new Map([...exposure.stateCounts].filter(([code, count]) => code !== "TX" && count > 0));
+  return {
+    texasCount: exposure.texasCount,
+    texasIncomplete: exposure.texasIncomplete,
+    otherStates,
+    phiRecords: exposure.phiRecords,
+    phiRecordsIncomplete: exposure.phiRecordsIncomplete,
+  };
+}
+
+const OUTSIDE_RULE: LegalRule = {
+  id: "outside-catalog",
+  name: "Facts outside the Texas catalog",
+  jurisdiction: "Counsel review",
+  citation: "Not computed by this engine",
+  sourceUrl: "",
+  appliesWhen: "The stored profile or scope records EU data subjects, NYDFS, a defense contract, a bank, or EU residents on an exposed system.",
+  trigger: "None.",
+  calculation: "No countdown. This catalog covers Texas, HIPAA and SEC only.",
+  timeZone: null,
+};
+
+/**
+ * The catalog no longer computes GDPR, NYDFS, DFARS or bank rules. When the
+ * record still carries facts those rules read, say so instead of dropping them.
+ */
+function outsideCatalog(state: IncidentState): ComputedDeadline[] {
+  const profile = state.profile ?? EMPTY_PROFILE;
+  const facts: string[] = [];
+  const euOnExposed = (state.scope ?? []).some((item) => {
+    const body = item?.latest;
+    return body && OPEN.has(body.status) && typeof body.euResidents === "number" && body.euResidents > 0;
+  });
+  if (profile.euDataSubjects || euOnExposed) facts.push("EU data subjects (GDPR Article 33)");
+  if (profile.nydfsRegulated) facts.push("NYDFS regulation (23 NYCRR 500.17)");
+  if (profile.defenseContractor) facts.push("a defense contract (DFARS 252.204-7012)");
+  if (profile.bank) facts.push("a bank (12 CFR 53.3)");
+  if (facts.length === 0) return [];
+  return [
+    {
+      rule: OUTSIDE_RULE,
+      applicability: "check",
+      clockStatus: "needs_counsel",
+      startedAt: null,
+      dueAt: null,
+      explanation: `The record lists ${facts.join(", ")}. This engine covers Texas, HIPAA and SEC only, so those rules have no computed clock here. Some of them run in hours, not days. Counsel decides.`,
+      counselReview: counsel("Rules outside this catalog are not computed."),
+      recorded: recordedFor(state, OUTSIDE_RULE.id),
+    },
+  ];
 }
 
 function stateNotices(state: IncidentState, exposure: Exposure): ComputedDeadline[] {

@@ -20,6 +20,7 @@ import {
   compareDeadlines,
   computeDeadlines,
   endOfNthCalendarDay,
+  exposureSummary,
   formatLegalInstant,
   isCounselReview,
   nextCountdown,
@@ -417,44 +418,38 @@ function Recorded({ entry, empty }: { entry: IncidentState["discovery"]; empty: 
 
 /** The counts the engine read, next to the line each rule uses. */
 function ExposureFacts({ state }: { state: IncidentState }) {
-  const open = new Set(["suspected", "exfiltrated", "encrypted"]);
-  let texas = 0;
-  let california = 0;
-  let phi = 0;
-  let phiUnknown = false;
-  const others = new Map<string, number>();
-  for (const item of state.scope ?? []) {
-    const body = item?.latest;
-    if (!body || !open.has(body.status)) continue;
-    for (const resident of body.affected ?? []) {
-      if (!resident || !Number.isFinite(resident.count)) continue;
-      if (resident.state === "TX") texas += resident.count;
-      else if (resident.state === "CA") california += resident.count;
-      else others.set(resident.state, (others.get(resident.state) ?? 0) + resident.count);
-    }
-    if (body.dataTypes?.includes("phi")) {
-      if (typeof body.recordCount === "number" && Number.isFinite(body.recordCount)) phi += body.recordCount;
-      else phiUnknown = true;
-    }
-  }
+  const facts = exposureSummary(state);
+  const california = facts.otherStates.get("CA") ?? 0;
+  const others = [...facts.otherStates.keys()].filter((code) => code !== "CA").sort();
+  const count = (value: number, incomplete: boolean) =>
+    incomplete ? (value > 0 ? `${value.toLocaleString("en-US")}+` : "Unknown") : value.toLocaleString("en-US");
   const rows: [string, string, string][] = [
-    ["Texas residents", texas.toLocaleString("en-US"), texas >= 250 ? "Attorney General notice (250+)" : "Under the 250 line"],
+    [
+      "Texas residents",
+      count(facts.texasCount, facts.texasIncomplete),
+      facts.texasCount >= 250 ? "Attorney General notice (250+)" : facts.texasIncomplete ? "A system has no resident list" : "Under the 250 line",
+    ],
     ["California residents", california.toLocaleString("en-US"), california > 0 ? "California 30-day rule, counsel" : "None recorded"],
-    ["PHI records", phiUnknown ? (phi > 0 ? `${phi.toLocaleString("en-US")}+` : "Unknown") : phi.toLocaleString("en-US"), phi >= 500 ? "HHS notice (500+)" : phiUnknown ? "A system has no count" : "Under the 500 line"],
+    [
+      "PHI records",
+      count(facts.phiRecords, facts.phiRecordsIncomplete),
+      facts.phiRecords >= 500 ? "HHS notice (500+)" : facts.phiRecordsIncomplete ? "A system has no count" : "Under the 500 line",
+    ],
   ];
-  if (others.size > 0) {
-    rows.push(["Other states", [...others.keys()].sort().join(", "), "Counsel checks each state"]);
-  }
+  if (others.length > 0) rows.push(["Other states", others.join(", "), "Counsel checks each state"]);
   return (
-    <dl className="grid gap-2 text-sm">
-      {rows.map(([label, value, line]) => (
-        <div key={label} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 border-b border-line pb-2">
-          <dt className="text-muted">{label}</dt>
-          <dd className="text-right font-mono text-foreground">{value}</dd>
-          <dd className="col-span-2 text-xs text-muted">{line}</dd>
-        </div>
-      ))}
-    </dl>
+    <>
+      <p className="text-xs leading-5 text-muted">Sensitive data on suspected or exfiltrated systems, counted the way the rules count it.</p>
+      <dl className="grid gap-2 text-sm">
+        {rows.map(([label, value, line]) => (
+          <div key={label} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 border-b border-line pb-2">
+            <dt className="text-muted">{label}</dt>
+            <dd className="text-right font-mono text-foreground">{value}</dd>
+            <dd className="col-span-2 text-xs text-muted">{line}</dd>
+          </div>
+        ))}
+      </dl>
+    </>
   );
 }
 

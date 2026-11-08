@@ -6,6 +6,7 @@ import {
   COUNSEL_REVIEW_WARNING,
   LEGAL_RULES,
   computeDeadlines,
+  exposureSummary,
   nextCountdown,
   type ComputedDeadline,
 } from "@/lib/legal";
@@ -439,6 +440,35 @@ describe("legal deadline engine", () => {
       expect(ids).not.toContain(gone);
     }
     expect(deadlines.every((deadline) => deadline.dueAt === null || deadline.applicability === "applies")).toBe(true);
+    const outside = find(deadlines, "outside-catalog");
+    expect(outside.applicability).toBe("check");
+    expect(outside.dueAt).toBeNull();
+    expect(outside.explanation).toContain("GDPR");
+    expect(outside.explanation).toContain("NYDFS");
+    expect(find(computeDeadlines(state({ scope: TEXAS_SCOPE }), NOW), "tx-521-ind")).toBeTruthy();
+    expect(computeDeadlines(state({ scope: TEXAS_SCOPE }), NOW).some((row) => row.rule.id === "outside-catalog")).toBe(false);
+  });
+
+  test("EU residents on an exposed system alone raise the counsel row", () => {
+    const rows = computeDeadlines(
+      state({ scope: [item({ status: "suspected", dataTypes: ["other_pii"], euResidents: 3, affected: [] })] }),
+      NOW,
+    );
+    expect(find(rows, "outside-catalog").explanation).toContain("EU data subjects");
+  });
+
+  test("the exposure summary counts the way the Texas rule counts", () => {
+    const summary = exposureSummary(
+      state({
+        scope: [
+          item({ status: "encrypted", dataTypes: ["ssn"], affected: [{ state: "TX", count: 300 }, { state: "CA", count: 50 }] }, "00000000-0000-4000-8000-000000000041"),
+          item({ status: "exfiltrated", dataTypes: ["credentials"], affected: [{ state: "TX", count: 900 }] }, "00000000-0000-4000-8000-000000000042"),
+          item({ status: "exfiltrated", dataTypes: ["ssn"], affected: [{ state: "TX", count: 20 }, { state: "CA", count: 7 }] }, "00000000-0000-4000-8000-000000000043"),
+        ],
+      }),
+    );
+    expect(summary.texasCount).toBe(20);
+    expect(summary.otherStates.get("CA")).toBe(7);
   });
 
   test("recorded deadline updates are returned and do not rewrite the computed instant", () => {

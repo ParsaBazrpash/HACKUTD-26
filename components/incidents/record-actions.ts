@@ -31,6 +31,7 @@ export type RecordKind =
   | "timeline.add"
   | "scope.set"
   | "task.set"
+  | "profile.set"
   | "legal.discovery"
   | "legal.materiality"
   | "deadline.update";
@@ -53,7 +54,7 @@ export function canAuthorRecord(
 
 export function recordDenial(kind: RecordKind): string {
   if (kind === "status.set") return "Only the commander can change severity and phase.";
-  if (kind === "legal.discovery" || kind === "legal.materiality" || kind === "deadline.update") {
+  if (kind === "profile.set" || kind === "legal.discovery" || kind === "legal.materiality" || kind === "deadline.update") {
     return "Only the commander and counsel can record discovery, materiality, and deadline status.";
   }
   return "Only the commander, counsel, and technical can write the record.";

@@ -19,7 +19,7 @@ import {
 import type { IncidentState, MemberRef, ScopeBody, ScopeItem } from "@/lib/client/types";
 import { EMPTY_PROFILE } from "@/lib/client/types";
 import { computeDeadlines } from "@/lib/legal";
-import { draftChatBody } from "@/components/incidents/room-controls";
+import { authorizedChatChannels, draftChatBody, pickChatChannel } from "@/components/incidents/room-controls";
 import { medianSync, recordSync, resetSyncSamples, syncCount, syncSampleSince, syncSamples } from "@/lib/client/sync-meter";
 
 const DANA: MemberRef = { identity: "b".repeat(64), displayName: "Dana", role: "technical" };
@@ -252,6 +252,34 @@ describe("live cards in chat", () => {
     expect(cardPreviewText("Shared the live blast radius. [card:blast]")).toBe("Shared the live blast radius. [Live card: blast radius]");
     expect(cardPreviewText("[card:deadline:tx-521-ag]")).toBe("[Live card: legal clock]");
     expect(cardPreviewText("plain words")).toBe("plain words");
+  });
+});
+
+describe("channel links", () => {
+  const all = (["command", "privileged", "technical", "record"] as const).map((kind) => ({ kind, messages: [], waitingForKeys: false }));
+  const open = (role: MemberRef["role"], linked: string | null, picked: string | null = null, memberState: "active" | "pending" = "active") =>
+    pickChatChannel(authorizedChatChannels(role, memberState, all), picked, linked)?.kind;
+
+  test("a link to a channel the member cannot read lands on #command", () => {
+    expect(open("technical", "privileged")).toBe("command");
+    expect(open("executive", "technical")).toBe("command");
+  });
+
+  test("#record, junk and an empty link land on #command", () => {
+    for (const linked of ["record", "Privileged", "technical ", "../privileged", "", null]) {
+      expect(open("commander", linked), String(linked)).toBe("command");
+    }
+  });
+
+  test("a link opens a channel the member can read, and an explicit pick wins over the link", () => {
+    expect(open("technical", "technical")).toBe("technical");
+    expect(open("counsel", "privileged")).toBe("privileged");
+    expect(open("commander", "technical", "privileged")).toBe("privileged");
+    expect(open("technical", "technical", "privileged")).toBe("technical");
+  });
+
+  test("a pending member opens nothing", () => {
+    expect(open("commander", "command", null, "pending")).toBeUndefined();
   });
 });
 

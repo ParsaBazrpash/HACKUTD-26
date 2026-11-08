@@ -130,3 +130,60 @@ test("share from the map with a message, then open the channel from its link", a
   await expect(page.locator('[data-live-card="system"]').last()).toContainText("HR-SQL-01");
   await expect(page.getByText("Legal, this one has SSNs.")).toBeVisible();
 });
+
+// The demo session says which seeded member this tab is. Point it at another one, then load a page fresh.
+async function viewAs(page: import("@playwright/test").Page, incidentId: string, member: number) {
+  await page.evaluate(
+    ({ identity, currentId }) => window.sessionStorage.setItem("zh.demo.session.v1", JSON.stringify({ v: 1, identity, currentId })),
+    { identity: member.toString(16).padStart(64, "0"), currentId: incidentId },
+  );
+}
+
+test("a channel link the member cannot read lands on #command, and posts go there", async ({ page }) => {
+  await openIncident(page);
+  const incidentPath = new URL(page.url()).pathname.replace(/\/$/, "");
+  const incidentId = incidentPath.split("/").pop() ?? "";
+  const channelsNav = page.getByRole("navigation", { name: "Channels" });
+
+  // Sam is the technical lead: no #privileged.
+  await viewAs(page, incidentId, 3);
+  await page.goto(`${incidentPath}/channels#privileged`);
+  await expect(page.getByRole("heading", { level: 3, name: "#command" })).toBeVisible();
+  await expect(channelsNav.getByRole("button", { name: "#privileged" })).toHaveCount(0);
+  await expect(page.getByRole("form", { name: "Message #privileged" })).toHaveCount(0);
+  const techComposer = page.getByRole("form", { name: "Message #command" });
+  await techComposer.getByRole("textbox").fill("Sam, from a #privileged link.");
+  await techComposer.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByRole("region", { name: "#command" }).getByText("Sam, from a #privileged link.")).toBeVisible();
+
+  // Riley is the executive: no #technical. Leave the channels page first so the next load is a fresh one.
+  await page.goto(incidentPath);
+  await viewAs(page, incidentId, 4);
+  await page.goto(`${incidentPath}/channels#technical`);
+  await expect(page.getByRole("heading", { level: 3, name: "#command" })).toBeVisible();
+  await expect(channelsNav.getByRole("button", { name: "#technical" })).toHaveCount(0);
+  await expect(page.getByRole("form", { name: "Message #technical" })).toHaveCount(0);
+  const execComposer = page.getByRole("form", { name: "Message #command" });
+  await execComposer.getByRole("textbox").fill("Riley, from a #technical link.");
+  await execComposer.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByRole("region", { name: "#command" }).getByText("Riley, from a #technical link.")).toBeVisible();
+
+  // #record is not a chat channel, so a link to it lands on #command too (a hash change on the same page).
+  await page.goto(`${incidentPath}/channels#record`);
+  await expect(page.getByRole("heading", { level: 3, name: "#command" })).toBeVisible();
+});
+
+test("an attached card does not follow the member to another channel", async ({ page }) => {
+  const nav = await openIncident(page);
+  await nav.getByRole("link", { name: "Secure Channels", exact: true }).click();
+  const command = page.getByRole("form", { name: "Message #command" });
+  await command.getByRole("button", { name: "Attach a live card" }).click();
+  await page.getByRole("group", { name: "Attach a live card" }).getByRole("button", { name: /Live blast radius/ }).click();
+  await expect(command.getByText("Live card:")).toBeVisible();
+
+  await page.getByRole("navigation", { name: "Channels" }).getByRole("button", { name: "#technical" }).click();
+  const technical = page.getByRole("form", { name: "Message #technical" });
+  await expect(technical).toBeVisible();
+  await expect(technical.getByText("Live card:")).toHaveCount(0);
+  await expect(technical.getByRole("button", { name: "Send" })).toBeDisabled();
+});

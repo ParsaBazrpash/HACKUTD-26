@@ -6,7 +6,7 @@ import { CHANNEL_BLURBS, CHANNEL_LABELS, ROLE_LABELS } from "@/components/incide
 import { MessageComposer } from "@/components/incidents/message-composer";
 import { parseCardMessage } from "@/components/incidents/blast-radius-model";
 import { LiveCardView } from "@/components/incidents/live-card";
-import { authorizedChatChannels, canCompose, type ChatChannel } from "@/components/incidents/room-controls";
+import { authorizedChatChannels, canCompose, pickChatChannel, type ChatChannel } from "@/components/incidents/room-controls";
 import { SafeText } from "@/components/incidents/safe-text";
 import { selectMessages } from "@/components/incidents/situation";
 import { VerdictNote } from "@/components/incidents/verdict-note";
@@ -65,11 +65,7 @@ export function ChannelsBoard({ limit }: { limit?: number }) {
   // channels this member may already read; anything else falls through.
   const linked = useSyncExternalStore(subscribeHash, currentHash, serverHash);
 
-  const active =
-    channels.find((channel) => channel.kind === picked) ??
-    channels.find((channel) => channel.kind === linked) ??
-    channels.find((channel) => channel.kind === "command") ??
-    channels[0];
+  const active = pickChatChannel(channels, picked, linked);
 
   const messages = active ? selectMessages(active.messages, limit) : [];
 
@@ -244,7 +240,7 @@ export function ChannelsBoard({ limit }: { limit?: number }) {
         </div>
 
         {canPost ? (
-          <MessageComposer channel={active.kind} dock />
+          <MessageComposer key={active.kind} channel={active.kind} dock />
         ) : (
           <p className="border-t border-line px-4 py-3 text-sm text-muted">You can read this channel. Your role cannot post here.</p>
         )}

@@ -16,6 +16,7 @@ import { parseJson, parseNdjson } from "@/lib/import/json";
 import { buildPlan, sendImport, type ImportPlan } from "@/lib/import/plan";
 import { isPlatformId, missingFields, PLATFORM_IDS, PLATFORMS, suggestForPlatform, type PlatformId } from "@/lib/import/platforms";
 import type { ImportedSource } from "@/lib/import/label";
+import { fileChecklist, type CheckState } from "@/lib/import/checklist";
 import { readImportFile, scanParsed, type ImportFormat } from "@/lib/import/read";
 
 const FIELD_LABEL: Record<FieldKey, string> = {
@@ -33,6 +34,7 @@ interface Loaded {
   sha256: string;
   format: ImportFormat;
   warnings: string[];
+  hiddenFound: boolean;
   columns: string[];
   rows: Row[];
   /** System names on the record when the file was opened. */
@@ -42,6 +44,10 @@ interface Loaded {
 function sizeLabel(bytes: number): string {
   return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(bytes < 10240 ? 1 : 0)} KB`;
 }
+
+const CHECK_MARK: Record<CheckState, string> = { pass: "\u2713", warn: "!", fail: "\u2717" };
+const CHECK_WORD: Record<CheckState, string> = { pass: "Passed", warn: "Warning", fail: "Failed" };
+const CHECK_CLASS: Record<CheckState, string> = { pass: "text-emerald-500", warn: "text-amber-500", fail: "text-alert" };
 
 function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
@@ -125,6 +131,7 @@ function ImportPanelInner() {
         sha256: read.sha256,
         format: read.format,
         warnings: scan.warnings,
+        hiddenFound: scan.found,
         columns: table.columns,
         rows: table.rows,
         existing: state.scope.map((item) => item.latest.system),
@@ -259,6 +266,21 @@ function ImportPanelInner() {
                   </dd>
                 </div>
               </dl>
+
+              <div className="grid gap-1 text-sm" data-testid="import-checks">
+                <ul className="grid gap-1">
+                  {fileChecklist({ hiddenFound: loaded.hiddenFound }).map((line) => (
+                    <li key={line.label} className="flex gap-2">
+                      <span aria-hidden="true" className={CHECK_CLASS[line.state]}>
+                        {CHECK_MARK[line.state]}
+                      </span>
+                      <span className="sr-only">{CHECK_WORD[line.state]}: </span>
+                      <span>{line.label}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-xs text-muted">Basic safety checks only. This is not a thorough scan and does not check what the file says.</p>
+              </div>
 
               {loaded.warnings.length > 0 ? (
                 <ul className="grid gap-1 text-sm text-muted">

@@ -137,7 +137,7 @@ describe('2. hidden and binary characters', () => {
     if (!nd.ok) throw new Error(nd.error);
     expect(scanParsed('ndjson', [], nd.columns, nd.rows).refuse).not.toBeNull();
     // CSV cells are slices of the text, so the text check stands for them.
-    expect(scanParsed('csv', ['w'], ['a'], [new Map([['a', '\u202E']])])).toEqual({ refuse: null, warnings: ['w'] });
+    expect(scanParsed('csv', ['w'], ['a'], [new Map([['a', '\u202E']])])).toEqual({ refuse: null, warnings: ['w'], found: true });
   });
 
   it('still refuses NUL bytes and invalid UTF-8', async () => {

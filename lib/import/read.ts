@@ -73,6 +73,8 @@ export interface TextScan {
   refuse: string | null;
   /** Things that were found and will be removed or flagged. */
   warnings: string[];
+  /** True when hidden, direction-changing or control characters were found (and will be removed). */
+  found: boolean;
 }
 
 interface Counts {
@@ -104,7 +106,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 
 function verdict(c: Counts): TextScan {
   if (c.chars > 0 && c.controls / c.chars > CONTROL_LIMIT) {
-    return { refuse: 'The file is mostly control characters, so it is not a text export. It was not imported.', warnings: [] };
+    return { refuse: 'The file is mostly control characters, so it is not a text export. It was not imported.', warnings: [], found: true };
   }
   const warnings: string[] = [];
   if (c.overrides > 0) {
@@ -114,7 +116,7 @@ function verdict(c: Counts): TextScan {
   }
   if (c.hidden > 0) warnings.push(`${plural(c.hidden, 'hidden zero-width character was', 'hidden zero-width characters were')} removed.`);
   if (c.controls > 0) warnings.push(`${plural(c.controls, 'control character was', 'control characters were')} removed.`);
-  return { refuse: null, warnings };
+  return { refuse: null, warnings, found: warnings.length > 0 };
 }
 
 /**
@@ -135,7 +137,7 @@ export function scanText(text: string): TextScan {
  * once parsed, so the column names and values are checked here instead.
  */
 export function scanParsed(format: ImportFormat, textWarnings: readonly string[], columns: readonly string[], rows: readonly Row[]): TextScan {
-  if (format === 'csv') return { refuse: null, warnings: [...textWarnings] };
+  if (format === 'csv') return { refuse: null, warnings: [...textWarnings], found: textWarnings.length > 0 };
   const c: Counts = { chars: 0, controls: 0, overrides: 0, hidden: 0 };
   for (const col of columns) count(col, c);
   for (const row of rows) for (const value of row.values()) count(value, c);

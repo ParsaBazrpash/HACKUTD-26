@@ -148,7 +148,7 @@ export async function readPagerState(cfg: PagerConfig, doFetch: typeof fetch): P
       const state = text(r.state);
       if (!orgId || orgMemberId === null || !identity || !signPub || !ecdhPub || !sealedContact || !state) {
         const bad = Object.entries({ orgid: orgId, orgmemberid: orgMemberId, identity, signpub: signPub, ecdhpub: ecdhPub, sealedcontact: sealedContact, state })
-          .filter(([, v]) => !v && v !== 0)
+          .filter(([, v]) => !v)
           .map(([k]) => k);
         pagerReadProblems.push(`pager_org_member row: unparsable column(s) ${bad.join(',')}`);
         return null;
@@ -164,7 +164,7 @@ export async function readPagerState(cfg: PagerConfig, doFetch: typeof fetch): P
       const requestedBy = hex(r.requestedby);
       if (!pageId || !incidentId || orgMemberId === null || !status || !requestedBy) {
         const bad = Object.entries({ pageid: pageId, incidentid: incidentId, orgmemberid: orgMemberId, status, requestedby: requestedBy })
-          .filter(([, v]) => !v && v !== 0)
+          .filter(([, v]) => !v)
           .map(([k]) => k);
         pagerReadProblems.push(`pager_page row: unparsable column(s) ${bad.join(',')}`);
         return null;

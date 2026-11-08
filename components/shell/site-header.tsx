@@ -26,6 +26,7 @@ function PrimaryNavLinks({ pathname }: { pathname: string | null }) {
   const onPeople = pathname !== null && /\/people(?:\/|$)/.test(pathname);
   const onIncidents = pathname !== null && pathname.startsWith("/incidents") && !onPeople;
   const onJoin = pathname === "/join" || (pathname !== null && pathname.startsWith("/join/"));
+  const onOrg = pathname === "/org" || (pathname !== null && pathname.startsWith("/org/"));
   return (
     <nav aria-label="Primary" className="-mb-px flex h-full min-w-0 items-stretch justify-center gap-1 overflow-x-auto sm:gap-2">
       <Link href="/incidents" aria-current={onIncidents ? "page" : undefined} className={itemClass(onIncidents)}>
@@ -37,6 +38,9 @@ function PrimaryNavLinks({ pathname }: { pathname: string | null }) {
         className={itemClass(onPeople)}
       >
         Members
+      </Link>
+      <Link href="/org" aria-current={onOrg ? "page" : undefined} className={itemClass(onOrg)}>
+        Org
       </Link>
       <Link href="/join" aria-current={onJoin ? "page" : undefined} className={itemClass(onJoin)}>
         Join

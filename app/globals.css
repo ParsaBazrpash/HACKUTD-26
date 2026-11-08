@@ -110,7 +110,31 @@ h1 {
   }
 }
 
+/* A system that just changed on the live blast radius map pulses twice. */
+@keyframes haven-flash {
+  from {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(2.6);
+  }
+}
+
+.haven-flash {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: haven-flash 1.1s ease-out 2 both;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .haven-flash {
+    animation: none;
+    opacity: 0;
+  }
+
   .haven-rise,
   .haven-reveal {
     animation: none;

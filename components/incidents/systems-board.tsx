@@ -1,5 +1,6 @@
 "use client";
 
+import { BlastRadius } from "@/components/incidents/blast-radius";
 import { scopeStatusLabel } from "@/components/incidents/labels";
 import { ScopeForm } from "@/components/incidents/scope-form";
 import { ScopeList } from "@/components/incidents/scope-list";
@@ -13,6 +14,7 @@ export function SystemsBoard() {
 
   return (
     <div className="grid min-w-0 gap-8">
+      <BlastRadius />
       <div>
         <h2 className="text-xl font-medium tracking-tight">Affected systems</h2>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">

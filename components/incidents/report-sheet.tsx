@@ -24,6 +24,7 @@ import {
   incidentStanding,
   integrityLabel,
 } from "@/lib/report/sheet";
+import { cardPreviewText } from "@/components/incidents/blast-radius-model";
 import { SafeText } from "@/components/incidents/safe-text";
 
 const ink = "text-[#1c1f1c]";
@@ -417,7 +418,7 @@ function RecordAppendix({ report }: { report: IncidentReport }) {
               {report.privileged.messages.map((message, index) => (
                 <li key={`${message.at}-${index}`} className="py-3">
                   <p>
-                    <SafeText text={message.text} />
+                    <SafeText text={cardPreviewText(message.text)} />
                   </p>
                   <p className={`text-[12px] ${muted}`}>
                     {message.author} · {message.at}

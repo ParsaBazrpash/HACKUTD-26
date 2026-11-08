@@ -48,6 +48,7 @@ import {
   TitleBodySchema,
 } from '@/lib/protocol/events';
 import { createSealedEvent } from '@/lib/crypto/event';
+import { recordSync } from '@/lib/client/sync-meter';
 import {
   type DeviceKeys,
   fingerprintBytes,
@@ -1195,6 +1196,7 @@ export class RealIncidentClient implements IncidentClient {
           c.device.signPriv,
         );
         try {
+          const sentAt = performance.now();
           await this.backend.appendEvent({
             incidentId: c.id,
             kind: channel,
@@ -1205,6 +1207,7 @@ export class RealIncidentClient implements IncidentClient {
             ciphertext: sealed.ciphertext,
             signature: sealed.signature,
           });
+          recordSync(performance.now() - sentAt, channel);
           await c.store.advanceCounter(counter);
           return;
         } catch {

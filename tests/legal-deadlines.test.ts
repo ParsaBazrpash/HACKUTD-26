@@ -3,7 +3,6 @@ import type { DeadlineUpdate, IncidentState, ScopeBody, ScopeItem } from "@/lib/
 import { EMPTY_PROFILE } from "@/lib/client/types";
 import { civilDate } from "@/lib/legal/calendar";
 import {
-  CIRCIA_RULE,
   COUNSEL_REVIEW_WARNING,
   LEGAL_RULES,
   computeDeadlines,
@@ -81,21 +80,19 @@ function find(deadlines: ComputedDeadline[], id: string): ComputedDeadline {
   return match;
 }
 
+const TEXAS_SCOPE = [item({ status: "exfiltrated", dataTypes: ["ssn"], affected: [{ state: "TX", count: 300 }] })];
+
 describe("legal deadline engine", () => {
   test("every catalog rule carries a citation, an official source, and the counsel warning", () => {
     expect(LEGAL_RULES.map((rule) => rule.id)).toEqual([
-      "gdpr-33",
       "sec-8k-105",
       "hipaa-404",
       "hipaa-408",
       "hipaa-406",
       "tx-521-ind",
       "tx-521-ag",
-      "nydfs-50017",
-      "dfars-7012",
-      "bank-36h",
     ]);
-    for (const rule of [...LEGAL_RULES, CIRCIA_RULE]) {
+    for (const rule of LEGAL_RULES) {
       expect(rule.name.length).toBeGreaterThan(0);
       expect(rule.jurisdiction.length).toBeGreaterThan(0);
       expect(rule.citation.length).toBeGreaterThan(0);
@@ -111,49 +108,23 @@ describe("legal deadline engine", () => {
     }
   });
 
-  test("GDPR runs 72 elapsed hours and keeps the same wall time in one zone", () => {
-    const deadlines = computeDeadlines(
-      state({
-        profile: { ...EMPTY_PROFILE, euDataSubjects: true },
-        discovery: at("2026-11-07T14:00:00-06:00"),
-        scope: [item({ status: "exfiltrated", dataTypes: ["other_pii"], affected: [{ state: "CA", count: 4 }] })],
-      }),
-      NOW,
-    );
-    const gdpr = find(deadlines, "gdpr-33");
-    expect(gdpr.applicability).toBe("applies");
-    expect(gdpr.dueAt?.toISOString()).toBe("2026-11-10T20:00:00.000Z");
-    expect(civilDate(gdpr.startedAt!, "America/Chicago")).toBe("2026-11-07");
-    expect(civilDate(gdpr.dueAt!, "America/Chicago")).toBe("2026-11-10");
-    expect(gdpr.clockStatus).toBe("scheduled");
+  test("Texas attorney general notice is due at the end of the 30th civil day in Central time", () => {
+    const deadlines = computeDeadlines(state({ discovery: at("2026-11-07T14:00:00-06:00"), scope: TEXAS_SCOPE }), NOW);
+    const ag = find(deadlines, "tx-521-ag");
+    expect(ag.applicability).toBe("applies");
+    expect(civilDate(ag.startedAt!, "America/Chicago")).toBe("2026-11-07");
+    expect(civilDate(ag.dueAt!, "America/Chicago")).toBe("2026-12-07");
+    expect(civilDate(new Date(ag.dueAt!.getTime() + 1), "America/Chicago")).toBe("2026-12-08");
+    expect(ag.clockStatus).toBe("scheduled");
+    const individuals = find(deadlines, "tx-521-ind");
+    expect(civilDate(individuals.dueAt!, "America/Chicago")).toBe("2027-01-06");
   });
 
-  test("a 72-hour window that crosses the spring daylight-saving change uses elapsed time", () => {
-    const start = "2026-03-07T14:00:00-05:00";
-    const gdpr = find(
-      computeDeadlines(
-        state({
-          profile: { ...EMPTY_PROFILE, euDataSubjects: true },
-          discovery: at(start),
-          scope: [item({ status: "suspected", dataTypes: ["ssn"], affected: [{ state: "NY", count: 2 }] })],
-        }),
-        new Date(start),
-      ),
-      "gdpr-33",
-    );
-    expect(gdpr.dueAt?.toISOString()).toBe("2026-03-10T19:00:00.000Z");
-    expect(civilDate(gdpr.dueAt!, "America/New_York")).toBe("2026-03-10");
-  });
-
-  test("the GDPR instant itself is still inside the window", () => {
-    const incident = state({
-      profile: { ...EMPTY_PROFILE, euDataSubjects: true },
-      discovery: at("2026-11-07T14:00:00-06:00"),
-      scope: [item({ status: "suspected", dataTypes: ["employee_hr"], affected: [{ state: "IL", count: 1 }] })],
-    });
-    const due = new Date("2026-11-10T20:00:00.000Z");
-    expect(find(computeDeadlines(incident, due), "gdpr-33").clockStatus).toBe("due_soon");
-    expect(find(computeDeadlines(incident, new Date(due.getTime() + 1)), "gdpr-33").clockStatus).toBe("elapsed");
+  test("the Texas due instant itself is still inside the window", () => {
+    const incident = state({ discovery: at("2026-11-07T14:00:00-06:00"), scope: TEXAS_SCOPE });
+    const due = find(computeDeadlines(incident, NOW), "tx-521-ag").dueAt!;
+    expect(find(computeDeadlines(incident, due), "tx-521-ag").clockStatus).toBe("due_soon");
+    expect(find(computeDeadlines(incident, new Date(due.getTime() + 1)), "tx-521-ag").clockStatus).toBe("elapsed");
   });
 
   test("SEC materiality on Wednesday November 25 2026 is due Wednesday December 2 at 5:30 p.m. Eastern", () => {
@@ -258,52 +229,39 @@ describe("legal deadline engine", () => {
   });
 
   test("no discovery time means the clock has not started", () => {
-    const gdpr = find(
-      computeDeadlines(
-        state({
-          profile: { ...EMPTY_PROFILE, euDataSubjects: true },
-          scope: [item({ status: "exfiltrated", dataTypes: ["ssn"], affected: [{ state: "CA", count: 3 }] })],
-        }),
-        NOW,
-      ),
-      "gdpr-33",
-    );
-    expect(gdpr.clockStatus).toBe("not_started");
-    expect(gdpr.dueAt).toBeNull();
-    expect(gdpr.startedAt).toBeNull();
+    const texas = find(computeDeadlines(state({ scope: TEXAS_SCOPE }), NOW), "tx-521-ind");
+    expect(texas.clockStatus).toBe("not_started");
+    expect(texas.dueAt).toBeNull();
+    expect(texas.startedAt).toBeNull();
   });
 
   test("malformed, future, and unusable clocks do not throw or invent a countdown", () => {
     const exposed = state({
-      profile: { ...EMPTY_PROFILE, euDataSubjects: true, publicCompany: true },
+      profile: { ...EMPTY_PROFILE, publicCompany: true },
       discovery: { determinedAt: new Date(Number.NaN), basis: "Unusable.", by: MEMBER },
       materiality: { determinedAt: new Date("not-a-date"), basis: "Unusable.", by: MEMBER },
-      scope: [item({ status: "exfiltrated", dataTypes: ["ssn"], affected: [{ state: "CA", count: 1 }] })],
+      scope: TEXAS_SCOPE,
     });
     expect(() => computeDeadlines(exposed, NOW)).not.toThrow();
     const invalid = computeDeadlines(exposed, NOW);
-    expect(find(invalid, "gdpr-33").clockStatus).toBe("invalid_trigger");
-    expect(find(invalid, "gdpr-33").dueAt).toBeNull();
+    expect(find(invalid, "tx-521-ind").clockStatus).toBe("invalid_trigger");
+    expect(find(invalid, "tx-521-ind").dueAt).toBeNull();
     expect(find(invalid, "sec-8k-105").dueAt).toBeNull();
 
     const future = computeDeadlines(
-      state({
-        profile: { ...EMPTY_PROFILE, euDataSubjects: true },
-        discovery: at("2026-11-08T14:00:00-06:00"),
-        scope: [item({ status: "suspected", dataTypes: ["other_pii"], affected: [{ state: "WA", count: 1 }] })],
-      }),
+      state({ discovery: at("2026-11-08T14:00:00-06:00"), scope: TEXAS_SCOPE }),
       NOW,
     );
-    expect(find(future, "gdpr-33").clockStatus).toBe("future_trigger");
-    expect(find(future, "gdpr-33").dueAt).toBeNull();
+    expect(find(future, "tx-521-ind").clockStatus).toBe("future_trigger");
+    expect(find(future, "tx-521-ind").dueAt).toBeNull();
 
     expect(() => computeDeadlines(exposed, new Date(Number.NaN))).not.toThrow();
   });
 
-  test("HIPAA counts encrypted PHI, and encryption alone does not start GDPR or Texas", () => {
+  test("HIPAA counts encrypted PHI, and encryption alone does not start Texas", () => {
     const deadlines = computeDeadlines(
       state({
-        profile: { ...EMPTY_PROFILE, hipaaCoveredEntity: true, euDataSubjects: true },
+        profile: { ...EMPTY_PROFILE, hipaaCoveredEntity: true },
         discovery: at("2026-11-07T14:00:00-06:00"),
         scope: [
           item({
@@ -322,8 +280,6 @@ describe("legal deadline engine", () => {
     expect(find(deadlines, "hipaa-408").dueAt).toBeNull();
     expect(find(deadlines, "hipaa-408").explanation).toContain("annual log");
     expect(find(deadlines, "hipaa-406").applicability).toBe("no");
-    expect(find(deadlines, "gdpr-33").dueAt).toBeNull();
-    expect(find(deadlines, "gdpr-33").applicability).toBe("check");
     expect(find(deadlines, "tx-521-ind").dueAt).toBeNull();
     expect(find(deadlines, "tx-521-ag").dueAt).toBeNull();
   });
@@ -449,9 +405,7 @@ describe("legal deadline engine", () => {
     expect(california.explanation).toContain("No California countdown");
     expect(newYork.dueAt).toBeNull();
     expect(newYork.explanation).toContain("does not encode");
-    expect(find(deadlines, "nydfs-50017").applicability).toBe("no");
     expect(find(deadlines, "state-check-unknown").dueAt).toBeNull();
-    expect(find(deadlines, "gdpr-33").applicability).toBe("no");
     expect(find(deadlines, "hipaa-404").applicability).toBe("no");
   });
 
@@ -471,61 +425,39 @@ describe("legal deadline engine", () => {
     expect(individuals.dueAt).toBeNull();
   });
 
-  test("CIRCIA stays not in effect, including when the timeline mentions a ransom", () => {
+  test("only the Winstead catalog is produced, whatever other stored profile flags say", () => {
     const deadlines = computeDeadlines(
       state({
-        profile: { ...EMPTY_PROFILE, defenseContractor: true },
+        profile: { ...EMPTY_PROFILE, defenseContractor: true, bank: true, nydfsRegulated: true, euDataSubjects: true },
         discovery: at("2026-11-07T14:00:00-06:00"),
-        scope: [item({ status: "exfiltrated", dataTypes: ["trade_secret"], notes: "Ransom paid at 18:00.", affected: [{ state: "VA", count: 1 }] })],
-        timeline: [
-          {
-            seq: 4n,
-            by: MEMBER,
-            at: NOW,
-            sentAt: NOW,
-            verdict: { ok: true, failures: [], warnings: [] },
-            amendedBy: [],
-            entry: {
-              entryId: "00000000-0000-4000-8000-000000000099",
-              occurredAt: "2026-11-07T18:00:00-06:00",
-              phase: "containment",
-              csf: "RS.CO",
-              text: "Ransom was paid at 18:00. Report it to CISA within 24 hours.",
-            },
-          },
-        ],
+        scope: [item({ status: "exfiltrated", dataTypes: ["other_pii"], euResidents: 40, affected: [{ state: "TX", count: 1 }] })],
       }),
       NOW,
     );
-    const circia = deadlines.filter((deadline) => deadline.rule.id.startsWith("circia"));
-    expect(circia).toHaveLength(1);
-    expect(circia[0]?.clockStatus).toBe("not_in_effect");
-    expect(circia[0]?.applicability).toBe("no");
-    expect(circia[0]?.dueAt).toBeNull();
-    expect(circia[0]?.explanation).toContain("effective date");
-    expect(circia[0]?.explanation).toContain("OIRA");
-    expect(circia[0]?.explanation).not.toContain("72 hours from discovery");
-    expect(deadlines.every((deadline) => deadline.dueAt === null || !deadline.rule.citation.includes("681b"))).toBe(true);
+    const ids = deadlines.map((deadline) => deadline.rule.id);
+    for (const gone of ["gdpr-33", "nydfs-50017", "dfars-7012", "bank-36h", "circia-reporting"]) {
+      expect(ids).not.toContain(gone);
+    }
+    expect(deadlines.every((deadline) => deadline.dueAt === null || deadline.applicability === "applies")).toBe(true);
   });
 
   test("recorded deadline updates are returned and do not rewrite the computed instant", () => {
     const deadlines = computeDeadlines(
       state({
-        profile: { ...EMPTY_PROFILE, euDataSubjects: true },
         discovery: at("2026-11-07T14:00:00-06:00"),
-        scope: [item({ status: "exfiltrated", dataTypes: ["credentials"], affected: [{ state: "CA", count: 8 }] })],
+        scope: TEXAS_SCOPE,
         deadlineUpdates: {
-          "gdpr-33": update("gdpr-33", "in_progress", "Drafting the supervisory notice."),
+          "tx-521-ag": update("tx-521-ag", "in_progress", "Drafting the attorney general notice."),
           "custom-clock": update("custom-clock", "done", "Closed in the war room."),
         },
       }),
       NOW,
     );
-    const gdpr = find(deadlines, "gdpr-33");
-    expect(gdpr.recorded?.status).toBe("in_progress");
-    expect(gdpr.recorded?.owner).toBe(MEMBER.identity);
-    expect(gdpr.recorded?.note).toBe("Drafting the supervisory notice.");
-    expect(gdpr.dueAt?.toISOString()).toBe("2026-11-10T20:00:00.000Z");
+    const ag = find(deadlines, "tx-521-ag");
+    expect(ag.recorded?.status).toBe("in_progress");
+    expect(ag.recorded?.owner).toBe(MEMBER.identity);
+    expect(ag.recorded?.note).toBe("Drafting the attorney general notice.");
+    expect(civilDate(ag.dueAt!, "America/Chicago")).toBe("2026-12-07");
 
     const custom = find(deadlines, "custom-clock");
     expect(custom.dueAt).toBeNull();
@@ -534,15 +466,14 @@ describe("legal deadline engine", () => {
 
     const done = computeDeadlines(
       state({
-        profile: { ...EMPTY_PROFILE, euDataSubjects: true },
         discovery: at("2026-11-07T14:00:00-06:00"),
-        scope: [item({ status: "exfiltrated", dataTypes: ["credentials"], affected: [{ state: "CA", count: 8 }] })],
-        deadlineUpdates: { "gdpr-33": update("gdpr-33", "done", "Filed.") },
+        scope: TEXAS_SCOPE,
+        deadlineUpdates: { "tx-521-ag": update("tx-521-ag", "done", "Filed.") },
       }),
       NOW,
     );
-    expect(find(done, "gdpr-33").dueAt).not.toBeNull();
-    expect(nextCountdown(done)?.rule.id).not.toBe("gdpr-33");
+    expect(find(done, "tx-521-ag").dueAt).not.toBeNull();
+    expect(nextCountdown(done)?.rule.id).toBe("tx-521-ind");
   });
 
   test("the same state and clock produce the same result", () => {

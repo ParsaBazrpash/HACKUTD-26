@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CIRCIA_RULE, COUNSEL_REVIEW_WARNING, LEGAL_RULES } from "@/lib/legal";
+import { COUNSEL_REVIEW_WARNING, LEGAL_RULES } from "@/lib/legal";
 
 const roles = [
   {
@@ -41,11 +41,6 @@ const pillars = [
 
 /** Decorative weight only. The window text is the planning aid. Shorter clocks read heavier. */
 const CLOCK_GLANCE: Record<string, { label?: string; summary: string; window: string; fill: number }> = {
-  "gdpr-33": {
-    summary: "Supervisory notice for personal data breaches.",
-    window: "72 hours",
-    fill: 72,
-  },
   "sec-8k-105": {
     label: "Form 8-K Item 1.05",
     summary: "SEC notice for material cybersecurity incidents.",
@@ -77,29 +72,9 @@ const CLOCK_GLANCE: Record<string, { label?: string; summary: string; window: st
     window: "30 days",
     fill: 40,
   },
-  "nydfs-50017": {
-    summary: "Notice to the New York Department of Financial Services.",
-    window: "72 hours",
-    fill: 68,
-  },
-  "dfars-7012": {
-    summary: "Report of a covered defense cyber incident.",
-    window: "72 hours",
-    fill: 66,
-  },
-  "bank-36h": {
-    summary: "Notice to the bank's primary federal regulator.",
-    window: "36 hours",
-    fill: 82,
-  },
-  "circia-reporting": {
-    summary: "Covered-incident reporting is not in effect.",
-    window: "Not in effect",
-    fill: 0,
-  },
 };
 
-const glanceRules = [...LEGAL_RULES, CIRCIA_RULE].flatMap((rule) => {
+const glanceRules = LEGAL_RULES.flatMap((rule) => {
   const glance = CLOCK_GLANCE[rule.id];
   return glance ? [{ rule, ...glance }] : [];
 });

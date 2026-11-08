@@ -1,5 +1,4 @@
 export {
-  CIRCIA_RULE,
   LEGAL_RULES,
   computeDeadlines,
   nextCountdown,

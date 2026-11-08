@@ -88,6 +88,8 @@ export class SpacetimeBackend implements IncidentBackend {
   private readonly listeners = new Set<() => void>();
   private cache: BackendRows | null = null;
   private pending = false;
+  /** True once the my_presence subscription applied. Before that, presence is unknown, not "everyone offline". */
+  private presenceReady = false;
 
   constructor(
     private readonly host: string,
@@ -119,6 +121,7 @@ export class SpacetimeBackend implements IncidentBackend {
           conn.db.myOrgStatus,
           conn.db.myRoster,
           conn.db.myPages,
+          conn.db.myPresence,
         ]) {
           t.onInsert(() => this.changed());
           t.onDelete(() => this.changed());
@@ -149,6 +152,16 @@ export class SpacetimeBackend implements IncidentBackend {
             tables.myRoster,
             tables.myPages,
           ]);
+        // Presence rides in its own subscription: a module published before my_presence existed
+        // rejects it, and that must not take the incident views down with it.
+        conn
+          .subscriptionBuilder()
+          .onApplied(() => {
+            this.presenceReady = true;
+            this.changed();
+          })
+          .onError(() => undefined)
+          .subscribe([tables.myPresence]);
       })
       .onConnectError(() => {
         this.state = 'error';
@@ -156,6 +169,7 @@ export class SpacetimeBackend implements IncidentBackend {
       })
       .onDisconnect(() => {
         this.state = 'offline';
+        this.presenceReady = false;
         this.changed();
       })
       .build();
@@ -239,6 +253,11 @@ export class SpacetimeBackend implements IncidentBackend {
         closed: i.closed,
       })),
       members: [...db.myMembers.iter()].map((m) => this.memberRow(m)),
+      presence: !this.presenceReady ? undefined : [...db.myPresence.iter()].map((p) => ({
+        identityHex: p.identity.toHexString(),
+        connections: p.connections,
+        lastSeenMicros: micros(p.lastSeen),
+      })),
       channels: [...db.myChannels.iter()].map((c) => ({
         incidentId: c.incidentId,
         kind: c.kind,

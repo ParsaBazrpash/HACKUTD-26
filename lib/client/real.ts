@@ -105,7 +105,8 @@ import { MAX_ORG_REASON, SEALED_CONTACT_LEN } from '@/spacetimedb/src/shared/org
 import { isInvitableRole } from '@/spacetimedb/src/shared/policy';
 import { unwrapChannelKey, wrapChannelKey } from '@/lib/crypto/wrap';
 import { createStore, get as idbGet, set as idbSet, type UseStore } from 'idb-keyval';
-import type { IncidentBackend, MemberRow, OrgBackend, OrgMemberRow } from './backend';
+import type { IncidentBackend, MemberRow, OrgBackend, OrgMemberRow, PresenceRow } from './backend';
+import { presenceFields, presenceMap } from './presence';
 import { foldEvents } from './fold';
 import { type DeviceVaultPort, getDeviceVault } from './passkey-lock';
 import { SpacetimeBackend } from './spacetime-backend';
@@ -133,6 +134,17 @@ import {
 /** Events between automatic commander checkpoints (PLAN 4.10). */
 const CHECKPOINT_EVERY = 10n;
 
+/**
+ * This browser is signed in as a member but holds no keys for the seat (cleared site data, or keys
+ * that never reached this browser). Nothing is sent anywhere; the commander fixes it with Replace device.
+ */
+export const NO_DEVICE_KEYS_MESSAGE =
+  'This device cannot open this room: the keys for your seat are not in this browser. Ask the commander to use Replace device and send you a new invite. If you are the commander, start a new incident.';
+/**
+ * This browser has a different sign-in from the one that joined. Seats live in one browser on one web address.
+ */
+export const NOT_MEMBER_HERE_MESSAGE =
+  'This browser is not a member of this incident. If you joined from another browser or web address, open the room there. If you lost that one, ask the commander to use Replace device and send you a new invite. If you are the commander, start a new incident.';
 /** Shown while this incident's keys are passkey-locked. */
 export const DEVICE_LOCKED_MESSAGE = 'Your keys for this incident are locked. Unlock them with your passkey.';
 
@@ -528,9 +540,9 @@ export class RealIncidentClient implements IncidentClient {
       }
     }
     const d = this.device;
-    if (!d) throw new ClientError('This device does not hold the keys for this incident');
+    if (!d) throw new ClientError(NO_DEVICE_KEYS_MESSAGE);
     if (!bytesEqual(d.signPub, mine.signPub) || !bytesEqual(d.ecdhPub, mine.ecdhPub)) {
-      throw new ClientError('This device does not hold the keys for this incident');
+      throw new ClientError(NO_DEVICE_KEYS_MESSAGE);
     }
     return d;
   }
@@ -539,12 +551,13 @@ export class RealIncidentClient implements IncidentClient {
     m: MemberRow,
     incidentId: string,
     certified: boolean,
-    extra: { meHex: string; iAmCommander: boolean; linkVerified?: boolean },
+    extra: { meHex: string; iAmCommander: boolean; linkVerified?: boolean; presence?: ReadonlyMap<string, PresenceRow> },
   ): MemberView {
     const role = (isRole(m.role) ? m.role : 'executive') as Role;
     const state = (m.state === 'active' || m.state === 'revoked' ? m.state : 'pending') as MemberStateName;
     const showCode = m.identityHex === extra.meHex || (extra.iAmCommander && state === 'pending');
     return {
+      ...presenceFields(extra.presence, m.identityHex),
       identity: m.identityHex,
       displayName: m.displayName,
       role,
@@ -599,7 +612,7 @@ export class RealIncidentClient implements IncidentClient {
       return emptyState(
         connection,
         at,
-        connection === 'ready' ? 'You are not a member of this incident' : undefined,
+        connection === 'ready' ? NOT_MEMBER_HERE_MESSAGE : undefined,
       );
     }
     const meHex = mine.identityHex;
@@ -782,6 +795,7 @@ export class RealIncidentClient implements IncidentClient {
 
     // Members.
     const iAmCommander = mine.role === 'commander' && mine.state === 'active';
+    const presence = presenceMap(rows.presence);
     const views: MemberView[] = [];
     for (const m of memberRows) {
       let linkVerified: boolean | undefined;
@@ -795,7 +809,9 @@ export class RealIncidentClient implements IncidentClient {
             )
           : false;
       }
-      views.push(this.memberView(m, id, out.roster.get(m.identityHex)?.certified ?? false, { meHex, iAmCommander, linkVerified }));
+      views.push(
+        this.memberView(m, id, out.roster.get(m.identityHex)?.certified ?? false, { meHex, iAmCommander, linkVerified, presence }),
+      );
     }
     views.sort((a, b) =>
       a.role === 'commander' ? -1 : b.role === 'commander' ? 1 : Number(a.joinedAt) - Number(b.joinedAt),
@@ -1022,7 +1038,7 @@ export class RealIncidentClient implements IncidentClient {
     if (!joined) {
       await store.wipe();
       throw new ClientError(
-        'This invite link could not be used. It may be expired or already used, the name may be taken, or there were too many failed tries (wait 10 minutes).',
+        'This invite link could not be used. It may be expired or already used, the name may be taken, or there were too many failed tries (wait 10 minutes). If your device was replaced, your old name stays on the revoked seat: join with a slightly different name, such as "Sam (new laptop)".',
       );
     }
     await this.activate(inv.incidentId, store);

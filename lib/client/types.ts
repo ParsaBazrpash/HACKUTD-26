@@ -57,7 +57,10 @@ export interface MemberView extends MemberRef {
   linkVerified?: boolean;
   /** "123 456 789 012". Shown to me, and to the commander for pending members. */
   safetyCode?: string;
+  /** Live presence from the server: true while any of their browsers is connected. Unset when unknown. */
   online?: boolean;
+  /** When their last browser connected or left. Unset when the server has never seen them since presence started. */
+  lastSeenAt?: Date;
   joinedAt: Date;
   admittedAt?: Date;
   revokedAt?: Date;

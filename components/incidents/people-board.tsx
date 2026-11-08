@@ -16,12 +16,15 @@ import { AdmissionControls } from "@/components/incidents/admission-controls";
 import { InviteControls } from "@/components/incidents/invite-controls";
 import { memberStateLabel, ROLE_LABELS, CHANNEL_LABELS } from "@/components/incidents/labels";
 import { PagePicker } from "@/components/incidents/page-picker";
-import { RevokeControl } from "@/components/incidents/revoke-control";
+import { ReissuedInvite, RevokeControl, type ReplaceOutcome } from "@/components/incidents/revoke-control";
+import { FormStatus, secondaryButtonClass } from "@/components/incidents/form-ui";
 import { ImHereButton, PagingStatus } from "@/components/incidents/paging-status";
 import { linkVerifiedLabel } from "@/components/incidents/room-controls";
 import { SafeText } from "@/components/incidents/safe-text";
 import { LocalTime } from "@/components/local-time";
+import { useBrowserNow } from "@/hooks/use-browser-now";
 import { useIncident } from "@/hooks/use-incident";
+import { formatAgo } from "@/lib/client/presence";
 import { isMockIncidentClient } from "@/lib/client";
 import type { MemberView } from "@/lib/client/types";
 import {
@@ -81,7 +84,15 @@ function statusTone(member: MemberView): { label: string; dot: string; text: str
   if (member.state === "pending") return { label: "Pending", dot: "bg-muted", text: "text-muted" };
   if (member.state === "revoked") return { label: "Revoked", dot: "bg-alert", text: "text-alert" };
   if (member.online === false) return { label: "Offline", dot: "bg-muted", text: "text-muted" };
+  // Admitted is not the same as here: say Online only when the server reports a live connection.
+  if (member.online === true) return { label: "Online", dot: "bg-signal", text: "text-signal" };
   return { label: "Active", dot: "bg-signal", text: "text-signal" };
+}
+
+function lastSeenText(member: MemberView, now: number | null): string | null {
+  if (member.state !== "active" || member.online !== false) return null;
+  if (!member.lastSeenAt) return "Not seen yet";
+  return now === null ? null : `Last seen ${formatAgo(member.lastSeenAt, now)}`;
 }
 
 function matchesQuery(member: MemberView, query: string): boolean {
@@ -182,10 +193,15 @@ function AccessPill({ role }: { role: Role }) {
 
 function StatusMark({ member }: { member: MemberView }) {
   const tone = statusTone(member);
+  const now = useBrowserNow();
+  const seen = lastSeenText(member, now);
   return (
-    <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${tone.text}`}>
-      <span aria-hidden="true" className={`size-1.5 rounded-full ${tone.dot}`} />
-      {tone.label}
+    <span className="inline-flex flex-col gap-0.5">
+      <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${tone.text}`}>
+        <span aria-hidden="true" className={`size-1.5 rounded-full ${tone.dot}`} />
+        {tone.label}
+      </span>
+      {seen ? <span className="text-[11px] text-muted">{seen}</span> : null}
     </span>
   );
 }
@@ -292,6 +308,14 @@ function MembersPanel({
   const [status, setStatus] = useState<StateFilter>("all");
   const [access, setAccess] = useState<AccessFilter>("all");
   const [openId, setOpenId] = useState<string | null>(null);
+  // Replace device results live here, not in the row: with the Status filter on Active the row
+  // disappears the moment the revoke lands, and the new invite must still be shown.
+  const [outcome, setOutcome] = useState<ReplaceOutcome | null>(null);
+  const [copied, setCopied] = useState(false);
+  const onReplaceOutcome = (next: ReplaceOutcome) => {
+    setCopied(false);
+    setOutcome(next);
+  };
 
   const visible = members
     .filter((member) => matchesQuery(member, query))
@@ -303,6 +327,18 @@ function MembersPanel({
 
   return (
     <>
+      {outcome?.kind === "invite" ? (
+        <ReissuedInvite invite={outcome.invite} copied={copied} onCopied={setCopied} onDismiss={() => setOutcome(null)} />
+      ) : outcome?.kind === "notice" ? (
+        <div className="grid gap-2">
+          <FormStatus message={outcome.message} />
+          <div>
+            <button type="button" onClick={() => setOutcome(null)} className={secondaryButtonClass}>
+              Done
+            </button>
+          </div>
+        </div>
+      ) : null}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
           <Users aria-hidden="true" className="mt-1 size-7 shrink-0 text-foreground" />
@@ -464,6 +500,7 @@ function MembersPanel({
                       mock={mock}
                       open={open}
                       onToggle={() => setOpenId(open ? null : rowId)}
+                      onReplaceOutcome={onReplaceOutcome}
                     />
                   );
                 })}
@@ -491,7 +528,7 @@ function MembersPanel({
                   {open ? (
                     <>
                       <MemberFacts member={member} mock={mock} />
-                      <RevokeControl member={member} />
+                      <RevokeControl member={member} onReplaceOutcome={onReplaceOutcome} />
                     </>
                   ) : null}
                 </li>
@@ -524,11 +561,13 @@ function MemberRows({
   mock,
   open,
   onToggle,
+  onReplaceOutcome,
 }: {
   member: MemberView;
   mock: boolean;
   open: boolean;
   onToggle: () => void;
+  onReplaceOutcome: (outcome: ReplaceOutcome) => void;
 }) {
   return (
     <>
@@ -557,7 +596,7 @@ function MemberRows({
           <td colSpan={6} className="px-4 py-3">
             <div className="grid gap-3">
               <MemberFacts member={member} mock={mock} />
-              <RevokeControl member={member} />
+              <RevokeControl member={member} onReplaceOutcome={onReplaceOutcome} />
             </div>
           </td>
         </tr>

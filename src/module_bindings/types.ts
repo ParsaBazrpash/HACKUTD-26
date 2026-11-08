@@ -184,6 +184,9 @@ export type MyOrgStatus = __Infer<typeof MyOrgStatus>;
 export const MyPages = __t.object("MyPages", {});
 export type MyPages = __Infer<typeof MyPages>;
 
+export const MyPresence = __t.object("MyPresence", {});
+export type MyPresence = __Infer<typeof MyPresence>;
+
 export const MyRoster = __t.object("MyRoster", {});
 export type MyRoster = __Infer<typeof MyRoster>;
 
@@ -264,6 +267,13 @@ export const PagerPageRec = __t.object("PagerPageRec", {
   requestedBy: __t.string(),
 });
 export type PagerPageRec = __Infer<typeof PagerPageRec>;
+
+export const Presence = __t.object("Presence", {
+  identity: __t.identity(),
+  connections: __t.u32(),
+  lastSeen: __t.timestamp(),
+});
+export type Presence = __Infer<typeof Presence>;
 
 export const RateBucket = __t.object("RateBucket", {
   identity: __t.identity(),

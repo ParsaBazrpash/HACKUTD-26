@@ -142,6 +142,31 @@ export function linkVerifiedLabel(linkVerified: boolean | undefined): string {
 export const REVOKE_REASON_MAX = 500;
 
 /**
+ * Replace device: the commander revokes the old seat (fresh channel keys, old keys banned for good)
+ * and then issues a new invite for the same role. Only seats an invite can recreate qualify.
+ */
+export function replaceDeviceEnabled(
+  me: { identity: string; role: Role; state: MemberStateName } | null,
+  member: { identity: string; role: Role; state: MemberStateName },
+): boolean {
+  return revokeEnabled(me, member) && isInviteRole(member.role);
+}
+
+/** Reason signed into the record when the commander left the field empty on Replace device. */
+export const REPLACE_DEVICE_REASON = "Lost device or browser. Seat replaced with a new invite.";
+
+/**
+ * A name the replaced person can join under from a new browser. Their old name stays on the revoked
+ * seat and only the same sign-in may take it back, so a new browser needs a slightly different name.
+ * Kept within the 40 character display name limit.
+ */
+export function replacementNameExample(name: string): string {
+  const suffix = " (new laptop)";
+  const base = Array.from(name.trim()).slice(0, 40 - suffix.length).join("").trim();
+  return `${base || "Name"}${suffix}`;
+}
+
+/**
  * Revoke from the room: only the active commander, only an active member who is not the commander
  * (and not this device). A pending person is declined on the admission card instead.
  */

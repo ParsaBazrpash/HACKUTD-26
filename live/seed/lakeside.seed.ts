@@ -45,6 +45,7 @@ import {
   BEATS,
   BOT_KEYS,
   CAST,
+  DEMO_INCIDENT_TITLE,
   LIVE_BEATS,
   isActionBeat,
   minutesAfter,
@@ -130,8 +131,8 @@ function readInputs(env: NodeJS.ProcessEnv): Inputs {
   let t0 = defaultT0();
   if (t0Raw) {
     t0 = new Date(t0Raw);
-    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(t0Raw) || Number.isNaN(t0.getTime())) {
-      throw new SeedStop('ZH_SEED_T0 must be an ISO time such as 2026-11-08T02:13:00-06:00.');
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/.test(t0Raw) || Number.isNaN(t0.getTime())) {
+      throw new SeedStop('ZH_SEED_T0 must be an ISO time with an offset, such as 2026-11-08T02:13:00-06:00 or ending in Z.');
     }
   }
 
@@ -145,7 +146,7 @@ function readInputs(env: NodeJS.ProcessEnv): Inputs {
   const paceMs = whole('ZH_SEED_PACE_MS', 1500, 0, 60_000);
   const waitMin = whole('ZH_SEED_WAIT_MIN', 20, 1, 50);
   const liveRaw = (env.ZH_SEED_LIVE ?? '').trim();
-  if (liveRaw && liveRaw !== '1' && liveRaw !== '0') throw new SeedStop('ZH_SEED_LIVE must be 1 or empty.');
+  if (liveRaw && liveRaw !== '1' && liveRaw !== '0') throw new SeedStop('ZH_SEED_LIVE must be 1, 0 or empty.');
 
   return { fragments, pagerPub, db, t0, paceMs, waitMin, live: liveRaw === '1' };
 }
@@ -230,7 +231,8 @@ async function enrollAndApprove(bots: Bot[], inputs: Inputs) {
       phone: bot.entry.phone!,
     });
     codes.push(safetyCode);
-    say(`Approve ${bot.entry.displayName}: safety code ${safetyCode}`);
+    if (bot.entry.orgState === 'pending') say(`${bot.entry.displayName}: safety code ${safetyCode}. Leave pending, do not approve.`);
+    else say(`Approve ${bot.entry.displayName}: safety code ${safetyCode}`);
   }
   for (const bot of bots) {
     if (bot.entry.orgState === 'pending') {
@@ -245,6 +247,8 @@ async function enrollAndApprove(bots: Bot[], inputs: Inputs) {
 
 async function waitForIncident(bots: Bot[], inputs: Inputs) {
   const wait = inputs.waitMin * 60_000;
+  const add = CAST.filter((c) => c.role && c.role !== 'commander' && c.player !== 'mock_only');
+  say(`Create the incident titled "${DEMO_INCIDENT_TITLE}" and add from the roster: ${add.map((c) => `${c.displayName} (${c.role})`).join(', ')}.`);
   for (const bot of bots) {
     if (bot.entry.orgState === 'pending') continue;
     say(`Waiting for ${bot.entry.displayName} to be added to an incident`);
@@ -332,9 +336,27 @@ async function playBots(botsByKey: Map<CastKey, Bot>, inputs: Inputs) {
   const mine = BEATS.filter((b): b is PayloadBeat => !isActionBeat(b) && castOf(b.by).player === 'bot');
   say(`Playing ${mine.length} beats from the bots, one every ${inputs.paceMs} ms`);
   let n = 0;
+  const waited = new Set<Beat>();
   for (const beat of mine) {
     const bot = botsByKey.get(beat.by);
     if (!bot) throw new SeedStop(`no bot for ${beat.by}.`);
+    if (beat.kind === 'chat.post') {
+      // Earlier chat lines by people in the same channel must be on screen first, so the chat reads in order.
+      const earlier = BEATS.filter(
+        (b): b is Extract<PayloadBeat, { kind: 'chat.post' }> =>
+          b.kind === 'chat.post' && b.channel === beat.channel && b.at < beat.at && castOf(b.by).player !== 'bot' && !waited.has(b),
+      );
+      for (const line of earlier) {
+        waited.add(line);
+        say(`Now paste in #${line.channel} as ${nameOf(line.by)} (${offset(line.at)}): ${line.body.text}`);
+        await until(
+          () => bot.client.getState().channels.find((c) => c.kind === line.channel)?.messages.some((m) => m.text === line.body.text) === true,
+          `${nameOf(line.by)}'s line in #${line.channel}`,
+          inputs.waitMin * 60_000,
+        );
+        say(`Seen in #${line.channel}. Continuing.`);
+      }
+    }
     if (beat.kind === 'timeline.add' && beat.body.amends) {
       const earlier = BEATS.find((b) => b.kind === 'timeline.add' && b.key === beat.body.amends) as Extract<PayloadBeat, { kind: 'timeline.add' }>;
       entryIds.set(beat.body.amends, await learnEntryId(bot, earlier));
@@ -383,7 +405,7 @@ function textFor(beat: Beat): string {
     case 'chat.post':
       return beat.body.text;
     case 'ui.page':
-      return `Call ${beat.who.map(nameOf).join(', ')}`;
+      return `Call ${beat.who.filter((k) => castOf(k).player !== 'bot').map(nameOf).join(', ')}`;
     case 'ui.revoke':
       return `Revoke ${nameOf(beat.who)}. Reason: ${beat.reason}`;
     default:
@@ -413,8 +435,8 @@ function printPasteLines(t0: Date) {
 // --- Live mode ----------------------------------------------------------------------------
 
 async function runLive(botsByKey: Map<CastKey, Bot>, startedAt: number) {
-  say('Live mode: one update per minute. Stop the script to end it.');
   const end = startedAt + 57 * 60_000;
+  say(`Live mode: one update per minute. It stops by itself at ${ct(new Date(end))} CT, or stop the script sooner.`);
   for (let i = 0; Date.now() < end; i += 1) {
     const live = LIVE_BEATS[i % LIVE_BEATS.length];
     const bot = botsByKey.get(live.by);

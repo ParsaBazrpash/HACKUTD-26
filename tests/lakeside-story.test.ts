@@ -152,10 +152,10 @@ describe('Lakeside story', () => {
 
   it('has no em dash and no phone number outside the fictional range', () => {
     const text = readFileSync(FILE, 'utf8');
-    expect(text).not.toContain('—');
-    expect(text).not.toContain('–');
-    const phones = text.match(/\+?\d{1,2}[\s().-]*\d{3}[\s().-]*\d{3}[\s().-]*\d{4}/g) ?? [];
-    for (const p of phones) expect(p, `phone-like text ${p}`).toMatch(/^\+1\d{3}5550(1\d\d)$/);
+    expect(text).not.toContain('\u2014');
+    expect(text).not.toContain('\u2013');
+    const re = /(?<!\w)(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}(?!\w)/g;
+    for (const p of text.match(re) ?? []) expect(p.replace(/\D/g, ''), p).toMatch(/^1?\d{3}55501\d\d$/);
     const e164 = text.match(/\+1\d{10}/g) ?? [];
     expect(e164.length).toBe(BOT_KEYS.length);
     for (const p of e164) expect(p).toMatch(/^\+1\d{3}5550(1\d\d)$/);

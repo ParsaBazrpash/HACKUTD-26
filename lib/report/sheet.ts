@@ -95,13 +95,18 @@ export function coverActions(report: IncidentReport, pages: readonly PageView[],
   return actions;
 }
 
+/**
+ * Standing commander decisions only, by the status board's rules (built into `entry.board`): a
+ * "Decision: " line from anyone else is a proposal, and a decision the commander later replaced is
+ * not shown. The role comes from the signing member's roster row, never from a display name.
+ */
 export function coverDecisions(report: IncidentReport): CoverDecision[] {
   const decisions: CoverDecision[] = [];
   for (const group of report.timeline) {
     for (const entry of group.entries) {
-      if (!entry.text.startsWith("Decision: ")) continue;
+      if (entry.board !== "decision" || !entry.text.startsWith("Decision: ")) continue;
       const title = entry.text.slice("Decision: ".length).trim();
-      const role = report.roster.find((member) => member.name === entry.author)?.role;
+      const role = entry.authorRole;
       const who = role ? `${initials(entry.author)}, ${role}` : initials(entry.author);
       const when = reportClock(entry.signedAt ?? entry.occurredAt);
       decisions.push({ id: entry.id, at: entry.at, title, meta: `${who} · ${when}` });
@@ -112,7 +117,7 @@ export function coverDecisions(report: IncidentReport): CoverDecision[] {
 }
 
 function actionFromEntry(entry: ReportTimelineEntry): CoverAction {
-  const decision = entry.text.startsWith("Decision: ");
+  const decision = entry.board === "decision";
   const signed = entry.signedAt ?? entry.occurredAt;
   const server =
     entry.serverAt !== signed && entry.serverAt !== entry.occurredAt ? `Server ${reportClock(entry.serverAt)}` : null;

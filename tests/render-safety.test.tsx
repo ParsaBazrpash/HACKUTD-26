@@ -31,10 +31,16 @@ const ok = { ok: true, failures: [], warnings: [] };
 const member = { identity: 'a'.repeat(64), displayName: `Eve ${IMG}`, role: 'technical' as const };
 const at = new Date('2026-11-08T12:00:00Z');
 
-// Lucide icons are real svg elements. Strip those before the markup checks so an
-// injected svg, img, or script in user text still fails.
+// Lucide icons are real svg elements. Strip only svgs that look exactly like an app icon:
+// a lucide class, aria-hidden, and nothing inside but plain shape elements. An injected svg
+// that carries a script, image, link or foreignObject is left in place and still fails.
+const ICON_SHAPES = '(?:<(?:path|circle|rect|line|polyline|polygon|ellipse)\\b[^<>]*?(?:/>|></(?:path|circle|rect|line|polyline|polygon|ellipse)>))*';
+const APP_ICON = new RegExp(
+  `<svg\\b(?=[^>]*\\bclass="lucide\\b)(?=[^>]*\\baria-hidden="true")[^>]*>${ICON_SHAPES}</svg>`,
+  'gi',
+);
 function withoutAppIcons(html: string): string {
-  return html.replace(/<svg\b[^>]*\blucide\b[^>]*>[\s\S]*?<\/svg>/gi, '');
+  return html.replace(APP_ICON, '');
 }
 
 function expectInert(html: string) {

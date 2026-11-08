@@ -15,6 +15,10 @@ import {
   draftChatBody,
   inviteRequest,
   linkVerifiedLabel,
+  REVOKE_REASON_MAX,
+  revokeConfirmPhrase,
+  revokeConfirmed,
+  revokeEnabled,
 } from "@/components/incidents/room-controls";
 import { createMockIncidentClient } from "@/lib/client/mock";
 import { ChatBodySchema } from "@/lib/protocol/events";
@@ -135,6 +139,45 @@ describe("invite and admission", () => {
   });
 });
 
+describe("revoke from the room", () => {
+  test("only the active commander revokes, and only an active member who is not the commander", async () => {
+    const commander = createMockIncidentClient();
+    const state = commander.getState();
+    const me = state.me!;
+    const active = state.members.find((member) => member.state === "active" && member.role !== "commander")!;
+    const pending = state.members.find((member) => member.state === "pending");
+    expect(revokeEnabled(me, active)).toBe(true);
+    expect(revokeEnabled(me, me)).toBe(false);
+    expect(revokeEnabled(me, { ...active, role: "commander" })).toBe(false);
+    expect(revokeEnabled(me, { ...active, state: "revoked" })).toBe(false);
+    if (pending) expect(revokeEnabled(me, pending)).toBe(false);
+    expect(revokeEnabled({ ...me, state: "revoked" }, active)).toBe(false);
+    expect(revokeEnabled({ ...me, role: "counsel" }, active)).toBe(false);
+    expect(revokeEnabled(null, active)).toBe(false);
+
+    await commander.revokeMember(active.memberId, "Laptop seized.".slice(0, REVOKE_REASON_MAX));
+    expect(commander.getState().members.find((member) => member.memberId === active.memberId)?.state).toBe("revoked");
+    await expect(commander.revokeMember(me.memberId, "")).rejects.toThrow();
+
+    const counsel = createMockIncidentClient({ viewer: "counsel" });
+    const other = counsel.getState().members.find((member) => member.state === "active" && member.role !== "commander" && member.identity !== counsel.getState().me?.identity);
+    expect(other).toBeDefined();
+    await expect(counsel.revokeMember(other!.memberId, "")).rejects.toThrow(/commander/i);
+  });
+
+  test("the commander must type the member's name to confirm", () => {
+    const member = { displayName: "  Dana Counsel " };
+    expect(revokeConfirmPhrase(member)).toBe("Dana Counsel");
+    expect(revokeConfirmed(member, "")).toBe(false);
+    expect(revokeConfirmed(member, "dana counsel")).toBe(false);
+    expect(revokeConfirmed(member, "Dana")).toBe(false);
+    expect(revokeConfirmed(member, " Dana Counsel ")).toBe(true);
+    // The same name typed in another Unicode form still matches.
+    expect(revokeConfirmed({ displayName: "Jos\u00e9" }, "Jose\u0301")).toBe(true);
+    expect(revokeConfirmPhrase({ displayName: "   " })).toBe("revoke");
+  });
+});
+
 describe("chat composer", () => {
   test("hides #record and channels the role cannot read", () => {
     expect(authorizedChatChannels("technical", "active", leakedChannels).map((channel) => channel.kind)).toEqual([
@@ -203,5 +246,12 @@ describe("control wiring", () => {
     expect(overview).toContain("<MessageComposer");
     expect(overview).toContain("authorizedChatChannels");
     expect(admission).toContain("revokeMember(member.memberId, DECLINE_REASON)");
+    const revoke = readFileSync("components/incidents/revoke-control.tsx", "utf8");
+    const people = readFileSync("components/incidents/people-board.tsx", "utf8");
+    expect(revoke).toContain("revokeMember(member.memberId,");
+    expect(revoke).toContain("revokeConfirmed(member, typed)");
+    expect(revoke).toContain("revokeEnabled(state.me, member)");
+    expect(revoke).not.toMatch(/console\./);
+    expect(people).toContain("<RevokeControl member={member} />");
   });
 });

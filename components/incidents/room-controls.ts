@@ -117,3 +117,28 @@ export function linkVerifiedLabel(linkVerified: boolean | undefined): string {
   if (linkVerified === false) return "Unverified: do not admit";
   return "Link check has not finished";
 }
+
+/** Longest revoke reason the `roster.revoke` payload accepts (`lib/protocol/events.ts`). */
+export const REVOKE_REASON_MAX = 500;
+
+/**
+ * Revoke from the room: only the active commander, only an active member who is not the commander
+ * (and not this device). A pending person is declined on the admission card instead.
+ */
+export function revokeEnabled(
+  me: { identity: string; role: Role; state: MemberStateName } | null,
+  member: { identity: string; role: Role; state: MemberStateName },
+): boolean {
+  if (!me || me.role !== "commander" || me.state !== "active") return false;
+  if (member.identity === me.identity || member.role === "commander") return false;
+  return member.state === "active";
+}
+
+/** What the commander types to confirm a revoke: the member's name as shown (PLAN 7). */
+export function revokeConfirmPhrase(member: { displayName: string }): string {
+  return member.displayName.normalize("NFC").trim() || "revoke";
+}
+
+export function revokeConfirmed(member: { displayName: string }, typed: string): boolean {
+  return typed.normalize("NFC").trim() === revokeConfirmPhrase(member);
+}

@@ -4,6 +4,7 @@ import { useCallback, useRef, useState, useSyncExternalStore, type FormEvent } f
 import { DemoBanner } from "@/components/incidents/demo-banner";
 import { FormError, fieldClass, primaryButtonClass } from "@/components/incidents/form-ui";
 import { BreakGlassCard } from "@/components/org/break-glass-card";
+import { fingerprintFromEnrollFragment } from "@/components/org/break-glass-model";
 import { PhoneField } from "@/components/org/phone-field";
 import { applyEnrollHash, PHONE_ERROR, PHONE_HINT, toUsE164 } from "@/components/org/org-link";
 import { usePasskeyGate } from "@/components/org/use-passkey-ready";
@@ -128,9 +129,9 @@ export function EnrollForm() {
       </div>
       {done ? (
         <BreakGlassCard
-          orgName={state.org?.name ?? "Your organization"}
+          orgName={state.org?.name ?? null}
           address={done.address}
-          adminFingerprint={state.org?.adminFingerprint ?? null}
+          adminFingerprint={state.org?.adminFingerprint ?? fingerprintFromEnrollFragment(fragment)}
         />
       ) : null}
     </div>

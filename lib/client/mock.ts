@@ -64,6 +64,7 @@ import {
   readableChannels,
   type Role,
 } from "@/spacetimedb/src/shared/policy";
+import { MockOrg, type OrgPerson } from "@/lib/client/mock-org";
 import {
   createClinicFixture,
   type ClinicMemberSeed,
@@ -84,6 +85,8 @@ export interface MockClientOptions {
   ledger?: DemoLedgerPort | null;
   /** Which member this tab is. Undefined uses sessionStorage in the browser. */
   session?: DemoSessionPort | null;
+  /** Start with the seeded Lakeside org (default). False starts with no org. */
+  seedOrg?: boolean;
 }
 
 interface DemoInvite {
@@ -210,6 +213,7 @@ class MockIncidentClient implements IncidentClient {
   private viewer = "";
   private currentId: string | null = null;
   private nextIdentity = 6;
+  private readonly orgs: MockOrg;
   private tail: Promise<void> = Promise.resolve();
 
   constructor(options: MockClientOptions = {}) {
@@ -217,6 +221,7 @@ class MockIncidentClient implements IncidentClient {
     this.ledger = options.ledger === undefined ? browserDemoLedger() : options.ledger;
     this.session = options.session === undefined ? browserDemoSession() : options.session;
     this.now = options.now ?? Date.now;
+    this.orgs = new MockOrg(this.orgHooks(), { seed: options.seedOrg });
     const clinic = createClinicFixture();
     const world: World = {
       id: clinic.incidentId,
@@ -451,31 +456,115 @@ class MockIncidentClient implements IncidentClient {
     });
   }
 
-  // --- org roster and paging (WP0 stubs, built in later packages) -----------------
+  // --- org roster and paging (logic lives in mock-org.ts) --------------------------
 
-  createOrg(): Promise<{ orgId: string }> {
-    return Promise.reject(new Error('not built yet'));
+  createOrg(input: { name: string; displayName: string; phone: string }): Promise<{ orgId: string }> {
+    return this.run(() => this.orgs.createOrg(input));
   }
-  createEnrollLink(): Promise<{ url: string; qr: string | null }> {
-    return Promise.reject(new Error('not built yet'));
+  createEnrollLink(input: { ttlHours: number }): Promise<{ url: string; qr: string | null }> {
+    return this.run(() => this.orgs.createEnrollLink(input));
   }
-  enroll(): Promise<{ safetyCode: string }> {
-    return Promise.reject(new Error('not built yet'));
+  enroll(input: { fragment: string; displayName: string; phone: string }): Promise<{ safetyCode: string }> {
+    return this.run(() => this.orgs.enroll(input));
   }
-  approveMember(): Promise<void> {
-    return Promise.reject(new Error('not built yet'));
+  approveMember(orgMemberId: bigint): Promise<void> {
+    return this.run(() => this.orgs.approveMember(orgMemberId));
   }
-  revokeOrgMember(): Promise<void> {
-    return Promise.reject(new Error('not built yet'));
+  revokeOrgMember(orgMemberId: bigint, reason: string): Promise<void> {
+    return this.run(() => this.orgs.revokeOrgMember(orgMemberId, reason));
   }
-  addFromRoster(): Promise<void> {
-    return Promise.reject(new Error('not built yet'));
+  addFromRoster(picks: { orgMemberId: bigint; role: "counsel" | "technical" | "executive" }[]): Promise<void> {
+    return this.run(() => this.orgs.addFromRoster(picks));
   }
-  page(): Promise<{ pageId: string }> {
-    return Promise.reject(new Error('not built yet'));
+  page(orgMemberIds: bigint[]): Promise<{ pageId: string }> {
+    return this.run(() => this.orgs.page(orgMemberIds));
   }
   announcePresence(): Promise<void> {
-    return Promise.reject(new Error('not built yet'));
+    return this.run(() => this.announceAs(this.viewer));
+  }
+
+  /** Clears pending page timers. */
+  dispose(): void {
+    this.orgs.dispose();
+    this.listeners.clear();
+  }
+
+  private orgHooks() {
+    const activeWorld = () => (this.currentId ? this.worlds.get(this.currentId) : undefined);
+    return {
+      now: () => this.now(),
+      origin: () => this.origin(),
+      isAdmin: () => {
+        const member = activeWorld()?.members.find((item) => item.identity === this.viewer);
+        return member?.role === "commander" && member.state === "active";
+      },
+      viewer: () => {
+        const member = activeWorld()?.members.find((item) => item.identity === this.viewer);
+        if (!member) throw new Error("You are not a member of this incident.");
+        return { identity: member.identity, fingerprint: member.fingerprint };
+      },
+      cleanName: (raw: string) => this.cleanName(raw),
+      inIncident: (identity: string) =>
+        !!activeWorld()?.members.some((item) => item.identity === identity && item.state === "active"),
+      admit: (people: OrgPerson[]) => this.admitPeople(people),
+      revokeFromIncident: (identity: string) => this.revokePerson(identity),
+      announce: (identity: string) => {
+        this.announceAs(identity);
+        this.saveLedger();
+      },
+      changed: () => this.publish(),
+    };
+  }
+
+  private admitPeople(people: OrgPerson[]): void {
+    const world = this.requireCommander();
+    const me = this.me(world);
+    const fresh = people.filter((p) => !world.members.some((m) => m.identity === p.identity));
+    if (world.members.length + fresh.length > MAX_MEMBERS) throw new Error("This incident cannot add that many members.");
+    for (const person of fresh) {
+      if (world.members.some((m) => displayNameKey(m.displayName) === displayNameKey(person.displayName))) {
+        throw new Error("That display name is already in use in this incident.");
+      }
+    }
+    const at = new Date(this.now());
+    for (const person of fresh) {
+      world.members.push({
+        memberId: world.nextMemberId++,
+        identity: person.identity,
+        displayName: person.displayName,
+        role: person.role,
+        state: "active",
+        fingerprint: person.fingerprint,
+        safetyCode: person.safetyCode,
+        joinedAt: at,
+        admittedAt: at,
+        demoLinkMatched: false,
+      });
+      this.push(world, "record", me, "roster.admit", {
+        memberIdentity: person.identity,
+        role: person.role,
+        displayName: person.displayName,
+      });
+    }
+  }
+
+  private revokePerson(identity: string): void {
+    const world = this.currentId ? this.worlds.get(this.currentId) : undefined;
+    const me = world?.members.find((m) => m.identity === this.viewer);
+    const target = world?.members.find((m) => m.identity === identity);
+    if (!world || !me || !target || target.role === "commander" || target.state === "revoked") return;
+    target.state = "revoked";
+    target.revokedAt = new Date(this.now());
+    this.push(world, "record", me, "roster.revoke", { memberIdentity: identity, reason: "Org membership revoked." });
+  }
+
+  private announceAs(identity: string): void {
+    const world = this.currentId ? this.worlds.get(this.currentId) : undefined;
+    const member = world?.members.find((m) => m.identity === identity);
+    if (!world || !member || member.state !== "active") return;
+    if (!isKindAllowed("chat.post", "command", member.role)) return;
+    this.push(world, "command", member, "chat.post", { messageId: crypto.randomUUID(), text: "I'm here.", mentions: [] });
+    this.publish();
   }
 
   private run<T>(fn: () => T): Promise<T> {
@@ -869,11 +958,14 @@ class MockIncidentClient implements IncidentClient {
         : null,
       members: views,
       integrity,
-      org: null,
-      roster: [],
-      pages: [],
+      ...this.orgSlice(commanderSession),
     });
     this.emit();
+  }
+
+  private orgSlice(admin: boolean): Pick<IncidentState, "org" | "roster" | "pages"> {
+    const slice = this.orgs.slice();
+    return admin ? slice : { org: slice.org, roster: [], pages: [] };
   }
 
   private emit(): void {
@@ -881,6 +973,6 @@ class MockIncidentClient implements IncidentClient {
   }
 }
 
-export function createMockIncidentClient(options?: MockClientOptions): IncidentClient {
+export function createMockIncidentClient(options?: MockClientOptions): IncidentClient & { dispose(): void } {
   return new MockIncidentClient(options);
 }

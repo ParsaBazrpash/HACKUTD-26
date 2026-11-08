@@ -4,7 +4,8 @@ import { ConnectionId, Timestamp } from 'spacetimedb';
 import { createModuleTestHarness, TestAuth } from 'spacetimedb/server/test-utils';
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { CHANNELS, readableChannels, type Role } from './shared/policy';
-import { admitStatement } from './shared/encoding';
+import { admitStatement, revokeStatement } from './shared/encoding';
+import { computeJoinTag, newInvite } from '@/lib/crypto/invite';
 import { generateDeviceKeys, type DeviceKeys } from '@/lib/crypto/keys';
 import { sign } from '@/lib/crypto/sign';
 import { enrollLinkHash, sealContact, signEnrollment, signRevocation } from '@/lib/crypto/org';
@@ -101,6 +102,26 @@ class Org {
       enrollSig,
     });
     return o;
+  }
+
+  /** A second org in the same database, administered by `who`. Returns the id of their active roster row. */
+  async foreignOrgRow(who: string): Promise<bigint> {
+    const keys = await generateDeviceKeys();
+    const orgId = uuid();
+    const hex = hexOf(this.h, who);
+    const sealed = await sealContact(this.pagerPub, orgId, hex, '+15558888888');
+    call(this.h, who, mod.create_org, {
+      orgId,
+      name: 'Other Org',
+      displayName: 'Mal',
+      signPub: keys.signPub,
+      ecdhPub: keys.ecdhPub,
+      sealedContact: sealed,
+      enrollSig: await signEnrollment(keys.signPriv, { orgId, identityHex: hex, displayName: 'Mal', signPub: keys.signPub, ecdhPub: keys.ecdhPub, sealedContact: sealed }),
+    });
+    const row = [...this.h.db.org_member.iter()].find((m) => m.orgId === orgId)!;
+    expect(row.state).toBe('active');
+    return row.id;
   }
 
   link(ttlHours = 2): Uint8Array {
@@ -200,6 +221,40 @@ class Room {
 
   async add(who: string, role: 'counsel' | 'technical' | 'executive' = 'technical') {
     call(this.h, 'admin', mod.add_from_roster, { incidentId: this.incidentId, picks: [await this.pick(who, role)] });
+  }
+
+  /** Joins the incident through an ordinary invite (not the roster), with the person's roster keys. Admitted unless `admit` is false. */
+  async joinByInvite(who: string, admit = true) {
+    const o = this.org;
+    const p = o.people.get(who)!;
+    const r = o.row(who);
+    const inv = newInvite(this.incidentId);
+    call(this.h, 'admin', mod.create_invite, { incidentId: this.incidentId, codeHash: inv.codeHash, role: 'technical', ttlMinutes: 15 });
+    const joinTag = await computeJoinTag(inv.secret, { incidentId: this.incidentId, identityHex: p.hex, displayName: r.displayName, signPub: r.signPub, ecdhPub: r.ecdhPub });
+    call(this.h, who, mod.redeem_invite, { incidentId: this.incidentId, code: inv.code, displayName: r.displayName, signPub: r.signPub, ecdhPub: r.ecdhPub, joinTag });
+    const row = () => [...this.h.db.member.iter()].find((m) => m.incidentId === this.incidentId && m.identity.toHexString() === p.hex)!;
+    if (admit) {
+      const admitSig = await sign(o.admin.keys.signPriv, admitStatement(this.incidentId, p.hex, 'technical', r.displayName, r.signPub, r.ecdhPub));
+      call(this.h, 'admin', mod.admit_member, { incidentId: this.incidentId, memberId: row().id, admitSig, envelopes: this.envelopesFor('technical') });
+    }
+    return row();
+  }
+
+  /** Commander revokes a technical incident member, rotating to every remaining active reader. */
+  async revokeFromIncident(who: string) {
+    const o = this.org;
+    const p = o.people.get(who)!;
+    const row = [...this.h.db.member.iter()].find((m) => m.incidentId === this.incidentId && m.identity.toHexString() === p.hex)!;
+    const remaining = [...this.h.db.member.iter()].filter((m) => m.incidentId === this.incidentId && m.state === 'active' && m.id !== row.id);
+    const rotations = readableChannels('technical').map((kind) => ({
+      kind,
+      newEpoch: 1,
+      envelopes: remaining
+        .filter((m) => readableChannels(m.role as Role).includes(kind))
+        .map((m) => ({ recipient: m.identity, wrapped: new Uint8Array(48), iv: new Uint8Array(12) })),
+    }));
+    const revokeSig = await sign(o.admin.keys.signPriv, revokeStatement(this.incidentId, p.hex));
+    call(this.h, 'admin', mod.revoke_member, { incidentId: this.incidentId, memberId: row.id, revokeSig, rotations });
   }
 
   page(ids: bigint[], pageId = uuid(), who = 'admin') {
@@ -518,8 +573,11 @@ describe('add_from_roster', () => {
     bad(() => addAs('admin', [{ ...alicePick, role: 'commander' }]));
     bad(() => addAs('admin', [{ ...alicePick, orgMemberId: 99999n }]));
     // A row of another org.
-    const other = await Org.create();
-    bad(() => addAs('admin', [{ ...alicePick, orgMemberId: other.row('admin').id }]));
+    const foreign = await o.foreignOrgRow('mallory'); // active, in a different org of the same database
+    // A correctly signed admission for the foreign row, so only the org check can stop it.
+    const fr = [...o.h.db.org_member.iter()].find((m) => m.id === foreign)!;
+    const foreignSig = await sign(o.admin.keys.signPriv, admitStatement(room.incidentId, fr.identity.toHexString(), 'technical', fr.displayName, fr.signPub, fr.ecdhPub));
+    bad(() => addAs('admin', [{ ...alicePick, orgMemberId: foreign, admitSig: foreignSig }]));
     expect([...o.h.db.member.iter()].filter((m) => m.incidentId === room.incidentId).length).toBe(1);
 
     addAs('admin', [alicePick]);
@@ -603,13 +661,19 @@ describe('request_page', () => {
     const room = await roomWith('alice');
     const o = room.org;
     await o.enrollApproved('bob', 'Bob'); // in the org but not in the incident
-    await o.enrollApproved('inviteonly', 'Inv'); // in the incident via an ordinary invite, not the roster
+    await o.enrollApproved('inviteonly', 'Inv');
+    const viaInvite = await room.joinByInvite('inviteonly'); // active in the incident through an ordinary invite, not the roster
+    expect(viaInvite.state).toBe('active');
+    expect(viaInvite.inviteCodeHash).not.toMatch(/^roster:/);
     await o.enroll('pending', 'Pen');
+    const foreign = await o.foreignOrgRow('mallory');
     const alice = o.row('alice').id;
     const ask = (who: string, ids: bigint[], pageId = uuid()) => room.page(ids, pageId, who);
     bad(() => ask('alice', [alice])); // a member, not the commander
     bad(() => ask('stranger', [alice]));
     bad(() => ask('admin', [o.row('bob').id])); // not in the incident
+    bad(() => ask('admin', [o.row('inviteonly').id])); // only roster-added members can be paged
+    bad(() => ask('admin', [foreign])); // a roster row of another org
     bad(() => ask('admin', [o.row('pending').id]));
     bad(() => ask('admin', [o.row('admin').id])); // the commander cannot page themselves
     bad(() => ask('admin', [99999n]));
@@ -787,6 +851,22 @@ describe('org views', () => {
     expect(view(room.h, 'alice', mod.my_pages).length).toBe(1);
     expect(view(room.h, 'bob', mod.my_pages).length).toBe(0);
     expect(view(room.h, 'stranger', mod.my_pages).length).toBe(0);
+  });
+
+  it('my_pages shows nothing to pending or revoked incident members', async () => {
+    const room = await Room.create();
+    await room.org.enrollApproved('alice', 'Alice');
+    await room.org.enrollApproved('bob', 'Bob');
+    await room.org.enrollApproved('carol', 'Carol');
+    await room.add('alice');
+    await room.add('bob');
+    room.page([room.org.row('alice').id, room.org.row('bob').id]);
+    expect(view(room.h, 'bob', mod.my_pages).length).toBe(2);
+    await room.joinByInvite('carol', false); // pending in the incident
+    expect(view(room.h, 'carol', mod.my_pages).length).toBe(0);
+    await room.revokeFromIncident('bob');
+    expect(view(room.h, 'bob', mod.my_pages).length).toBe(0);
+    expect(view(room.h, 'alice', mod.my_pages).length).toBe(2); // still active
   });
 
   it('pager views return rows only to the pager identity', async () => {

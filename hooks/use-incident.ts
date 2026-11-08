@@ -26,6 +26,9 @@ const SERVER_SNAPSHOT: IncidentState = {
     channels: {},
     rosterFailures: [],
   },
+  org: null,
+  roster: [],
+  pages: [],
 };
 
 let clientFailure: IncidentState | null = null;

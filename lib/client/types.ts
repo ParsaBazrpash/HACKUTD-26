@@ -128,6 +128,45 @@ export interface VerifiedEvent {
   verdict: Verdict;
 }
 
+// --- Org roster and paging (WP0) ---------------------------------------------
+
+export interface OrgView {
+  orgId: string;
+  name: string;
+  myRole: 'admin' | 'member';
+  /** Full admin fingerprint (formatted) that members pin at enrollment. */
+  adminFingerprint: string;
+}
+
+export interface RosterMember {
+  orgMemberId: bigint;
+  /** Lowercase hex Spacetime identity. */
+  identity: string;
+  displayName: string;
+  state: 'pending' | 'active' | 'revoked';
+  fingerprint: string;
+  /** Spoken during approval, like the incident safety code. */
+  safetyCode: string;
+  enrolledAt: Date;
+  approvedAt: Date | null;
+  /** True when the member's key differs from the one pinned earlier. */
+  keyChanged: boolean;
+}
+
+export type PageStatus = 'requested' | 'calling' | 'ringing' | 'acknowledged' | 'no_answer' | 'busy' | 'failed';
+
+export interface PageView {
+  pageId: string;
+  orgMemberId: bigint;
+  displayName: string;
+  role: Role;
+  status: PageStatus;
+  /** True when the status came from the carrier callback, not the commander. */
+  carrierReported: boolean;
+  joined: boolean;
+  updatedAt: Date;
+}
+
 // --- State -----------------------------------------------------------------
 
 export interface ChannelMessage {
@@ -207,12 +246,16 @@ export interface IncidentState {
   deadlineUpdates: Record<string, DeadlineUpdate>;
   evidence: Evidence[];
   integrity: IntegrityReport;
+  /** Org roster and paging (WP0). Null and empty until the org features are built. */
+  org: OrgView | null;
+  roster: RosterMember[];
+  pages: PageView[];
   /** Human-readable error when connection is 'error'. Never includes secrets. */
   error?: string;
 }
 
 /** Fold output; the client adds connection, identity, roster, incident row and integrity. */
-export type FoldedState = Omit<IncidentState, 'connection' | 'me' | 'incident' | 'members' | 'integrity' | 'error'> & {
+export type FoldedState = Omit<IncidentState, 'connection' | 'me' | 'incident' | 'members' | 'integrity' | 'error' | 'org' | 'roster' | 'pages'> & {
   /** Latest `incident.title` from a verified event, or null. */
   title: string | null;
 };
@@ -256,6 +299,16 @@ export interface IncidentClient {
   // integrity
   verifyAll(): Promise<IntegrityReport>;
   signCheckpoint(): Promise<void>; // P1
+  // org roster and paging (WP0)
+  createOrg(i: { name: string; displayName: string; phone: string }): Promise<{ orgId: string }>;
+  createEnrollLink(i: { ttlHours: number }): Promise<{ url: string; qr: string | null }>;
+  enroll(i: { fragment: string; displayName: string; phone: string }): Promise<{ safetyCode: string }>;
+  approveMember(orgMemberId: bigint): Promise<void>;
+  revokeOrgMember(orgMemberId: bigint, reason: string): Promise<void>;
+  addFromRoster(picks: { orgMemberId: bigint; role: 'counsel' | 'technical' | 'executive' }[]): Promise<void>;
+  /** Calling it again for the same people is the retry. */
+  page(orgMemberIds: bigint[]): Promise<{ pageId: string }>;
+  announcePresence(): Promise<void>;
 }
 
 export type { PayloadKind };

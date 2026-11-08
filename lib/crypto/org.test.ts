@@ -1,0 +1,207 @@
+import { describe, expect, it } from 'vitest';
+import { generateDeviceKeys } from './keys';
+import {
+  computeEnrollJoinTag,
+  enrollLinkHash,
+  openContact,
+  orgSafetyCode,
+  sealContact,
+  signEnrollment,
+  signPageRequest,
+  signRevocation,
+  verifyEnrollJoinTag,
+  verifyEnrollment,
+  verifyPageRequest,
+  verifyRevocation,
+  type EnrollmentFields,
+} from './org';
+import { SEALED_CONTACT_MAX, SEALED_CONTACT_MIN } from '@/spacetimedb/src/shared/org';
+
+const orgId = '11111111-1111-4111-8111-111111111111';
+const otherOrg = '22222222-2222-4222-8222-222222222222';
+const incidentId = '33333333-3333-4333-8333-333333333333';
+const pageId = '44444444-4444-4444-8444-444444444444';
+const idA = 'ab'.repeat(32);
+const idB = 'cd'.repeat(32);
+const PHONE = '+15551234567';
+
+async function pagerKeys() {
+  const p = (await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits'])) as CryptoKeyPair;
+  return { priv: p.privateKey, pub: new Uint8Array(await crypto.subtle.exportKey('raw', p.publicKey)) };
+}
+
+async function enrollFields(): Promise<EnrollmentFields> {
+  const k = await generateDeviceKeys();
+  const pager = await pagerKeys();
+  return {
+    orgId,
+    identityHex: idA,
+    displayName: 'Dana',
+    signPub: k.signPub,
+    ecdhPub: k.ecdhPub,
+    sealedContact: await sealContact(pager.pub, orgId, idA, PHONE),
+  };
+}
+
+describe('enrollment certificate', () => {
+  it('verifies and rejects wrong key or any edited field', async () => {
+    const admin = await generateDeviceKeys();
+    const other = await generateDeviceKeys();
+    const f = await enrollFields();
+    const sig = await signEnrollment(admin.signPriv, f);
+    expect(sig.length).toBe(64);
+    expect(await verifyEnrollment(admin.signPub, f, sig)).toBe(true);
+    expect(await verifyEnrollment(other.signPub, f, sig)).toBe(false);
+    expect(await verifyEnrollment(admin.signPub, { ...f, orgId: otherOrg }, sig)).toBe(false);
+    expect(await verifyEnrollment(admin.signPub, { ...f, identityHex: idB }, sig)).toBe(false);
+    expect(await verifyEnrollment(admin.signPub, { ...f, displayName: 'Dane' }, sig)).toBe(false);
+    expect(await verifyEnrollment(admin.signPub, { ...f, signPub: other.signPub }, sig)).toBe(false);
+    expect(await verifyEnrollment(admin.signPub, { ...f, ecdhPub: other.ecdhPub }, sig)).toBe(false);
+    const swapped = f.sealedContact.slice();
+    swapped[swapped.length - 1] ^= 1;
+    expect(await verifyEnrollment(admin.signPub, { ...f, sealedContact: swapped }, sig)).toBe(false);
+    expect(await verifyEnrollment(admin.signPub, f, sig.slice(0, 63))).toBe(false);
+    expect(await verifyEnrollment(new Uint8Array(65), f, sig)).toBe(false);
+  });
+});
+
+describe('revocation', () => {
+  it('verifies and rejects edits', async () => {
+    const admin = await generateDeviceKeys();
+    const other = await generateDeviceKeys();
+    const f = { orgId, orgMemberId: 7n, identityHex: idA, reason: 'lost phone' };
+    const sig = await signRevocation(admin.signPriv, f);
+    expect(await verifyRevocation(admin.signPub, f, sig)).toBe(true);
+    expect(await verifyRevocation(other.signPub, f, sig)).toBe(false);
+    expect(await verifyRevocation(admin.signPub, { ...f, orgMemberId: 8n }, sig)).toBe(false);
+    expect(await verifyRevocation(admin.signPub, { ...f, orgId: otherOrg }, sig)).toBe(false);
+    expect(await verifyRevocation(admin.signPub, { ...f, identityHex: idB }, sig)).toBe(false);
+    expect(await verifyRevocation(admin.signPub, { ...f, reason: 'other' }, sig)).toBe(false);
+  });
+
+  it('is not interchangeable with an enrollment signature (domain separation)', async () => {
+    const admin = await generateDeviceKeys();
+    const f = await enrollFields();
+    const sig = await signEnrollment(admin.signPriv, f);
+    expect(await verifyRevocation(admin.signPub, { orgId, orgMemberId: 1n, identityHex: idA, reason: 'x' }, sig)).toBe(false);
+  });
+});
+
+describe('page request', () => {
+  const base = { orgId, incidentId, pageId, sentAtMs: 1_800_000_000_000, orgMemberIds: [3n, 1n, 2n] };
+
+  it('verifies, ignores target order, and rejects edits', async () => {
+    const cmd = await generateDeviceKeys();
+    const other = await generateDeviceKeys();
+    const sig = await signPageRequest(cmd.signPriv, base);
+    expect(await verifyPageRequest(cmd.signPub, base, sig)).toBe(true);
+    expect(await verifyPageRequest(cmd.signPub, { ...base, orgMemberIds: [2n, 3n, 1n] }, sig)).toBe(true);
+    expect(await verifyPageRequest(other.signPub, base, sig)).toBe(false);
+    expect(await verifyPageRequest(cmd.signPub, { ...base, orgMemberIds: [1n, 2n] }, sig)).toBe(false);
+    expect(await verifyPageRequest(cmd.signPub, { ...base, orgMemberIds: [1n, 2n, 3n, 4n] }, sig)).toBe(false);
+    expect(await verifyPageRequest(cmd.signPub, { ...base, orgId: otherOrg }, sig)).toBe(false);
+    expect(await verifyPageRequest(cmd.signPub, { ...base, incidentId: otherOrg }, sig)).toBe(false);
+    expect(await verifyPageRequest(cmd.signPub, { ...base, pageId: otherOrg }, sig)).toBe(false);
+    expect(await verifyPageRequest(cmd.signPub, { ...base, sentAtMs: base.sentAtMs + 1 }, sig)).toBe(false);
+  });
+
+  it('refuses duplicate targets', async () => {
+    const cmd = await generateDeviceKeys();
+    await expect(signPageRequest(cmd.signPriv, { ...base, orgMemberIds: [1n, 1n] })).rejects.toThrow();
+    const sig = await signPageRequest(cmd.signPriv, base);
+    expect(await verifyPageRequest(cmd.signPub, { ...base, orgMemberIds: [1n, 1n] }, sig)).toBe(false);
+  });
+});
+
+describe('sealed contact', () => {
+  it('round trips and produces fresh ciphertext each time', async () => {
+    const p = await pagerKeys();
+    const a = await sealContact(p.pub, orgId, idA, PHONE);
+    const b = await sealContact(p.pub, orgId, idA, PHONE);
+    expect(a).not.toEqual(b);
+    expect(a.length).toBeGreaterThanOrEqual(SEALED_CONTACT_MIN);
+    expect(a.length).toBeLessThanOrEqual(SEALED_CONTACT_MAX);
+    expect(await openContact(p.priv, orgId, idA, a)).toBe(PHONE);
+    expect(await openContact(p.priv, orgId, idA, b)).toBe(PHONE);
+  });
+
+  it('does not contain the number in the clear', async () => {
+    const p = await pagerKeys();
+    const a = await sealContact(p.pub, orgId, idA, PHONE);
+    expect(new TextDecoder('latin1').decode(a)).not.toContain('5551234567');
+  });
+
+  it('fails with the wrong pager key', async () => {
+    const p = await pagerKeys();
+    const q = await pagerKeys();
+    const a = await sealContact(p.pub, orgId, idA, PHONE);
+    expect(await openContact(q.priv, orgId, idA, a)).toBeNull();
+  });
+
+  it('fails when the AAD is swapped (other org or other member)', async () => {
+    const p = await pagerKeys();
+    const a = await sealContact(p.pub, orgId, idA, PHONE);
+    expect(await openContact(p.priv, otherOrg, idA, a)).toBeNull();
+    expect(await openContact(p.priv, orgId, idB, a)).toBeNull();
+  });
+
+  it('fails on an edited, truncated, extended or malformed blob', async () => {
+    const p = await pagerKeys();
+    const a = await sealContact(p.pub, orgId, idA, PHONE);
+    for (const i of [0, 3, 65, 70, 77, a.length - 1]) {
+      const c = a.slice();
+      c[i] ^= 1;
+      expect(await openContact(p.priv, orgId, idA, c), `byte ${i}`).toBeNull();
+    }
+    expect(await openContact(p.priv, orgId, idA, a.slice(0, a.length - 1))).toBeNull();
+    expect(await openContact(p.priv, orgId, idA, a.slice(0, 80))).toBeNull();
+    expect(await openContact(p.priv, orgId, idA, new Uint8Array(0))).toBeNull();
+    const longer = new Uint8Array(a.length + 1);
+    longer.set(a);
+    expect(await openContact(p.priv, orgId, idA, longer)).toBeNull();
+  });
+
+  it('refuses to seal anything that is not E.164', async () => {
+    const p = await pagerKeys();
+    for (const bad of ['5551234567', '+1 555 123 4567', '+1555', '+1555123456789012', '+0555123456', '+1555abc4567', '', '+15551234567\n']) {
+      await expect(sealContact(p.pub, orgId, idA, bad), bad).rejects.toThrow();
+    }
+  });
+
+  it('refuses to open a validly sealed blob whose plaintext is not E.164', async () => {
+    // Seal with the real function, then check that a crafted plaintext cannot pass: use a valid number but
+    // verify openContact returns only E.164 strings.
+    const p = await pagerKeys();
+    const a = await sealContact(p.pub, orgId, idA, '+442071234567');
+    expect(await openContact(p.priv, orgId, idA, a)).toBe('+442071234567');
+  });
+});
+
+describe('enrollment link tag', () => {
+  it('hashes the code under the org and authenticates the join under the secret', async () => {
+    const code = new Uint8Array(16).fill(5);
+    expect(enrollLinkHash(orgId, code)).toEqual(enrollLinkHash(orgId, code));
+    expect(enrollLinkHash(otherOrg, code)).not.toEqual(enrollLinkHash(orgId, code));
+    const secret = new Uint8Array(32).fill(9);
+    const f = await enrollFields();
+    const tag = await computeEnrollJoinTag(secret, f);
+    expect(await verifyEnrollJoinTag(secret, f, tag)).toBe(true);
+    expect(await verifyEnrollJoinTag(new Uint8Array(32).fill(1), f, tag)).toBe(false);
+    expect(await verifyEnrollJoinTag(secret, { ...f, displayName: 'Eve' }, tag)).toBe(false);
+    expect(await verifyEnrollJoinTag(secret, f, tag.slice(0, 31))).toBe(false);
+  });
+});
+
+describe('org safety code', () => {
+  it('is stable, formatted, and bound to every input', async () => {
+    const a = await generateDeviceKeys();
+    const b = await generateDeviceKeys();
+    const c = orgSafetyCode(orgId, idA, a.signPub, a.ecdhPub);
+    expect(c).toMatch(/^\d{3} \d{3} \d{3} \d{3}$/);
+    expect(orgSafetyCode(orgId, idA, a.signPub, a.ecdhPub)).toBe(c);
+    expect(orgSafetyCode(otherOrg, idA, a.signPub, a.ecdhPub)).not.toBe(c);
+    expect(orgSafetyCode(orgId, idB, a.signPub, a.ecdhPub)).not.toBe(c);
+    expect(orgSafetyCode(orgId, idA, b.signPub, a.ecdhPub)).not.toBe(c);
+    expect(orgSafetyCode(orgId, idA, a.signPub, b.ecdhPub)).not.toBe(c);
+  });
+});

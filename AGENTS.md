@@ -21,7 +21,7 @@ ZeroHour is an end-to-end encrypted, tamper-evident ransomware war room built on
 
 ## Security invariants (never break these)
 
-1. **Plaintext never leaves the browser.** Incident content is sealed and signed client-side before any reducer call. No server-side rendering or fetching of incident data. The pager (`app/api/page`, `app/api/twilio/voice`) handles phone numbers and call status only, never incident content or channel keys. Never log plaintext, keys, invite codes, phone numbers or secrets.
+1. **Plaintext never leaves the browser.** Incident content is sealed and signed client-side before any reducer call. No server-side rendering or fetching of incident data. The pager (`app/api/page`, `app/api/twilio/voice`, `app/api/twilio/sms`) handles phone numbers and call status only, never incident content or channel keys. Never log plaintext, keys, invite codes, phone numbers or secrets.
 2. **The server is untrusted.** Every client verifies signatures, roster certificates and the hash chain itself (`docs/PLAN.md` 4.9). Server checks are defense in depth, never the only check.
 3. **All tables private; clients read only `my_*` views and write only through reducers.** Every reducer validates inputs, then checks the caller's active membership and role.
 4. **Append-only.** No reducer may update or delete events, change roles or edit keys. No debug, seed or tamper reducers, not even temporarily.

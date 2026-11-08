@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
-import { Fingerprint, LockKeyhole, ShieldCheck, WifiOff } from "lucide-react";
+import { Fingerprint, LockKeyhole, ServerOff, ShieldCheck } from "lucide-react";
 import { FormError, primaryButtonClass, secondaryButtonClass } from "@/components/incidents/form-ui";
 import { isMockIncidentClient } from "@/lib/client";
 import {
@@ -26,9 +26,9 @@ export function usePasskeyLock(): PasskeyLockState {
 }
 
 const TRUST_POINTS = [
-  { Icon: LockKeyhole, title: "End-to-end encrypted", text: "Messages are sealed in your browser. The server never sees them." },
+  { Icon: LockKeyhole, title: "End-to-end encrypted", text: "Messages are sealed in your browser. The server never sees what they say." },
   { Icon: ShieldCheck, title: "Signed and checked", text: "Every entry is signed by its author, so edits are caught." },
-  { Icon: WifiOff, title: "Works when company systems are down", text: "No company login or email needed. Only this device." },
+  { Icon: ServerOff, title: "Works when company systems are down", text: "No company login or email. You need only this device and an internet connection." },
 ];
 
 /**
@@ -61,7 +61,7 @@ export function PasskeyLockCard({ when = "always" }: { when?: "always" | "locked
   } else if (state.status === "off") {
     heading = "Passkey lock is off";
     body =
-      "Lock this device's keys behind your fingerprint, face or PIN, so a lost or borrowed device cannot read your incident. It covers incidents you create or join after you turn it on.";
+      "Lock this device's keys behind your fingerprint, face or PIN. Once this tab is closed or locked, a lost device or a copy of this browser cannot open your incidents. It covers incidents you create or join after you turn it on.";
   } else if (state.status === "locked") {
     heading = state.lockedIncidents > 0 ? "Your keys are locked" : "Passkey lock is on";
     body =

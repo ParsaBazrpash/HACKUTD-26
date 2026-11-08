@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { Link2, Send } from "lucide-react";
 import { getIncidentClient, isMockIncidentClient } from "@/lib/client";
 import { clientErrorMessage } from "@/lib/client/errors";
 import { LocalTime } from "@/components/local-time";
+import { fieldClass, primaryButtonClass } from "@/components/incidents/form-ui";
 import { ROLE_LABELS } from "@/components/incidents/labels";
 import {
   DEFAULT_INVITE_TTL_MINUTES,
@@ -13,12 +15,6 @@ import {
   isInviteTtl,
   type InviteRole,
 } from "@/components/incidents/room-controls";
-
-const fieldClass =
-  "rounded-xl border border-line bg-panel-raised px-3 py-2 text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal";
-
-const primaryButtonClass =
-  "inline-flex min-h-11 items-center justify-center rounded-lg bg-signal px-4 py-2 text-sm font-medium text-signal-ink hover:bg-signal-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal";
 
 function httpInviteHref(url: string): boolean {
   try {
@@ -89,24 +85,20 @@ export function InviteControls() {
   }
 
   return (
-    <section className="rounded-2xl border border-line bg-panel px-5 py-4" aria-labelledby="invite-heading">
-      <h2 id="invite-heading" className="font-mono text-[11px] tracking-[0.18em] text-muted">
-        BREAK-GLASS INVITE
-      </h2>
-      <p className="mt-3 text-sm leading-6 text-muted">
-        For people outside your roster, like outside counsel or your forensics firm.
-      </p>
-      <p className="mt-2 text-sm leading-6 text-muted">
-        Choose counsel, technical, or executive. The link carries that role. This page cannot make someone a commander.
-      </p>
-      {mock ? (
-        <p className="mt-2 text-sm text-muted">
-          Demo invite. It stays in this browser, and it is not a cryptographic link. Open it in another tab so this
-          one stays the commander.
-        </p>
-      ) : null}
-      <form onSubmit={create} className="mt-4 grid gap-4 sm:grid-cols-2">
-        <label className="grid gap-2 text-sm" htmlFor="invite-role">
+    <section className="rounded-xl border border-line bg-panel p-5" aria-labelledby="invite-heading">
+      <div className="flex items-start gap-3">
+        <Send aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-muted" />
+        <div className="min-w-0">
+          <h2 id="invite-heading" className="text-base font-semibold tracking-tight">
+            Invite people
+          </h2>
+          <p className="mt-1 text-sm leading-6 text-muted">
+            Grant time-limited access to external responders, such as counsel or forensics.
+          </p>
+        </div>
+      </div>
+      <form onSubmit={create} className="mt-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+        <label className="grid gap-2 text-sm text-muted" htmlFor="invite-role">
           Role
           <select
             id="invite-role"
@@ -122,7 +114,7 @@ export function InviteControls() {
             <option value="executive">{ROLE_LABELS.executive}</option>
           </select>
         </label>
-        <label className="grid gap-2 text-sm" htmlFor="invite-ttl">
+        <label className="grid gap-2 text-sm text-muted" htmlFor="invite-ttl">
           Expires after
           <select
             id="invite-ttl"
@@ -141,10 +133,20 @@ export function InviteControls() {
             ))}
           </select>
         </label>
-        <button type="submit" disabled={pending} className={`${primaryButtonClass} sm:col-span-2 sm:w-fit`}>
+        <button type="submit" disabled={pending} className={`${primaryButtonClass} gap-1.5`}>
+          <Link2 aria-hidden="true" className="size-4" />
           {pending ? "Creating…" : "Create invite"}
         </button>
       </form>
+      <p className="mt-3 text-xs leading-5 text-muted">
+        The link carries that role. This page cannot make someone a commander.
+      </p>
+      {mock ? (
+        <p className="mt-2 text-xs leading-5 text-muted">
+          Demo invite. It stays in this browser, and it is not a cryptographic link. Open it in another tab so this
+          one stays the commander.
+        </p>
+      ) : null}
       {error ? (
         <p role="alert" className="mt-4 text-sm text-alert">
           {error}
@@ -172,7 +174,7 @@ export function InviteControls() {
               {invite.url}
             </p>
           )}
-          <button type="button" onClick={() => void copyLink()} className={primaryButtonClass + " w-fit"}>
+          <button type="button" onClick={() => void copyLink()} className={`${primaryButtonClass} w-fit`}>
             {copied ? "Copied" : "Copy link"}
           </button>
           {copyError ? (

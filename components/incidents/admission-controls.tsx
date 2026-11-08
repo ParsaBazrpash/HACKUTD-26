@@ -56,7 +56,7 @@ export function AdmissionControls({ members, me }: { members: MemberView[]; me: 
   }
 
   return (
-    <section className="rounded-2xl border border-line bg-panel px-5 py-4" aria-labelledby="admission-heading">
+    <section className="rounded-xl border border-line bg-panel px-5 py-4" aria-labelledby="admission-heading">
       <h2 id="admission-heading" className="font-mono text-[11px] tracking-[0.18em] text-muted">
         WAITING FOR ADMISSION
       </h2>

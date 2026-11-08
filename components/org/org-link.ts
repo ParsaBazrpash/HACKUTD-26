@@ -18,3 +18,25 @@ export function looksLikePhone(value: string): boolean {
 }
 
 export const PHONE_HINT = "Use your personal phone. Company phones may be down during an incident.";
+
+export const PHONE_PREFIX = "+1";
+
+/** Keeps only the 10 national digits. Pasting "+1 (555) 555-0123" or "15555550123" still works. */
+export function usPhoneDigits(raw: string): string {
+  return stripCountryCode(raw).slice(0, 10);
+}
+
+function stripCountryCode(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  return digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+}
+
+/** The 10 typed digits as E.164 (+1XXXXXXXXXX), or null when they are not exactly 10 digits. */
+export function toUsE164(raw: string): string | null {
+  const digits = stripCountryCode(raw);
+  if (digits.length !== 10) return null;
+  const e164 = `${PHONE_PREFIX}${digits}`;
+  return looksLikePhone(e164) ? e164 : null;
+}
+
+export const PHONE_ERROR = "Enter the 10 digit phone number, with no country code.";

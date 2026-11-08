@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { applyEnrollHash, looksLikePhone } from "@/components/org/org-link";
+import { applyEnrollHash, looksLikePhone, toUsE164, usPhoneDigits } from "@/components/org/org-link";
 
 test("the enrollment fragment is read once and stripped from the address bar", () => {
   const replaced: string[] = [];
@@ -31,4 +31,20 @@ test("outside the demo only an unlocked passkey passes the gate", () => {
   }
   expect(passkeyGateFor("unlocked", false).ready).toBe(true);
   expect(passkeyGateFor("off", true).ready).toBe(true);
+});
+
+test("the fixed +1 prefix turns exactly 10 typed digits into E.164", () => {
+  expect(toUsE164("5555550123")).toBe("+15555550123");
+  expect(toUsE164("(555) 555-0123")).toBe("+15555550123");
+  expect(toUsE164("+1 555 555 0123")).toBe("+15555550123");
+  expect(toUsE164("15555550123")).toBe("+15555550123");
+  for (const bad of ["", "555555012", "55555501234", "abcdefghij", "+44 20 7946 0958"]) {
+    expect(toUsE164(bad), bad).toBeNull();
+  }
+});
+
+test("the phone field keeps at most 10 digits and drops a pasted country code", () => {
+  expect(usPhoneDigits("55555501234567")).toBe("5555550123");
+  expect(usPhoneDigits("+1 (555) 555-0123")).toBe("5555550123");
+  expect(usPhoneDigits("1234567890")).toBe("1234567890");
 });

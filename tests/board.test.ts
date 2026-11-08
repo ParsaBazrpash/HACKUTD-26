@@ -1,23 +1,63 @@
 import { describe, expect, test } from "vitest";
-import { boardEntries, boardKind, boardText, ownerGroups, stripBoardPrefix } from "@/components/incidents/board";
+import {
+  BOARD_LIST_CAP,
+  boardEntries,
+  boardKind,
+  boardText,
+  ownerGroups,
+  recordProblems,
+  stripBoardPrefix,
+} from "@/components/incidents/board";
+import { foldEvents } from "@/lib/client/fold";
+import type { Payload } from "@/lib/protocol/events";
 import { createMockIncidentClient } from "@/lib/client/mock";
-import type { Task, TimelineItem } from "@/lib/client/types";
+import type { MemberRef, Task, TimelineItem, VerifiedEvent } from "@/lib/client/types";
 
-function item(text: string, extra: Partial<TimelineItem> = {}, at = "2026-11-08T01:00:00.000Z"): TimelineItem {
+const COMMANDER = { identity: "c".repeat(64), displayName: "Avery", role: "commander" as const };
+const TECH = { identity: "d".repeat(64), displayName: "Tom", role: "technical" as const };
+const GOOD = { ok: true, failures: [], warnings: [] };
+
+function item(
+  text: string,
+  extra: { by?: MemberRef; seq?: bigint; amends?: string; occurredAt?: string; id?: string } = {},
+): TimelineItem {
+  const occurredAt = extra.occurredAt ?? "2026-11-08T01:00:00.000Z";
   return {
-    seq: 1n,
-    by: null,
-    at: new Date(at),
+    seq: extra.seq ?? 1n,
+    by: extra.by ?? COMMANDER,
+    at: new Date(occurredAt),
     sentAt: null,
-    verdict: { ok: true, failures: [], warnings: [] },
-    entry: { entryId: crypto.randomUUID(), occurredAt: at, phase: "containment", csf: "RS.CO", text },
+    verdict: GOOD,
+    entry: {
+      entryId: extra.id ?? crypto.randomUUID(),
+      occurredAt,
+      phase: "containment",
+      csf: "RS.CO",
+      text,
+      ...(extra.amends ? { amends: extra.amends } : {}),
+    },
     amendedBy: [],
-    ...extra,
   };
 }
 
 function task(title: string, status: Task["latest"]["status"], assignee?: string): Task {
   return { taskId: crypto.randomUUID(), latest: { taskId: "x", title, status, ...(assignee ? { assignee } : {}) }, history: [] };
+}
+
+function event(seq: bigint, text: string, ok: boolean): VerifiedEvent {
+  return {
+    channel: "record",
+    seq,
+    eventId: crypto.randomUUID(),
+    author: TECH,
+    serverTs: new Date(Number(seq) * 1000),
+    sentAt: null,
+    payload: {
+      kind: "timeline.add",
+      body: { entryId: crypto.randomUUID(), occurredAt: "2026-11-08T01:00:00.000Z", phase: "containment", csf: "RS.CO", text },
+    } as Payload,
+    verdict: ok ? GOOD : { ok: false, failures: ["bad_signature"], warnings: [] },
+  };
 }
 
 describe("board entries", () => {
@@ -29,21 +69,55 @@ describe("board entries", () => {
     expect(stripBoardPrefix(boardText("known", "  backups offline "))).toBe("backups offline");
   });
 
-  test("failed verification is hidden and counted, amended entries are replaced", () => {
-    const bad = item("Decision: pay now", { verdict: { ok: false, failures: ["bad_signature"], warnings: [] } });
-    const old = item("Known: five servers", { amendedBy: ["x"] });
-    const fresh = item("Known: six servers", {}, "2026-11-08T02:00:00.000Z");
-    const plain = item("just a note");
-    const out = boardEntries([bad, old, fresh, plain]);
+  test("a forged entry never reaches the board and the record warning counts it", () => {
+    const folded = foldEvents([event(1n, "Decision: pay the ransom", false), event(2n, "Known: six servers", true)], []);
+    const out = boardEntries(folded.timeline);
     expect(out.decisions).toHaveLength(0);
-    expect(out.unverified).toBe(1);
-    expect(out.known.map((i) => i.entry.text)).toEqual(["Known: six servers"]);
+    expect(out.proposed).toHaveLength(0);
+    expect(out.known.map((e) => e.item.entry.text)).toEqual(["Known: six servers"]);
+    const integrity = {
+      ok: false,
+      checkedAt: new Date(0),
+      channels: { record: { ok: false, eventsChecked: 2, failures: [{ seq: 1n, reason: "bad_signature" as const }], head: null, pinnedOk: true, waitingForKeys: false } },
+      rosterFailures: [],
+    };
+    expect(recordProblems(integrity)).toBe(1);
+    expect(recordProblems({ ...integrity, ok: true, channels: {} })).toBe(0);
   });
 
-  test("newest first", () => {
-    const a = item("Known: a", {}, "2026-11-08T01:00:00.000Z");
-    const b = item("Known: b", {}, "2026-11-08T03:00:00.000Z");
-    expect(boardEntries([a, b]).known.map((i) => i.entry.text)).toEqual(["Known: b", "Known: a"]);
+  test("an untagged amendment cannot erase a decision", () => {
+    const decision = item("Decision: isolate the file server", { id: crypto.randomUUID(), seq: 1n });
+    const sneaky = item("never mind", { by: TECH, seq: 2n, amends: decision.entry.entryId });
+    const out = boardEntries([decision, sneaky]);
+    expect(out.decisions.map((e) => e.item.entry.entryId)).toEqual([decision.entry.entryId]);
+  });
+
+  test("a same-kind tagged amendment replaces and says who it replaces", () => {
+    const first = item("Known: five servers", { by: TECH, seq: 1n });
+    const next = item("Known: six servers", { seq: 2n, amends: first.entry.entryId });
+    const out = boardEntries([first, next]);
+    expect(out.known).toHaveLength(1);
+    expect(out.known[0]).toMatchObject({ replaces: "Tom" });
+    expect(out.known[0]?.item.entry.text).toBe("Known: six servers");
+  });
+
+  test("only the commander decides, others are proposals and cannot replace a decision", () => {
+    const decision = item("Decision: isolate", { seq: 1n });
+    const hijack = item("Decision: pay", { by: TECH, seq: 2n, amends: decision.entry.entryId });
+    const out = boardEntries([decision, hijack]);
+    expect(out.decisions.map((e) => e.item.entry.text)).toEqual(["Decision: isolate"]);
+    expect(out.proposed.map((e) => e.item.entry.text)).toEqual(["Decision: pay"]);
+  });
+
+  test("server order wins over author dates, and the cap is visible to the caller", () => {
+    const real = item("Known: real", { seq: 100n, occurredAt: "2026-11-08T01:00:00.000Z" });
+    const spam = Array.from({ length: 9 }, (_, i) =>
+      item(`Known: spam ${i}`, { by: TECH, seq: BigInt(i + 1), occurredAt: "2030-01-01T00:00:00.000Z" }),
+    );
+    const out = boardEntries([...spam, real]);
+    expect(out.known[0]?.item.entry.text).toBe("Known: real");
+    expect(out.known.length).toBe(10);
+    expect(out.known.length).toBeGreaterThan(BOARD_LIST_CAP);
   });
 });
 
@@ -66,7 +140,7 @@ describe("on the mock", () => {
         text: boardText("decision", "Take the file server offline"),
       });
       const out = boardEntries(client.getState().timeline);
-      expect(out.decisions.map((i) => stripBoardPrefix(i.entry.text))).toContain("Take the file server offline");
+      expect(out.decisions.map((e) => stripBoardPrefix(e.item.entry.text))).toContain("Take the file server offline");
     } finally {
       client.dispose();
     }

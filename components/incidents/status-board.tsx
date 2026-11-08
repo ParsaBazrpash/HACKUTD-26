@@ -3,8 +3,17 @@
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { Denied, FormError, FormStatus, fieldClass, primaryButtonClass } from "@/components/incidents/form-ui";
-import { boardEntries, boardText, ownerGroups, stripBoardPrefix, type BoardKind } from "@/components/incidents/board";
-import { phaseLabel } from "@/components/incidents/labels";
+import {
+  BOARD_LIST_CAP,
+  boardEntries,
+  boardText,
+  ownerGroups,
+  recordProblems,
+  stripBoardPrefix,
+  type BoardEntry,
+  type BoardKind,
+} from "@/components/incidents/board";
+import { phaseLabel, ROLE_LABELS } from "@/components/incidents/labels";
 import { canAuthorRecord, draftTimeline, recordDenial, toDatetimeLocalValue } from "@/components/incidents/record-actions";
 import { SafeText } from "@/components/incidents/safe-text";
 import { incidentSectionHref } from "@/components/incidents/sections";
@@ -12,28 +21,50 @@ import { exposedScope, memberName } from "@/components/incidents/situation";
 import { useIncident } from "@/hooks/use-incident";
 import { getIncidentClient } from "@/lib/client";
 import { clientErrorMessage } from "@/lib/client/errors";
-import type { TimelineItem } from "@/lib/client/types";
 import { formatTimestamp } from "@/lib/time";
 
 const panelClass = "min-w-0 rounded-xl border border-line bg-panel p-4 sm:p-5";
 
 const TASK_STATUS_LABEL = { open: "Open", in_progress: "In progress", blocked: "Blocked", done: "Done" } as const;
 
-function EntryList({ items, empty, who }: { items: TimelineItem[]; empty: string; who: (item: TimelineItem) => string }) {
+function EntryList({
+  items,
+  empty,
+  timelineHref,
+  proposed = false,
+}: {
+  items: BoardEntry[];
+  empty: string;
+  timelineHref: string;
+  proposed?: boolean;
+}) {
   if (items.length === 0) return <p className="mt-3 text-sm text-muted">{empty}</p>;
   return (
-    <ul className="mt-3 divide-y divide-line">
-      {items.slice(0, 8).map((item) => (
-        <li key={item.entry.entryId} className="min-w-0 py-3">
-          <p className="break-words text-sm leading-6 text-foreground">
-            <SafeText text={stripBoardPrefix(item.entry.text)} />
-          </p>
-          <p className="mt-1 text-xs text-muted">
-            {who(item)} · {formatTimestamp(new Date(item.entry.occurredAt))}
-          </p>
-        </li>
-      ))}
-    </ul>
+    <>
+      <ul className="mt-3 divide-y divide-line">
+        {items.slice(0, BOARD_LIST_CAP).map(({ item, replaces }) => (
+          <li key={item.entry.entryId} className="min-w-0 py-3">
+            <p className="break-words text-sm leading-6 text-foreground">
+              <SafeText text={stripBoardPrefix(item.entry.text)} />
+            </p>
+            <p className="mt-1 break-words text-xs text-muted">
+              {proposed ? "Proposed by " : ""}
+              {item.by ? `${item.by.displayName}, ${ROLE_LABELS[item.by.role].toLowerCase()}` : "Unknown member"} ·{" "}
+              {formatTimestamp(item.at)}
+              {replaces ? ` · Replaces an earlier entry by ${replaces}` : ""}
+            </p>
+          </li>
+        ))}
+      </ul>
+      {items.length > BOARD_LIST_CAP ? (
+        <p className="mt-2 text-xs text-muted">
+          Showing {BOARD_LIST_CAP} of {items.length}.{" "}
+          <Link href={timelineHref} className="text-signal">
+            See all on the timeline
+          </Link>
+        </p>
+      ) : null}
+    </>
   );
 }
 
@@ -125,7 +156,8 @@ export function StatusBoard() {
   const entries = boardEntries(state.timeline);
   const owners = ownerGroups(state.tasks);
   const exposed = exposedScope(state.scope).length;
-  const who = (item: TimelineItem) => item.by?.displayName ?? "Unknown member";
+  const problems = recordProblems(state.integrity);
+  const timelineHref = incidentSectionHref(incident.id, "timeline");
 
   return (
     <div className="grid min-w-0 gap-4">
@@ -152,14 +184,20 @@ export function StatusBoard() {
               Systems
             </Link>
           </p>
-          <EntryList items={entries.known} empty="Nothing added yet." who={who} />
+          <EntryList items={entries.known} empty="Nothing added yet." timelineHref={timelineHref} />
         </section>
 
         <section className={panelClass} aria-labelledby="decisions-heading">
           <h3 id="decisions-heading" className="text-base font-semibold tracking-tight">
             Decisions
           </h3>
-          <EntryList items={entries.decisions} empty="No decisions recorded yet." who={who} />
+          <EntryList items={entries.decisions} empty="No decisions recorded yet." timelineHref={timelineHref} />
+          {entries.proposed.length > 0 ? (
+            <>
+              <h4 className="mt-4 text-sm font-medium text-muted">Proposed, not yet decided by the commander</h4>
+              <EntryList items={entries.proposed} empty="" timelineHref={timelineHref} proposed />
+            </>
+          ) : null}
         </section>
 
         <section className={panelClass} aria-labelledby="owners-heading">
@@ -179,6 +217,9 @@ export function StatusBoard() {
                 <li key={group.identity ?? "unassigned"} className="min-w-0">
                   <p className={`text-sm font-medium ${group.identity === null ? "text-alert" : "text-foreground"}`}>
                     {group.identity === null ? "No owner yet" : memberName(state.members, group.identity)}
+                    {group.identity !== null && state.members.some((m) => m.identity === group.identity && m.state === "revoked")
+                      ? " (revoked)"
+                      : ""}
                   </p>
                   <ul className="mt-1 divide-y divide-line">
                     {group.open.map((task) => (
@@ -198,10 +239,10 @@ export function StatusBoard() {
 
         <div className="grid gap-3">
           <BoardForm />
-          {entries.unverified > 0 ? (
+          {problems > 0 ? (
             <p role="alert" className="text-sm text-alert">
-              {entries.unverified} board {entries.unverified === 1 ? "entry" : "entries"} failed verification and{" "}
-              {entries.unverified === 1 ? "is" : "are"} hidden. Check Integrity on the Overview.
+              The record has {problems} {problems === 1 ? "entry" : "entries"} that failed verification. Failed entries
+              are never shown here. Check Integrity on the Overview.
             </p>
           ) : null}
         </div>

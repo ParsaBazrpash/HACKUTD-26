@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, type MouseEvent } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
@@ -29,6 +29,11 @@ export function HavenMark() {
   );
 }
 
+/** Closes the phone menu (a <details>) once a link in it is tapped. */
+function closeMenu(event: MouseEvent<HTMLAnchorElement>): void {
+  event.currentTarget.closest("details")?.removeAttribute("open");
+}
+
 function startsWith(pathname: string | null, base: string): boolean {
   return pathname === base || (pathname !== null && pathname.startsWith(`${base}/`));
 }
@@ -47,6 +52,7 @@ function PrimaryLinks({ pathname, stacked = false }: { pathname: string | null; 
           href={link.href}
           aria-current={link.active ? "page" : undefined}
           className={stacked ? `${itemClass(link.active)} py-2` : itemClass(link.active)}
+          onClick={stacked ? closeMenu : undefined}
         >
           {link.label}
         </Link>

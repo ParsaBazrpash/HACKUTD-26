@@ -7,7 +7,7 @@ import { attentionFor } from "@/components/incidents/attention";
 import { cardPreviewText } from "@/components/incidents/blast-radius-model";
 import { CHANNEL_LABELS, phaseLabel } from "@/components/incidents/labels";
 import { ReachableStrip } from "@/components/incidents/paging-status";
-import { isChatChannel } from "@/components/incidents/room-controls";
+import { authorizedChatChannels } from "@/components/incidents/room-controls";
 import { canAuthorRecord } from "@/components/incidents/record-actions";
 import { incidentSectionHref } from "@/components/incidents/sections";
 import { SafeText } from "@/components/incidents/safe-text";
@@ -54,8 +54,8 @@ type ActivityItem = {
 
 function latestMessage(state: IncidentState): { kind: "command" | "privileged" | "technical"; message: ChannelMessage } | null {
   let found: { kind: "command" | "privileged" | "technical"; message: ChannelMessage } | null = null;
-  for (const channel of state.channels) {
-    if (!isChatChannel(channel.kind)) continue;
+  // Only channels this member's role may read, even though the client already filters them.
+  for (const channel of authorizedChatChannels(state.me?.role, state.me?.state, state.channels)) {
     for (const message of channel.messages) {
       if (!found || message.sentAt.getTime() >= found.message.sentAt.getTime()) {
         found = { kind: channel.kind, message };
@@ -76,7 +76,8 @@ function activityItems(state: IncidentState, mock: boolean): ActivityItem[] {
     items.push({
       id: `message-${message.message.messageId}`,
       title: failed ? "Secure channel check failed" : "Secure channel message",
-      detail: cardPreviewText(message.message.text),
+      // Privileged text stays on the Secure Channels page; the Overview never quotes it.
+      detail: message.kind === "privileged" ? "Privileged message" : cardPreviewText(message.message.text),
       meta: `Message in ${CHANNEL_LABELS[message.kind]} by ${author}`,
       at: message.message.sentAt,
       tone: failed ? "alert" : "good",

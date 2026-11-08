@@ -132,3 +132,14 @@ test("the commander revokes an active member after typing their name", async ({ 
   await expect(page.getByText("Revoked Riley Patel in the demo.").first()).toBeVisible();
   await expect(page.getByRole("row", { name: /Riley Patel/ }).first()).toContainText("Revoked");
 });
+
+test("the phone menu closes after a link is tapped", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/");
+  const menu = page.locator("header details");
+  await menu.locator("summary").click();
+  await expect(menu).toHaveAttribute("open", "");
+  await menu.getByRole("link", { name: "Org" }).click();
+  await expect(page).toHaveURL("/org");
+  await expect(menu).not.toHaveAttribute("open", "");
+});

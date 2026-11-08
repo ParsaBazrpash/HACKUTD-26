@@ -15,7 +15,7 @@ import { sha256 } from '@noble/hashes/sha2.js';
 
 // The pager identity is a constant inside index.ts. Tests run a copy of the module whose constant is the
 // test pager's identity (the only difference), and one run of the real module to prove it refuses everyone
-// while the constant is unset. The copy is written in beforeAll and removed in afterAll.
+// to anyone but the real pager identity. The copy is written in beforeAll and removed in afterAll.
 type ModuleShape = typeof import('./index');
 let mod: ModuleShape; // patched copy: pager = authFor('pager')
 let realMod: ModuleShape; // the real module
@@ -24,7 +24,7 @@ beforeAll(async () => {
   const src = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
   realMod = (await import('./index')) as ModuleShape;
   const hex = createModuleTestHarness(realMod.default, realMod).withReducerTx(authFor('pager'), (ctx: any) => ctx.sender.toHexString() as string);
-  const patched = src.replace("const PAGER_IDENTITY_HEX = '';", `const PAGER_IDENTITY_HEX = '${hex}';`);
+  const patched = src.replace(/const PAGER_IDENTITY_HEX = '[0-9a-f]*';/, `const PAGER_IDENTITY_HEX = '${hex}';`);
   if (patched === src) throw new Error('pager constant not found');
   writeFileSync(COPY, patched);
   mod = (await import('./pager-test.gen')) as ModuleShape;
@@ -756,7 +756,7 @@ describe('pager_update', () => {
     expect(room.pages(pageId)[0].status).toBe('calling');
   });
 
-  it('the real module refuses everyone while PAGER_IDENTITY_HEX is unset', async () => {
+  it('the real module refuses every caller that is not the real pager identity', async () => {
     const h = createModuleTestHarness(realMod.default, realMod);
     h.clock.set(new Timestamp(1_800_000_000_000_000n));
     for (const who of ['pager', 'admin', 'stranger']) {
@@ -890,7 +890,7 @@ describe('org views', () => {
     ]);
   });
 
-  it('the real module returns nothing to anyone while the pager constant is unset', async () => {
+  it('the real module returns nothing to anyone but the real pager identity', async () => {
     const h = createModuleTestHarness(realMod.default, realMod);
     for (const who of ['pager', 'admin']) {
       expect(view(h, who, realMod.pager_org_member)).toEqual([]);

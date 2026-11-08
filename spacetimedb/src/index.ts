@@ -75,11 +75,10 @@ import {
 /**
  * Spacetime identity (lowercase hex) of the Vercel pager, the only caller allowed to
  * run `pager_update` and to read the `pager_*` views.
- * PLACEHOLDER: empty until Mehrad creates the pager identity with
- * `curl -X POST https://maincloud.spacetimedb.com/v1/identity` and pastes its hex here.
- * While it is empty, nobody can write page status and the pager views are empty.
+ * Created with `curl -X POST https://maincloud.spacetimedb.com/v1/identity`; the token stays in Vercel.
+ * Writing it down here is safe: the identity is public, only the token can act as it.
  */
-const PAGER_IDENTITY_HEX = '';
+const PAGER_IDENTITY_HEX = 'c200b6c0144130f13453965c04fef55fb4afab2f576722c8679c7ccf67ab9483';
 
 // ---------------------------------------------------------------------------
 // Tables (all private)

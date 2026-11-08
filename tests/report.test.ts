@@ -3,7 +3,8 @@ import { EMPTY_PROFILE, type ChannelView, type IncidentState, type MemberView, t
 import { showsConfirmedCountdown } from "@/lib/legal";
 import { incidentAccess } from "@/lib/report/access";
 import { buildIncidentReport, type IncidentReport, type ReportOptions } from "@/lib/report";
-import { executiveBullets, coverDecisions } from "@/lib/report/sheet";
+import { executiveBullets, coverActions, coverDecisions } from "@/lib/report/sheet";
+import { boardEntries } from "@/components/incidents/board";
 
 const NOW = new Date("2026-11-08T18:00:00.000Z");
 const SAFETY = "123 456 789 012";
@@ -379,6 +380,65 @@ describe("incident report", () => {
     expect(entries.find((entry) => entry.text === "Decision: Restore from offline backups")?.board).toBeNull();
     expect(executiveBullets(report).join(" ")).not.toMatch(/ransom/i);
     expect(executiveBullets(report).join(" ")).toMatch(/restore from tuesday's offline backups has been decided/i);
+  });
+
+  const mk = (current: IncidentState) => {
+    const base = current.timeline[0]!;
+    return (seq: bigint, id: string, text: string, by: MemberView, occurredAt: string, amends?: string) => ({
+      ...base,
+      seq,
+      by,
+      entry: { ...base.entry, entryId: id, text, occurredAt, ...(amends ? { amends } : {}) },
+      amendedBy: [],
+    });
+  };
+
+  test("a reused entry id never makes another role's line a decision", () => {
+    const current = state("commander");
+    const commander = current.incident!.commander;
+    const counsel = current.members.find((m) => m.role === "counsel")!;
+    const item = mk(current);
+    const E = "00000000-0000-4000-8000-0000000000e1";
+    current.timeline = [
+      item(1n, E, "Decision: Restore from offline backups", commander, "2026-11-08T10:00:00.000Z"),
+      item(2n, E, "Decision: Pay the ransom", counsel, "2026-11-08T11:00:00.000Z"),
+    ];
+    const report = buildIncidentReport(current, options())!;
+    expect(coverDecisions(report).map((d) => d.title)).toEqual(["Restore from offline backups"]);
+    expect(executiveBullets(report).join(" ")).not.toMatch(/ransom/i);
+    // Every report entry has its own key even when the author reused an entry id.
+    const ids = report.timeline.flatMap((group) => group.entries.map((entry) => entry.id));
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  test("a reused entry id cannot erase a commander decision", () => {
+    const current = state("commander");
+    const commander = current.incident!.commander;
+    const counsel = current.members.find((m) => m.role === "counsel")!;
+    const item = mk(current);
+    const E = "00000000-0000-4000-8000-0000000000e2";
+    current.timeline = [
+      item(1n, E, "Decision: Restore from offline backups", commander, "2026-11-08T10:00:00.000Z"),
+      item(2n, E, "Decision: decoy", counsel, "2026-11-08T12:00:00.000Z"),
+      item(3n, "00000000-0000-4000-8000-0000000000e3", "Decision: Pay the ransom", counsel, "2026-11-08T12:30:00.000Z", E),
+    ];
+    expect(boardEntries(current.timeline).decisions.map((d) => d.item.entry.text)).toEqual([
+      "Decision: Restore from offline backups",
+    ]);
+    const report = buildIncidentReport(current, options())!;
+    expect(coverDecisions(report).map((d) => d.title)).toEqual(["Restore from offline backups"]);
+  });
+
+  test("the cover timeline shows another role's decision line as a proposal", () => {
+    const current = state("commander");
+    const counsel = current.members.find((m) => m.role === "counsel")!;
+    const item = mk(current);
+    current.timeline = [item(1n, "00000000-0000-4000-8000-0000000000e4", "Decision: Pay the ransom", counsel, "2026-11-08T10:00:00.000Z")];
+    const report = buildIncidentReport(current, options())!;
+    const action = coverActions(report, [], "Avery Commander").find((entry) => entry.title.includes("ransom"));
+    expect(action?.title).toBe("Proposed: Pay the ransom");
+    expect(action?.detail).toBe("Proposed by Dana Counsel, Counsel. Not decided by the commander.");
+    expect(coverDecisions(report)).toEqual([]);
   });
 
   test("a counsel-review result is not a confirmed countdown", () => {

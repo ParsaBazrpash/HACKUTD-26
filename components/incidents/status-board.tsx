@@ -486,7 +486,7 @@ function NoteCards({
     <div className="grid gap-3">
       <ul className="grid gap-3 md:grid-cols-2">
         {items.slice(0, BOARD_LIST_CAP).map(({ item, replaces }) => (
-          <li key={item.entry.entryId} className={`${cardClass} p-3`}>
+          <li key={`${item.entry.entryId}-${item.seq.toString()}`} className={`${cardClass} p-3`}>
             <div className="flex items-start justify-between gap-3">
               <p className="font-mono text-[11px] tracking-wide text-muted">{ticketCode(item.entry.entryId)}</p>
               <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full border border-line text-[10px] font-medium tracking-wide text-muted">

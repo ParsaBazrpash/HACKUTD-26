@@ -92,6 +92,43 @@ describe("board entries", () => {
     expect(out.decisions.map((e) => e.item.entry.entryId)).toEqual([decision.entry.entryId]);
   });
 
+  test("a reused entry id cannot erase a commander decision or borrow its standing", () => {
+    const id = crypto.randomUUID();
+    const decision = item("Decision: restore from offline backups", { id, seq: 1n });
+    const decoy = item("Decision: decoy", { by: TECH, id, seq: 2n });
+    const erase = item("Decision: pay the ransom", { by: TECH, seq: 3n, amends: id });
+    const out = boardEntries([decision, decoy, erase]);
+    expect(out.decisions.map((e) => e.item)).toEqual([decision]);
+    expect(out.proposed.map((e) => e.item.entry.text)).toEqual(["Decision: pay the ransom", "Decision: decoy"]);
+    // The proposal does not claim to replace anything, because the id belongs to the commander's entry.
+    expect(out.proposed[0]?.replaces).toBeNull();
+  });
+
+  test("only a later entry can replace an earlier one", () => {
+    const id = crypto.randomUUID();
+    const early = item("Known: six servers", { by: TECH, seq: 1n, amends: id });
+    const target = item("Known: four servers", { by: TECH, seq: 2n, id });
+    const out = boardEntries([early, target]);
+    expect(out.known.map((e) => e.item.entry.text).sort()).toEqual(["Known: four servers", "Known: six servers"]);
+  });
+
+  test("the fold links an amendment only to the first entry with that id", () => {
+    const id = crypto.randomUUID();
+    const body = (text: string, extra: Record<string, string> = {}) => ({
+      kind: "timeline.add",
+      body: { entryId: extra.entryId ?? crypto.randomUUID(), occurredAt: "2026-11-08T01:00:00.000Z", phase: "containment", csf: "RS.CO", text, ...(extra.amends ? { amends: extra.amends } : {}) },
+    }) as Payload;
+    const ev = (seq: bigint, payload: Payload): VerifiedEvent => ({ ...event(seq, "x", true), payload });
+    const folded = foldEvents(
+      [ev(1n, body("first", { entryId: id })), ev(2n, body("reuses the id", { entryId: id })), ev(3n, body("amends it", { amends: id }))],
+      [],
+    );
+    const first = folded.timeline.find((t) => t.entry.text === "first");
+    const reuse = folded.timeline.find((t) => t.entry.text === "reuses the id");
+    expect(first?.amendedBy).toHaveLength(1);
+    expect(reuse?.amendedBy).toHaveLength(0);
+  });
+
   test("a same-kind tagged amendment replaces and says who it replaces", () => {
     const first = item("Known: five servers", { by: TECH, seq: 1n });
     const next = item("Known: six servers", { seq: 2n, amends: first.entry.entryId });

@@ -46,7 +46,7 @@ export function TimelineList({ items, detailed }: { items: readonly TimelineItem
             const tone = phaseTone(item.entry.phase);
             const role = item.by ? ROLE_LABELS[item.by.role] : "Unknown";
             return (
-              <li key={item.entry.entryId} className="relative grid grid-cols-[1rem_minmax(0,1fr)] gap-3 pb-3 last:pb-0">
+              <li key={`${item.entry.entryId}-${item.seq.toString()}`} className="relative grid grid-cols-[1rem_minmax(0,1fr)] gap-3 pb-3 last:pb-0">
                 {index < recent.length - 1 ? (
                   <span aria-hidden="true" className="absolute bottom-0 left-[0.3rem] top-5 w-px bg-line" />
                 ) : null}

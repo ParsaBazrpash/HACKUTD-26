@@ -118,15 +118,18 @@ export function coverDecisions(report: IncidentReport): CoverDecision[] {
 
 function actionFromEntry(entry: ReportTimelineEntry): CoverAction {
   const decision = entry.board === "decision";
+  const proposal = entry.board === "proposed" && entry.text.startsWith("Decision: ");
   const signed = entry.signedAt ?? entry.occurredAt;
   const server =
     entry.serverAt !== signed && entry.serverAt !== entry.occurredAt ? `Server ${reportClock(entry.serverAt)}` : null;
+  // A "Decision: " line from anyone but the commander is a proposal, as on the status board.
+  const proposedTitle = `Proposed: ${entry.text.slice("Decision: ".length).trim()}`;
   return {
     id: entry.id,
     at: entry.at,
     when: reportPill(entry.occurredAt),
-    title: decision ? entry.phase : entry.text,
-    detail: decision ? entry.text : null,
+    title: decision ? entry.phase : proposal ? proposedTitle : entry.text,
+    detail: decision ? entry.text : proposal ? `Proposed by ${entry.author}${entry.authorRole ? `, ${entry.authorRole}` : ""}. Not decided by the commander.` : null,
     signature: `${entry.author} signed ${reportSigned(signed)} · ${entry.csf}`,
     note: [entry.amendment, server].filter(Boolean).join(" ") || null,
     alert: entry.verdict,

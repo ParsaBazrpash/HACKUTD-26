@@ -7,7 +7,7 @@ import { memberStateLabel, ROLE_LABELS } from "@/components/incidents/labels";
 import { linkVerifiedLabel } from "@/components/incidents/room-controls";
 import { useIncident } from "@/hooks/use-incident";
 import { isMockIncidentClient } from "@/lib/client";
-import { formatTimestamp } from "@/lib/time";
+import { LocalTime } from "@/components/local-time";
 
 export function PeopleBoard() {
   const state = useIncident();
@@ -40,8 +40,7 @@ export function PeopleBoard() {
             <p className="mt-1 text-sm text-muted">
               {memberStateLabel(member.state)}
               {member.online ? " · Online" : ""}
-              {" · joined "}
-              {formatTimestamp(member.joinedAt)}
+              <LocalTime value={member.joinedAt} prefix=" · joined " />
             </p>
             <p className="mt-2 break-all font-mono text-[11px] text-muted" title={member.fingerprint}>
               {member.fingerprint}

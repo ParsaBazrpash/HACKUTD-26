@@ -6,7 +6,7 @@ import { ROLE_LABELS } from "@/components/incidents/labels";
 import { getIncidentClient } from "@/lib/client";
 import { clientErrorMessage } from "@/lib/client/errors";
 import type { PageView, RosterMember } from "@/lib/client/types";
-import { formatTimestamp } from "@/lib/time";
+import { LocalTime } from "@/components/local-time";
 import { MAX_ORG_REASON } from "@/spacetimedb/src/shared/org";
 
 type PickRole = "counsel" | "technical" | "executive";
@@ -70,7 +70,9 @@ function PendingCard({ member, onDone }: { member: RosterMember; onDone: (messag
     <li className="grid gap-3 rounded-xl border border-signal px-4 py-3">
       <div>
         <p className="text-sm font-medium">{member.displayName}</p>
-        <p className="text-xs text-muted">Enrolled {formatTimestamp(member.enrolledAt)}</p>
+        <p className="text-xs text-muted">
+          Enrolled <LocalTime value={member.enrolledAt} />
+        </p>
       </div>
       <div>
         <p className="text-xs text-muted">Safety code</p>
@@ -255,7 +257,7 @@ export function RosterBoard({
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium">{member.displayName}</p>
                     <p className="text-xs text-muted">
-                      {STATE_LABEL[member.state]}. Enrolled {formatTimestamp(member.enrolledAt)}.
+                      {STATE_LABEL[member.state]}. Enrolled <LocalTime value={member.enrolledAt} />.
                     </p>
                     <p translate="no" className="mt-1 break-all font-mono text-xs text-muted">
                       {member.fingerprint}

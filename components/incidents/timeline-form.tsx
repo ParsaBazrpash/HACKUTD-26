@@ -14,6 +14,7 @@ import { useIncident } from "@/hooks/use-incident";
 import { getIncidentClient } from "@/lib/client";
 import { clientErrorMessage } from "@/lib/client/errors";
 import { CSF_CATEGORIES, PHASES } from "@/lib/protocol/events";
+import { useLocalClock } from "@/components/local-time";
 import { formatTimestamp } from "@/lib/time";
 
 const labelClass = "grid gap-1.5 text-xs font-medium text-muted";
@@ -51,6 +52,7 @@ export function TimelineForm() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
+  const clockReady = useLocalClock();
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -152,7 +154,8 @@ export function TimelineForm() {
               <option value="">New entry</option>
               {state.timeline.map((item) => (
                 <option key={item.entry.entryId} value={item.entry.entryId}>
-                  {formatTimestamp(item.entry.occurredAt)} · {item.entry.text.slice(0, 48)}
+                  {clockReady ? `${formatTimestamp(item.entry.occurredAt)} · ` : ""}
+                  {item.entry.text.slice(0, 48)}
                 </option>
               ))}
             </select>

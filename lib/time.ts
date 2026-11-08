@@ -12,27 +12,22 @@ export function formatDuration(ms: number): string {
   return negative ? `-${body}` : body;
 }
 
-export function formatTimestamp(value: string | Date): string {
-  const time = value instanceof Date ? value.getTime() : Date.parse(value);
-  if (Number.isNaN(time)) return value instanceof Date ? value.toISOString() : value;
-
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-    timeZone: "UTC",
-  }).formatToParts(new Date(time));
-
-  const read = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((part) => part.type === type)?.value ?? "";
-
-  return `${read("day")} ${read("month")} ${read("hour")}:${read("minute")} UTC`;
+/** IANA zone of this runtime. In the browser that is the person's local zone. */
+export function localTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 
-/** Clock time in the browser's timezone. Use this for when a person created the incident. */
+/** Wall clock in the local zone. Stored instants stay absolute; only the reading changes. */
+export function formatTimestamp(value: string | Date): string {
+  return formatWallClock(value);
+}
+
+/** Same local reading as `formatTimestamp`. */
 export function formatLocalTimestamp(value: string | Date): string {
+  return formatWallClock(value);
+}
+
+function formatWallClock(value: string | Date): string {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return value instanceof Date ? value.toISOString() : value;
 
@@ -42,6 +37,7 @@ export function formatLocalTimestamp(value: string | Date): string {
     hour: "2-digit",
     minute: "2-digit",
     hourCycle: "h23",
+    timeZone: localTimeZone(),
   }).formatToParts(date);
 
   const read = (type: Intl.DateTimeFormatPartTypes) =>

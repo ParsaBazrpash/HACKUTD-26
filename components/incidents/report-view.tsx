@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 import { primaryButtonClass } from "@/components/incidents/form-ui";
 import { IncidentGate } from "@/components/incidents/incident-gate";
 import { SafeText } from "@/components/incidents/safe-text";
+import { useLocalClock } from "@/components/local-time";
 import { useBrowserNow } from "@/hooks/use-browser-now";
 import { useIncident } from "@/hooks/use-incident";
 import { isMockIncidentClient } from "@/lib/client";
@@ -12,9 +13,11 @@ import { buildIncidentReport, type IncidentReport, type ReportDeadline, type Rep
 export function ReportView() {
   const state = useIncident();
   const now = useBrowserNow();
+  const clockReady = useLocalClock();
   const [includePrivileged, setIncludePrivileged] = useState(false);
-  const report =
-    now === null
+  const report = !clockReady
+    ? null
+    : now === null
       ? buildIncidentReport(state, { now: null, includePrivileged, demo: isMockIncidentClient(), buildSha: readBuildSha() })
       : buildIncidentReport(state, {
           now: new Date(now),

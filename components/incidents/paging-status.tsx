@@ -14,7 +14,7 @@ import {
 import { useIncident } from "@/hooks/use-incident";
 import { getIncidentClient } from "@/lib/client";
 import { clientErrorMessage } from "@/lib/client/errors";
-import { formatTimestamp } from "@/lib/time";
+import { LocalTime } from "@/components/local-time";
 
 const TONE_CLASS: Record<ChipTone, string> = {
   neutral: "border-line text-muted",
@@ -60,7 +60,9 @@ export function PagingStatus() {
                   {page.displayName}
                   <span className="text-muted"> · {ROLE_LABELS[page.role]}</span>
                 </p>
-                <p className="mt-1 text-xs text-muted">Updated {formatTimestamp(page.updatedAt)}</p>
+                <p className="mt-1 text-xs text-muted">
+                  Updated <LocalTime value={page.updatedAt} />
+                </p>
               </div>
               <div className="flex min-w-0 flex-wrap items-center gap-2">
                 <span className={`rounded-full border px-3 py-1 text-xs font-medium ${TONE_CLASS[chip.tone]}`}>

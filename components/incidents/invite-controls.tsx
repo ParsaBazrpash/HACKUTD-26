@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { getIncidentClient, isMockIncidentClient } from "@/lib/client";
 import { clientErrorMessage } from "@/lib/client/errors";
-import { formatTimestamp } from "@/lib/time";
+import { LocalTime } from "@/components/local-time";
 import { ROLE_LABELS } from "@/components/incidents/labels";
 import {
   DEFAULT_INVITE_TTL_MINUTES,
@@ -153,7 +153,8 @@ export function InviteControls() {
       {invite ? (
         <div className="mt-4 grid gap-3">
           <p className="text-sm text-muted">
-            Copy this link before you create another. It will not be shown again. Expires {formatTimestamp(invite.expiresAt)}.
+            Copy this link before you create another. It will not be shown again.
+            <LocalTime value={invite.expiresAt} prefix=" Expires " suffix="." />
           </p>
           {httpInviteHref(invite.url) ? (
             <a

@@ -22,7 +22,7 @@ import {
 } from "@/lib/legal/display";
 import { formatLegalInstant } from "@/lib/legal/calendar";
 import { COUNSEL_REVIEW_WARNING, computeDeadlines, nextCountdown, type ComputedDeadline } from "@/lib/legal";
-import { formatTimestamp } from "@/lib/time";
+import { formatTimestamp, localTimeZone } from "@/lib/time";
 import { CHANNELS, canRead } from "@/spacetimedb/src/shared/policy";
 import { incidentAccess } from "@/lib/report/access";
 
@@ -430,9 +430,7 @@ function deadlineRow(
     applicability: applicabilityLabel(deadline.applicability),
     trigger: triggerLabel(deadline.rule),
     due: confirmed && deadline.dueAt
-      ? deadline.rule.timeZone
-        ? formatLegalInstant(deadline.dueAt, deadline.rule.timeZone)
-        : formatTimestamp(deadline.dueAt)
+      ? formatLegalInstant(deadline.dueAt, localTimeZone())
       : "No confirmed deadline",
     countdown: confirmed && deadline.dueAt && now ? remaining(deadline.dueAt, now) : "No confirmed countdown",
     status: clockStatusLabel(deadline),

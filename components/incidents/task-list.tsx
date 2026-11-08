@@ -12,7 +12,7 @@ import { getIncidentClient } from "@/lib/client";
 import { clientErrorMessage } from "@/lib/client/errors";
 import type { Task } from "@/lib/client/types";
 import { TASK_STATUSES } from "@/lib/protocol/events";
-import { formatTimestamp } from "@/lib/time";
+import { LocalTime } from "@/components/local-time";
 
 function tone(status: string): string {
   if (status === "blocked") return "text-alert";
@@ -69,7 +69,7 @@ export function TaskList({ interactive = false }: { interactive?: boolean }) {
                   <span className={tone(task.latest.status)}>{taskStatusLabel(task.latest.status)}</span>
                   {" · "}
                   {memberName(state.members, task.latest.assignee)}
-                  {task.latest.dueAt ? ` · due ${formatTimestamp(task.latest.dueAt)}` : ""}
+                  {task.latest.dueAt ? <LocalTime value={task.latest.dueAt} prefix=" · due " /> : null}
                 </p>
                 {version ? <VerdictNote verdict={version.verdict} /> : null}
               </div>

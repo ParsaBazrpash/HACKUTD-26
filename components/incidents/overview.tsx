@@ -17,7 +17,7 @@ import { isMockIncidentClient } from "@/lib/client";
 import type { ChannelMessage, IncidentState } from "@/lib/client/types";
 import { computeDeadlines, nextCountdown } from "@/lib/legal";
 import type { ClockStatus } from "@/lib/legal";
-import { formatTimestamp } from "@/lib/time";
+import { LocalTime } from "@/components/local-time";
 
 const linkClass =
   "shrink-0 text-sm text-signal hover:text-signal-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal";
@@ -179,7 +179,12 @@ function RecentActivity({ incidentId }: { incidentId: string }) {
               <div className="min-w-0">
                 <div className="flex items-baseline justify-between gap-3">
                   <p className="text-sm font-medium text-foreground">{item.title}</p>
-                  <time className="shrink-0 text-xs text-muted">{formatTimestamp(item.at)}</time>
+                  <time
+                    className="shrink-0 text-xs text-muted"
+                    dateTime={Number.isNaN(item.at.getTime()) ? undefined : item.at.toISOString()}
+                  >
+                    <LocalTime value={item.at} />
+                  </time>
                 </div>
                 <p className="mt-0.5 line-clamp-2 break-words text-sm leading-6 text-muted">
                   <SafeText text={item.detail} />

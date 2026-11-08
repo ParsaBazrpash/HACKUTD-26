@@ -25,7 +25,8 @@ import {
   type ClockStatus,
   type ComputedDeadline,
 } from "@/lib/legal";
-import { formatDuration, formatTimestamp } from "@/lib/time";
+import { LocalTime, useLocalClock } from "@/components/local-time";
+import { formatDuration, localTimeZone } from "@/lib/time";
 
 const profileRows = [
   ["publicCompany", "Public company"],
@@ -207,7 +208,7 @@ function Determination({
       {at ? (
         <>
           <p className="mt-2 text-sm text-foreground">
-            {formatTimestamp(at)}
+            <LocalTime value={at} />
             {by ? ` · ${by}` : ""}
           </p>
           {basis ? (
@@ -275,6 +276,7 @@ function DeadlineCard({
   members: { identity: string; displayName: string }[];
 }) {
   const [saved, setSaved] = useState<string | null>(null);
+  const clockReady = useLocalClock();
   const confirmed = showsConfirmedCountdown(deadline);
   const review = isCounselReview(deadline);
   const frame = urgent
@@ -287,9 +289,9 @@ function DeadlineCard({
   const source = officialUrl(deadline.rule.sourceUrl);
   const delta = confirmed && deadline.dueAt && now !== null ? deadline.dueAt.getTime() - now : null;
   const due = confirmed && deadline.dueAt
-    ? deadline.rule.timeZone
-      ? formatLegalInstant(deadline.dueAt, deadline.rule.timeZone)
-      : formatTimestamp(deadline.dueAt)
+    ? clockReady
+      ? formatLegalInstant(deadline.dueAt, localTimeZone())
+      : ""
     : "No confirmed deadline";
 
   return (
@@ -342,7 +344,9 @@ function DeadlineCard({
             </div>
           </dl>
           {deadline.startedAt ? (
-            <p className="mt-3 text-sm text-muted">Started {formatTimestamp(deadline.startedAt)}</p>
+            <p className="mt-3 text-sm text-muted">
+              Started <LocalTime value={deadline.startedAt} />
+            </p>
           ) : null}
           <p className="mt-3 break-words text-sm leading-6 text-muted">
             <SafeText text={deadline.explanation} />

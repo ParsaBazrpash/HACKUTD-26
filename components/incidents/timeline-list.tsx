@@ -5,8 +5,8 @@ import { ROLE_LABELS, phaseLabel } from "@/components/incidents/labels";
 import { SafeText } from "@/components/incidents/safe-text";
 import { VerdictNote } from "@/components/incidents/verdict-note";
 import { useIncident } from "@/hooks/use-incident";
+import { LocalTime } from "@/components/local-time";
 import type { TimelineItem } from "@/lib/client/types";
-import { formatTimestamp } from "@/lib/time";
 
 const PHASE_TONE: Record<string, { dot: string; badge: string }> = {
   preparation: { dot: "bg-muted", badge: "bg-panel-raised text-foreground" },
@@ -19,11 +19,6 @@ const PHASE_TONE: Record<string, { dot: string; badge: string }> = {
 
 function phaseTone(phase: string): { dot: string; badge: string } {
   return PHASE_TONE[phase] ?? { dot: "bg-muted", badge: "bg-panel-raised text-foreground" };
-}
-
-function clockLabel(value: string): string {
-  const formatted = formatTimestamp(value);
-  return formatted.endsWith(" UTC") ? formatted.slice(0, -4) : formatted;
 }
 
 export function TimelineList({ items, detailed }: { items: readonly TimelineItem[]; detailed: boolean }) {
@@ -59,7 +54,7 @@ export function TimelineList({ items, detailed }: { items: readonly TimelineItem
                 <article className="min-w-0 rounded-xl border border-line bg-panel px-4 py-3">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
                     <time dateTime={item.entry.occurredAt} className="text-sm font-semibold tracking-tight">
-                      {clockLabel(item.entry.occurredAt)}
+                      <LocalTime value={item.entry.occurredAt} />
                     </time>
                     <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs ${tone.badge}`}>
                       <span aria-hidden="true" className={`size-1.5 rounded-full ${tone.dot}`} />
@@ -79,13 +74,13 @@ export function TimelineList({ items, detailed }: { items: readonly TimelineItem
                   {detailed ? (
                     <p className="mt-2 break-words text-xs text-muted">
                       {item.by?.displayName ?? "Unknown author"}
-                      {item.sentAt ? ` · signed ${formatTimestamp(item.sentAt)}` : ""}
-                      {` · server ${formatTimestamp(item.at)}`}
+                      {item.sentAt ? <LocalTime value={item.sentAt} prefix=" · signed " /> : null}
+                      <LocalTime value={item.at} prefix=" · server " />
                     </p>
                   ) : null}
                   {detailed && target ? (
                     <p className="mt-2 text-xs text-muted">
-                      Amends the entry from {formatTimestamp(target.entry.occurredAt)}.
+                      Amends the entry from <LocalTime value={target.entry.occurredAt} />.
                     </p>
                   ) : null}
                   {detailed && item.entry.amends && !target ? (

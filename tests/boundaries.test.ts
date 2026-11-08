@@ -36,13 +36,11 @@ describe("module outline and clocks", () => {
     expect(findPlaintextColumns()).toEqual([]);
   });
 
-  test("formats durations and UTC timestamps", () => {
+  test("formats durations and local timestamps", () => {
     expect(formatDuration(0)).toBe("00:00:00");
     expect(formatDuration(90_000)).toBe("00:01:30");
     expect(formatDuration(-1000)).toBe("-00:00:01");
     expect(formatDuration(72 * 60 * 60 * 1000)).toBe("72:00:00");
-    expect(formatTimestamp("2026-11-07T14:12:00.000Z")).toBe("07 Nov 14:12 UTC");
-    expect(formatTimestamp(new Date("2026-11-07T14:12:00.000Z"))).toBe("07 Nov 14:12 UTC");
     const created = new Date("2026-11-07T23:19:00.000Z");
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     const local = [
@@ -50,7 +48,10 @@ describe("module outline and clocks", () => {
       months[created.getMonth()],
       `${String(created.getHours()).padStart(2, "0")}:${String(created.getMinutes()).padStart(2, "0")}`,
     ].join(" ");
+    expect(formatTimestamp(created)).toBe(local);
+    expect(formatTimestamp(created.toISOString())).toBe(local);
     expect(formatLocalTimestamp(created)).toBe(local);
     expect(formatLocalTimestamp(created.toISOString())).toBe(local);
+    expect(formatTimestamp("2026-11-07T14:12:00.000Z")).toBe(formatLocalTimestamp("2026-11-07T14:12:00.000Z"));
   });
 });

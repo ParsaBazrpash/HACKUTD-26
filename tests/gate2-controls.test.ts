@@ -21,6 +21,7 @@ import {
   revokeEnabled,
   replaceDeviceEnabled,
   REPLACE_DEVICE_REASON,
+  replacementNameExample,
 } from "@/components/incidents/room-controls";
 import { createMockIncidentClient } from "@/lib/client/mock";
 import { ChatBodySchema } from "@/lib/protocol/events";
@@ -164,6 +165,11 @@ describe("revoke from the room", () => {
     expect(replaceDeviceEnabled({ ...me, role: "counsel" }, active)).toBe(false);
     expect(replaceDeviceEnabled(null, active)).toBe(false);
     expect(REPLACE_DEVICE_REASON.length).toBeLessThanOrEqual(REVOKE_REASON_MAX);
+    // The suggested rejoin name differs from the old one and fits the 40 character limit.
+    expect(replacementNameExample("Sam Okonkwo")).toBe("Sam Okonkwo (new laptop)");
+    const long = replacementNameExample("A".repeat(40));
+    expect(Array.from(long).length).toBeLessThanOrEqual(40);
+    expect(long.endsWith(" (new laptop)")).toBe(true);
 
     await commander.revokeMember(active.memberId, "Laptop seized.".slice(0, REVOKE_REASON_MAX));
     expect(commander.getState().members.find((member) => member.memberId === active.memberId)?.state).toBe("revoked");
@@ -266,6 +272,6 @@ describe("control wiring", () => {
     expect(revoke).toContain("revokeConfirmed(member, typed)");
     expect(revoke).toContain("revokeEnabled(state.me, member)");
     expect(revoke).not.toMatch(/console\./);
-    expect(people).toContain("<RevokeControl member={member} />");
+    expect(people).toContain("<RevokeControl member={member} onReplaceOutcome={onReplaceOutcome} />");
   });
 });

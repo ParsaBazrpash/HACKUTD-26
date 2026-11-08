@@ -5,6 +5,7 @@ import { RefreshCw, UserX } from "lucide-react";
 import { FormError, FormStatus, fieldClass, secondaryButtonClass } from "@/components/incidents/form-ui";
 import {
   inviteRequest,
+  replacementNameExample,
   REPLACE_DEVICE_REASON,
   replaceDeviceEnabled,
   REVOKE_REASON_MAX,
@@ -28,18 +29,26 @@ const openButtonClass =
   "inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-alert/60 px-3 py-2 text-sm font-medium text-alert hover:bg-alert/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-alert";
 
 type Mode = "revoke" | "replace";
-type Reissued = { name: string; url: string; expiresAt: Date };
+export type Reissued = { name: string; url: string; expiresAt: Date };
+/** What Replace device ended with. The People board shows it outside the row, which a filter can hide. */
+export type ReplaceOutcome = { kind: "invite"; invite: Reissued } | { kind: "notice"; message: string };
 
 /**
- * Commander-only revoke for an active member, plus Replace device: the same revoke followed by a
- * new invite for the same role, for someone who lost the browser or device that held their keys.
- * The new browser joins with new keys and the commander checks its safety code before admitting,
- * exactly like any other invite. The old keys stay revoked forever.
- *
  * Commander-only revoke for an active member. The client signs the revocation, rotates every channel
  * the member could read to a new key for everyone else, and logs `roster.revoke` in #record.
+ *
+ * Replace device is the same revoke followed by a new invite for the same role, for someone who lost
+ * the browser or device that held their keys. The new browser joins with new keys and the commander
+ * checks its safety code before admitting, exactly like any other invite. The old keys stay revoked.
  */
-export function RevokeControl({ member }: { member: MemberView }) {
+export function RevokeControl({
+  member,
+  onReplaceOutcome,
+}: {
+  member: MemberView;
+  /** Receives the Replace device result. Without it the result is shown inside this control. */
+  onReplaceOutcome?: (outcome: ReplaceOutcome) => void;
+}) {
   const state = useIncident();
   const mock = isMockIncidentClient();
   const now = useBrowserNow();
@@ -58,7 +67,9 @@ export function RevokeControl({ member }: { member: MemberView }) {
   // The server can accept the revoke and then the #record entry can fail. The row already shows
   // revoked by then, so keep the error on screen instead of hiding it with the form.
   if (!revokeEnabled(state.me, member)) {
-    return error ? <FormError message={`Access was removed, but the record entry failed: ${error}`} /> : null;
+    if (!error) return null;
+    const tail = mode === "replace" ? " No new invite was made. Create one under Invite people." : "";
+    return <FormError message={`Access was removed, but the record entry failed: ${error}${tail}`} />;
   }
 
   const phrase = revokeConfirmPhrase(member);
@@ -80,6 +91,16 @@ export function RevokeControl({ member }: { member: MemberView }) {
     setError(null);
   }
 
+  function report(outcome: ReplaceOutcome) {
+    if (onReplaceOutcome) {
+      onReplaceOutcome(outcome);
+      close();
+      return;
+    }
+    if (outcome.kind === "invite") setReissued(outcome.invite);
+    else setNotice(outcome.message);
+  }
+
   async function revoke(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!confirmed || busy || !revokeEnabled(state.me, member)) return;
@@ -93,7 +114,7 @@ export function RevokeControl({ member }: { member: MemberView }) {
       revoked = true;
       if (replacing) {
         const created = await getIncidentClient().createInvite(inviteRequest(member.role));
-        setReissued({ name: member.displayName, url: created.url, expiresAt: created.expiresAt });
+        report({ kind: "invite", invite: { name: member.displayName, url: created.url, expiresAt: created.expiresAt } });
         return;
       }
       setNotice(
@@ -102,12 +123,22 @@ export function RevokeControl({ member }: { member: MemberView }) {
           : `Revoked ${member.displayName}. Their channels now use new keys.`,
       );
     } catch (cause) {
+      const message = clientErrorMessage(cause);
       if (revoked && replacing) {
-        setNotice(
-          `Revoked ${member.displayName} and rotated keys, but the new invite failed: ${clientErrorMessage(cause)} Create one under Invite people.`,
-        );
+        report({
+          kind: "notice",
+          message: `Revoked ${member.displayName} and rotated keys, but the new invite failed: ${message} Create one under Invite people.`,
+        });
       } else {
-        setError(clientErrorMessage(cause));
+        setError(message);
+        // The revoke itself may have landed (only the #record entry failed). If the row is now
+        // hidden by a filter, the error above goes with it, so say it outside the row too.
+        if (replacing && onReplaceOutcome) {
+          onReplaceOutcome({
+            kind: "notice",
+            message: `Replace device for ${member.displayName} stopped: ${message} No new invite was made. If they now show as Revoked, create one under Invite people.`,
+          });
+        }
       }
     } finally {
       setBusy(false);
@@ -159,6 +190,12 @@ export function RevokeControl({ member }: { member: MemberView }) {
           check the safety code with them before you admit them.
         </p>
       ) : null}
+      {replacing ? (
+        <p className="text-sm leading-6 text-foreground">
+          Their old name stays on the revoked seat. On a new browser they must join under a slightly different name,
+          for example <SafeText text={replacementNameExample(member.displayName)} />.
+        </p>
+      ) : null}
       <p className="text-sm leading-6 text-muted">
         They lose access to this room at once. Every channel they could read gets a new key, so nothing sent after
         this reaches them, and their device wipes its keys for this room. What they already saw cannot be taken back.
@@ -206,14 +243,16 @@ export function RevokeControl({ member }: { member: MemberView }) {
   );
 }
 
-function ReissuedInvite({
+export function ReissuedInvite({
   invite,
   copied,
   onCopied,
+  onDismiss,
 }: {
   invite: Reissued;
   copied: boolean;
   onCopied: (value: boolean) => void;
+  onDismiss?: () => void;
 }) {
   const [copyError, setCopyError] = useState<string | null>(null);
   const safeHref = (() => {
@@ -247,6 +286,10 @@ function ReissuedInvite({
         the safety code with them by voice before you admit it. The link works once and expires{" "}
         <LocalTime value={invite.expiresAt} />.
       </p>
+      <p className="text-sm leading-6 text-foreground">
+        Their old name stays on the revoked seat. On a new browser they must join under a slightly different name, for
+        example <SafeText text={replacementNameExample(invite.name)} />.
+      </p>
       <p translate="no" className="break-all rounded-lg border border-line bg-panel-raised p-3 font-mono text-xs text-foreground">
         {safeHref ? invite.url : "The invite link was not a web address, so it is not shown."}
       </p>
@@ -254,6 +297,17 @@ function ReissuedInvite({
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => void copy()} className={secondaryButtonClass}>
             {copied ? "Copied" : "Copy link"}
+          </button>
+          {onDismiss ? (
+            <button type="button" onClick={onDismiss} className={secondaryButtonClass}>
+              Done
+            </button>
+          ) : null}
+        </div>
+      ) : onDismiss ? (
+        <div>
+          <button type="button" onClick={onDismiss} className={secondaryButtonClass}>
+            Done
           </button>
         </div>
       ) : null}

@@ -134,18 +134,18 @@ import {
 /** Events between automatic commander checkpoints (PLAN 4.10). */
 const CHECKPOINT_EVERY = 10n;
 
-/** Shown while this incident's keys are passkey-locked. */
 /**
  * This browser is signed in as a member but holds no keys for the seat (cleared site data, or keys
  * that never reached this browser). Nothing is sent anywhere; the commander fixes it with Replace device.
  */
 export const NO_DEVICE_KEYS_MESSAGE =
-  'This device cannot open this room: the keys for your seat are not in this browser. Ask the commander to use Replace device and send you a new invite.';
+  'This device cannot open this room: the keys for your seat are not in this browser. Ask the commander to use Replace device and send you a new invite. If you are the commander, start a new incident.';
 /**
  * This browser has a different sign-in from the one that joined. Seats live in one browser on one web address.
  */
 export const NOT_MEMBER_HERE_MESSAGE =
-  'This browser is not a member of this incident. If you joined from another browser or web address, open the room there. If you lost that one, ask the commander to use Replace device and send you a new invite.';
+  'This browser is not a member of this incident. If you joined from another browser or web address, open the room there. If you lost that one, ask the commander to use Replace device and send you a new invite. If you are the commander, start a new incident.';
+/** Shown while this incident's keys are passkey-locked. */
 export const DEVICE_LOCKED_MESSAGE = 'Your keys for this incident are locked. Unlock them with your passkey.';
 
 export class ClientError extends Error {
@@ -1038,7 +1038,7 @@ export class RealIncidentClient implements IncidentClient {
     if (!joined) {
       await store.wipe();
       throw new ClientError(
-        'This invite link could not be used. It may be expired or already used, the name may be taken, or there were too many failed tries (wait 10 minutes).',
+        'This invite link could not be used. It may be expired or already used, the name may be taken, or there were too many failed tries (wait 10 minutes). If your device was replaced, your old name stays on the revoked seat: join with a slightly different name, such as "Sam (new laptop)".',
       );
     }
     await this.activate(inv.incidentId, store);

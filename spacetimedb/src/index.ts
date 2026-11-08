@@ -1429,15 +1429,19 @@ export const my_members = spacetimedb.view({ name: 'my_members', public: true },
 });
 
 /**
- * Presence of the people I can already see in my_members (same rule: active members see the whole
- * incident, a pending joiner sees only the commander and themselves). Nobody else's presence leaks.
+ * Presence of the live people I can already see in my_members (same rule: active members see the
+ * incident's pending and active members, a pending joiner sees only the commander and themselves).
+ * Nobody else's presence leaks, and revoked people drop out.
  */
 export const my_presence = spacetimedb.view({ name: 'my_presence', public: true }, t.array(presence.rowType), (ctx) => {
   const visible = new Map<string, Ctx['sender']>();
   const me = ctx.sender.toHexString();
   for (const mine of ctx.db.member.identity.filter(ctx.sender)) {
     if (mine.state === 'active') {
-      for (const m of ctx.db.member.incidentId.filter(mine.incidentId)) visible.set(m.identity.toHexString(), m.identity);
+      // Revoked rows are skipped: nobody needs a removed person's presence (a live row of theirs still counts).
+      for (const m of ctx.db.member.incidentId.filter(mine.incidentId)) {
+        if (m.state !== 'revoked') visible.set(m.identity.toHexString(), m.identity);
+      }
     } else if (mine.state === 'pending') {
       visible.set(me, ctx.sender);
       const inc = ctx.db.incident.id.find(mine.incidentId);

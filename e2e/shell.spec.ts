@@ -151,6 +151,8 @@ test("the commander replaces a lost device: revoke, then a new invite for the sa
   await page.getByRole("navigation", { name: "Incident sections" }).getByRole("link", { name: "People & Access" }).click();
   await expect(page).toHaveURL(/\/people$/);
 
+  // With the Status filter on Active, the row disappears once the revoke lands; the new invite must still show.
+  await page.getByLabel("Filter by status").filter({ visible: true }).first().selectOption("active");
   await page.getByRole("button", { name: "Details for Sam Okonkwo" }).filter({ visible: true }).first().click();
   await page.getByRole("button", { name: "Replace device" }).filter({ visible: true }).first().click();
   const form = page.getByRole("form", { name: "Replace device for Sam Okonkwo" }).filter({ visible: true }).first();
@@ -160,5 +162,8 @@ test("the commander replaces a lost device: revoke, then a new invite for the sa
   await submit.click();
   await expect(page.getByText("Old device revoked. New invite for Sam Okonkwo").first()).toBeVisible();
   await expect(page.getByText(/\/join#/).first()).toBeVisible();
+  // The old name stays on the revoked seat, so the screen suggests a slightly different one.
+  await expect(page.getByText("Sam Okonkwo (new laptop)").first()).toBeVisible();
+  await page.getByLabel("Filter by status").filter({ visible: true }).first().selectOption("all");
   await expect(page.getByRole("row", { name: /Sam Okonkwo/ }).first()).toContainText("Revoked");
 });

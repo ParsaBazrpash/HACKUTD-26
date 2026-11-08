@@ -16,7 +16,8 @@ import { AdmissionControls } from "@/components/incidents/admission-controls";
 import { InviteControls } from "@/components/incidents/invite-controls";
 import { memberStateLabel, ROLE_LABELS, CHANNEL_LABELS } from "@/components/incidents/labels";
 import { PagePicker } from "@/components/incidents/page-picker";
-import { RevokeControl } from "@/components/incidents/revoke-control";
+import { ReissuedInvite, RevokeControl, type ReplaceOutcome } from "@/components/incidents/revoke-control";
+import { FormStatus, secondaryButtonClass } from "@/components/incidents/form-ui";
 import { ImHereButton, PagingStatus } from "@/components/incidents/paging-status";
 import { linkVerifiedLabel } from "@/components/incidents/room-controls";
 import { SafeText } from "@/components/incidents/safe-text";
@@ -307,6 +308,14 @@ function MembersPanel({
   const [status, setStatus] = useState<StateFilter>("all");
   const [access, setAccess] = useState<AccessFilter>("all");
   const [openId, setOpenId] = useState<string | null>(null);
+  // Replace device results live here, not in the row: with the Status filter on Active the row
+  // disappears the moment the revoke lands, and the new invite must still be shown.
+  const [outcome, setOutcome] = useState<ReplaceOutcome | null>(null);
+  const [copied, setCopied] = useState(false);
+  const onReplaceOutcome = (next: ReplaceOutcome) => {
+    setCopied(false);
+    setOutcome(next);
+  };
 
   const visible = members
     .filter((member) => matchesQuery(member, query))
@@ -318,6 +327,18 @@ function MembersPanel({
 
   return (
     <>
+      {outcome?.kind === "invite" ? (
+        <ReissuedInvite invite={outcome.invite} copied={copied} onCopied={setCopied} onDismiss={() => setOutcome(null)} />
+      ) : outcome?.kind === "notice" ? (
+        <div className="grid gap-2">
+          <FormStatus message={outcome.message} />
+          <div>
+            <button type="button" onClick={() => setOutcome(null)} className={secondaryButtonClass}>
+              Done
+            </button>
+          </div>
+        </div>
+      ) : null}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
           <Users aria-hidden="true" className="mt-1 size-7 shrink-0 text-foreground" />
@@ -479,6 +500,7 @@ function MembersPanel({
                       mock={mock}
                       open={open}
                       onToggle={() => setOpenId(open ? null : rowId)}
+                      onReplaceOutcome={onReplaceOutcome}
                     />
                   );
                 })}
@@ -506,7 +528,7 @@ function MembersPanel({
                   {open ? (
                     <>
                       <MemberFacts member={member} mock={mock} />
-                      <RevokeControl member={member} />
+                      <RevokeControl member={member} onReplaceOutcome={onReplaceOutcome} />
                     </>
                   ) : null}
                 </li>
@@ -539,11 +561,13 @@ function MemberRows({
   mock,
   open,
   onToggle,
+  onReplaceOutcome,
 }: {
   member: MemberView;
   mock: boolean;
   open: boolean;
   onToggle: () => void;
+  onReplaceOutcome: (outcome: ReplaceOutcome) => void;
 }) {
   return (
     <>
@@ -572,7 +596,7 @@ function MemberRows({
           <td colSpan={6} className="px-4 py-3">
             <div className="grid gap-3">
               <MemberFacts member={member} mock={mock} />
-              <RevokeControl member={member} />
+              <RevokeControl member={member} onReplaceOutcome={onReplaceOutcome} />
             </div>
           </td>
         </tr>

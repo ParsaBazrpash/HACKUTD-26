@@ -1082,8 +1082,25 @@ describe('presence', () => {
     connect(w, 'dana');
     await w.revoke('dana');
     expect(view(w.h, 'dana', mod.my_presence)).toEqual([]);
-    // The commander still sees the revoked person's presence row, which is harmless metadata it already had.
-    expect(presenceOf(w, 'commander').has(w.people.get('dana')!.hex)).toBe(true);
+    // A revoked person drops out of everyone else's presence too.
+    expect(presenceOf(w, 'commander').has(w.people.get('dana')!.hex)).toBe(false);
+  });
+
+  it('Replace device: on a new browser the old name stays taken, a slightly different name joins pending', async () => {
+    const w = await World.create();
+    await w.joinAndAdmit('dana', 'technical');
+    await w.revoke('dana');
+    // dana lost her browser: a new Spacetime identity opens the new invite. The revoked name is
+    // reserved for the same identity, so "dana" is refused and nothing is inserted.
+    await w.join('dana-new-browser', 'technical', 'dana');
+    expect(w.allRows('dana-new-browser')).toEqual([]);
+    // With a slightly different name the same person gets in, pending until the commander admits.
+    await w.join('dana-new-browser-2', 'technical', 'dana (new laptop)');
+    const rows = w.allRows('dana-new-browser-2');
+    expect(rows.map((r) => [r.displayName, r.state])).toEqual([['dana (new laptop)', 'pending']]);
+    // The same sign-in (keys lost, identity kept) may still take the old name back.
+    await w.join('dana', 'technical', 'dana');
+    expect(w.allRows('dana').some((r) => r.state === 'pending' && r.displayName === 'dana')).toBe(true);
   });
 
   it('forgets throwaway identities when their last connection closes', async () => {

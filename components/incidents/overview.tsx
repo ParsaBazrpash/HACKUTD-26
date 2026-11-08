@@ -169,9 +169,8 @@ function NeedsAttention({ incidentId }: { incidentId: string }) {
                 />
                 <span className="min-w-0">
                   <span className="block break-words text-sm font-medium text-foreground">{item.title}</span>
-                  <span className="block break-words text-sm text-muted">
-                    <SafeText text={item.detail} />
-                  </span>
+                  {/* Plain text: the row is already a link, and SafeText would nest a second anchor. */}
+                  <span className="block break-words text-sm text-muted">{item.detail}</span>
                 </span>
                 <span aria-hidden="true" className="text-sm text-muted">
                   →

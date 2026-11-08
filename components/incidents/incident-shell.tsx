@@ -11,7 +11,8 @@ import { PasskeyLockCard } from "@/components/security/passkey-lock-card";
 import { connectionLabel, phaseLabel, ROLE_LABELS } from "@/components/incidents/labels";
 import { SectionNav } from "@/components/incidents/section-nav";
 import { SafeText } from "@/components/incidents/safe-text";
-import { listIntegrityFindings, failureLabel, formatSince } from "@/components/incidents/situation";
+import { listIntegrityFindings, failureLabel, formatLead, formatSince } from "@/components/incidents/situation";
+import { computeDeadlines, nextCountdown } from "@/lib/legal";
 import { useBrowserNow } from "@/hooks/use-browser-now";
 import { useIncident } from "@/hooks/use-incident";
 import { getIncidentClient, isMockIncidentClient } from "@/lib/client";
@@ -152,6 +153,9 @@ function Room({
   const elapsed = now === null || Number.isNaN(detected) ? null : now - detected;
   const severity = state.status?.severity;
   const { badges } = attentionFor(state, now);
+  // PLAN 7: the deadline countdown stays visible on every section, not only the Overview.
+  const urgent = now === null ? null : nextCountdown(computeDeadlines(state, new Date(now)));
+  const urgentLead = urgent?.dueAt && now !== null ? formatLead(urgent.dueAt.getTime() - now) : null;
   const mock = isMockIncidentClient();
 
   return (
@@ -262,9 +266,17 @@ function Room({
             ) : (
               <span className="text-alert">Integrity failed</span>
             )}
+            {urgentLead ? (
+              <>
+                <span aria-hidden="true">·</span>
+                <span className={urgent?.clockStatus === "elapsed" ? "text-alert" : urgent?.clockStatus === "due_soon" ? "text-signal" : undefined}>
+                  Next deadline {urgentLead}
+                </span>
+              </>
+            ) : null}
             <span className="lg:hidden">
               <span aria-hidden="true">· </span>
-              {state.me ? ROLE_LABELS[state.me.role] : "Member"}
+              {state.me ? ROLE_LABELS[state.me.role] : "Member"}, {connectionLabel(state.connection, mock).toLowerCase()}
             </span>
           </p>
         </header>

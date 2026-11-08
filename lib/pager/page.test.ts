@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { b64urlEncode } from '@/lib/crypto/b64url';
 import { sealContact } from '@/lib/crypto/org';
 import { newSeenPages, handlePage, PAGE_MAX_SKEW_MS } from './page';
-import { SPOKEN_PROMPT, SPOKEN_GOODBYE } from './twilio';
-import { buildWorld, certify, fakeNetwork, NOW, ORG_ID, PHONES, COMMANDER_PHONE, type World } from './testkit';
+import { SPOKEN_PROMPT, SPOKEN_GOODBYE, SMS_PAGE_BODY } from './twilio';
+import { buildWorld, certify, fakeNetwork, INCIDENT_ID, NOW, ORG_ID, PHONES, COMMANDER_PHONE, type World } from './testkit';
 import { generateDeviceKeys } from '@/lib/crypto/keys';
 
 vi.mock('server-only', () => ({}));
@@ -31,7 +31,7 @@ describe('POST /api/page logic', () => {
   it('dials each certified target once and writes calling', async () => {
     const w = await buildWorld();
     const r = await run(w);
-    expect(r.result).toEqual({ status: 200, body: { ok: true, dialed: 3, failed: 0 } });
+    expect(r.result).toEqual({ status: 200, body: { ok: true, dialed: 3, failed: 0, texted: 3 } });
     expect(r.net.twilio.map((c) => c.to).sort()).toEqual([...PHONES].sort());
     expect(r.net.updates.map((u) => u.status)).toEqual(['calling', 'calling', 'calling']);
     const c = r.net.twilio[0];
@@ -39,6 +39,48 @@ describe('POST /api/page logic', () => {
     expect(c.twiml).toContain(`<Say>${SPOKEN_GOODBYE}</Say>`);
     expect(c.twiml).toContain('numDigits="1" timeout="10"');
     expect(c.callback).toMatch(/^https:\/\/haven\.example\.com\/api\/twilio\/voice\?pageId=.+&orgMemberId=\d+&t=[\w-]{43}$/);
+  });
+
+  it('texts each target at the same time, with the same facts as the call and nothing else', async () => {
+    const w = await buildWorld();
+    const r = await run(w);
+    expect(r.net.sms.map((m) => m.to).sort()).toEqual([...PHONES].sort());
+    for (const m of r.net.sms) {
+      expect(m.from).toBe(w.cfg.twilioFrom);
+      expect(m.body).toBe(SMS_PAGE_BODY);
+      expect(m.body).toContain('Reply 4');
+      expect(m.body).toContain('STOP');
+      expect(m.body).not.toMatch(/https?:|\d{6}|Casey|Dana|Tom|Ravi/);
+      expect(m.body).not.toContain(INCIDENT_ID);
+      expect(m.body).not.toContain(w.pageId);
+      expect(m.body).not.toContain(ORG_ID);
+    }
+  });
+
+  it('a refused page sends no text', async () => {
+    const w = await buildWorld();
+    const r = await run(w, (b) => {
+      b.sentAt = NOW + 10 * 60_000;
+    });
+    expect(r.net.sms).toHaveLength(0);
+  });
+
+  it('keeps the page open as calling when only the call fails (the text can still be answered)', async () => {
+    const w = await buildWorld();
+    const net = fakeNetwork(w);
+    net.failCall = true;
+    const result = await handlePage(JSON.stringify(w.body), { cfg: w.cfg, fetch: net.fetch, now: () => NOW, seen: newSeenPages() });
+    expect(result.body).toEqual({ ok: true, dialed: 3, failed: 0, texted: 3 });
+    expect(net.updates.map((u) => u.status)).toEqual(['calling', 'calling', 'calling']);
+  });
+
+  it('keeps the page open as calling when only the text fails', async () => {
+    const w = await buildWorld();
+    const net = fakeNetwork(w);
+    net.failSms = true;
+    const result = await handlePage(JSON.stringify(w.body), { cfg: w.cfg, fetch: net.fetch, now: () => NOW, seen: newSeenPages() });
+    expect(result.body).toEqual({ ok: true, dialed: 3, failed: 0, texted: 0 });
+    expect(net.updates.map((u) => u.status)).toEqual(['calling', 'calling', 'calling']);
   });
 
   it('never puts a phone number in the response', async () => {
@@ -252,7 +294,7 @@ describe('POST /api/page logic', () => {
     const net = fakeNetwork(w);
     net.failTwilio = true;
     const result = await handlePage(JSON.stringify(w.body), { cfg: w.cfg, fetch: net.fetch, now: () => NOW, seen: newSeenPages() });
-    expect(result.body).toEqual({ ok: true, dialed: 0, failed: 3 });
+    expect(result.body).toEqual({ ok: true, dialed: 0, failed: 3, texted: 0 });
     expect(net.updates.map((u) => u.status)).toEqual(['failed', 'failed', 'failed']);
   });
 });

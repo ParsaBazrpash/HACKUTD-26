@@ -15,6 +15,16 @@ export const SPOKEN_PROMPT =
 export const SPOKEN_GOODBYE = 'Open HAVEN on your personal phone. Goodbye.';
 export const SPOKEN_ACK = 'Acknowledged. Open HAVEN now.';
 
+/**
+ * The page text. Same facts as the call and nothing more: no incident, org or person name, no link, no code.
+ * Replying 4 acknowledges, exactly like pressing 4 on the call.
+ */
+export const SMS_PAGE_BODY =
+  'HAVEN incident page. Open HAVEN on your personal phone. HAVEN will never ask you for a code. Reply 4 to acknowledge. Reply STOP to opt out.';
+export const SMS_ACK = 'Acknowledged. Open HAVEN now.';
+export const SMS_HINT = 'Reply 4 to acknowledge this page. Then open HAVEN on your personal phone.';
+export const SMS_RETRY = 'Could not record that. Open HAVEN on your personal phone.';
+
 const isDecimalId = (s: string): boolean => /^(0|[1-9][0-9]{0,19})$/.test(s);
 
 async function hmac(hash: 'SHA-256' | 'SHA-1', key: Uint8Array, msg: Uint8Array): Promise<Uint8Array> {
@@ -85,6 +95,9 @@ export function pageTwiml(actionUrl: string): string {
   );
 }
 
+/** A reply to an inbound text. Plain text only, escaped. An empty Response sends nothing. */
+export const smsReplyTwiml = (text: string): string => `${HEAD}<Response><Message>${xmlEscape(text)}</Message></Response>`;
+
 export const ackTwiml = (): string => `${HEAD}<Response><Say>${xmlEscape(SPOKEN_ACK)}</Say></Response>`;
 
 /** Wrong digit, first time: ask once more. The second attempt (r=1) just says goodbye. */
@@ -106,6 +119,25 @@ export async function placeCall(cfg: PagerConfig, doFetch: typeof fetch, to: str
     for (const e of ['initiated', 'ringing', 'answered', 'completed']) body.append('StatusCallbackEvent', e);
     const auth = Buffer.from(`${cfg.twilioSid}:${cfg.twilioToken}`).toString('base64');
     const res = await doFetch(`https://api.twilio.com/2010-04-01/Accounts/${cfg.twilioSid}/Calls.json`, {
+      method: 'POST',
+      headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** Sends one page text through the Twilio REST API from TWILIO_FROM. Returns true on a 2xx answer. Never logs the number. */
+export async function sendSms(cfg: PagerConfig, doFetch: typeof fetch, to: string): Promise<boolean> {
+  try {
+    const body = new URLSearchParams();
+    body.set('To', to);
+    body.set('From', cfg.twilioFrom);
+    body.set('Body', SMS_PAGE_BODY);
+    const auth = Buffer.from(`${cfg.twilioSid}:${cfg.twilioToken}`).toString('base64');
+    const res = await doFetch(`https://api.twilio.com/2010-04-01/Accounts/${cfg.twilioSid}/Messages.json`, {
       method: 'POST',
       headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
       body: body.toString(),

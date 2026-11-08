@@ -5,19 +5,17 @@ import { Radar, X } from "lucide-react";
 import {
   buildBlastModel,
   CENTER,
-  exposureStep,
   RING_RADIUS,
   roundTripNote,
   RINGS,
-  shortCount,
   stateDeadlines,
   stateLabel,
-  US_TILES,
   VIEW,
   type BlastModel,
   type MapNode,
   type Ring,
 } from "@/components/incidents/blast-radius-model";
+import { ExposureMap } from "@/components/incidents/exposure-map";
 import { assetLabel, dataTypeLabel, ROLE_LABELS, scopeStatusLabel } from "@/components/incidents/labels";
 import { SafeText } from "@/components/incidents/safe-text";
 import { formatLead } from "@/components/incidents/situation";
@@ -30,6 +28,7 @@ import { getIncidentClient, isMockIncidentClient } from "@/lib/client";
 import { clientErrorMessage } from "@/lib/client/errors";
 import { SCOPE_STATUSES, type ScopeBody } from "@/lib/protocol/events";
 import { medianSync, subscribeSync, syncCount, syncSampleSince, syncSamples, type SyncSample } from "@/lib/client/sync-meter";
+import { BAND_LABEL, exposureBand, leadingStatus } from "@/lib/geo/exposure";
 import { clockStatusLabel, computeDeadlines, showsConfirmedCountdown } from "@/lib/legal";
 import type { ComputedDeadline } from "@/lib/legal";
 import type { IncidentState, MemberRef, ScopeItem } from "@/lib/client/types";
@@ -70,14 +69,6 @@ const ASSET_GLYPH: Record<string, string> = {
   network: "N",
   other: "O",
 };
-
-const TILE_TONE = [
-  "border-line bg-panel-raised text-muted/60",
-  "border-alert/30 bg-alert/20 text-foreground",
-  "border-alert/50 bg-alert/40 text-foreground",
-  "border-alert/70 bg-alert/70 text-background",
-  "border-alert bg-alert text-background",
-] as const;
 
 const EMPTY_SAMPLES: readonly SyncSample[] = [];
 // Room around the rings for node labels, so names on the outer ring are not clipped.
@@ -335,46 +326,11 @@ function StateGrid({
     <div className="min-w-0">
       <h3 className="text-sm font-medium">Where the affected people live</h3>
       <p className="mt-1 text-xs text-muted">Shaded by residents on exposed systems. Open a state for the legal clocks it starts.</p>
-      <div className="mt-3 grid grid-cols-12 gap-0.5 sm:gap-1" role="group" aria-label="US states with affected residents">
-        {Object.entries(US_TILES).map(([code, tile]) => {
-          const row = model.states.get(code);
-          const exposed = row?.exposed ?? 0;
-          const other = row?.other ?? 0;
-          const step = exposureStep(exposed);
-          const place = { gridColumn: tile.col + 1, gridRow: tile.row + 1 };
-          const base = "flex aspect-square min-w-0 flex-col items-center justify-center rounded-[4px] border text-[9px] leading-none sm:text-[10px]";
-          if (exposed === 0 && other === 0) {
-            return (
-              <div key={code} aria-hidden="true" style={place} className={`${base} ${TILE_TONE[0]}`}>
-                {code}
-              </div>
-            );
-          }
-          const isSelected = selected?.kind === "state" && selected.code === code;
-          const tone = exposed === 0 ? "border-verified/60 bg-verified/10 text-verified" : TILE_TONE[step];
-          return (
-            <button
-              key={code}
-              type="button"
-              style={place}
-              aria-pressed={isSelected}
-              aria-label={`${tile.name}: ${exposed.toLocaleString("en-US")} residents exposed${other > 0 ? `, ${other.toLocaleString("en-US")} on systems outside the blast radius` : ""}`}
-              onClick={() => onSelect({ kind: "state", code })}
-              className={`${base} ${tone} font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-signal ${isSelected ? "ring-2 ring-foreground" : ""}`}
-            >
-              <span>{code}</span>
-              {exposed > 0 ? <span className="mt-0.5 hidden font-normal tabular-nums sm:block">{shortCount(exposed)}</span> : null}
-            </button>
-          );
-        })}
-      </div>
-      <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-muted" aria-label="Shading">
-        <li className="flex items-center gap-1.5"><span aria-hidden="true" className="size-2.5 rounded-sm bg-alert/20" />under 250</li>
-        <li className="flex items-center gap-1.5"><span aria-hidden="true" className="size-2.5 rounded-sm bg-alert/40" />250 to 999</li>
-        <li className="flex items-center gap-1.5"><span aria-hidden="true" className="size-2.5 rounded-sm bg-alert/70" />1,000 to 9,999</li>
-        <li className="flex items-center gap-1.5"><span aria-hidden="true" className="size-2.5 rounded-sm bg-alert" />10,000 or more</li>
-        <li className="flex items-center gap-1.5"><span aria-hidden="true" className="size-2.5 rounded-sm border border-verified/60 bg-verified/10" />outside the blast radius only</li>
-      </ul>
+      <ExposureMap
+        model={model}
+        selectedCode={selected?.kind === "state" ? selected.code : null}
+        onSelectCode={(code) => onSelect({ kind: "state", code })}
+      />
       {model.unmappedSystems > 0 ? (
         <p className="mt-3 text-xs leading-5 text-signal">
           {model.unmappedSystems} exposed system{model.unmappedSystems === 1 ? " holds" : "s hold"} personal data with no resident
@@ -501,13 +457,21 @@ function QuickStatus({ item }: { item: ScopeItem }) {
 
 function StateDetail({ state, model, code, now }: { state: IncidentState; model: BlastModel; code: string; now: number | null }) {
   const row = model.states.get(code);
+  const band = exposureBand(row?.exposed ?? 0, row?.other ?? 0);
+  const status = leadingStatus(row?.systems.map((system) => system.status) ?? []);
   const deadlines = now === null ? [] : stateDeadlines(code, computeDeadlines(state, new Date(now)));
   return (
     <div className="grid gap-3">
       <div>
-        <p className="text-base font-medium text-foreground">{stateLabel(code)}</p>
+        <p className="text-base font-medium text-foreground">
+          {stateLabel(code)} ({code})
+        </p>
         <p className="mt-1 text-sm text-muted">
-          {(row?.exposed ?? 0).toLocaleString("en-US")} residents on exposed systems
+          {band === "none" ? "No exposure on the record" : `${BAND_LABEL[band]} exposure`}
+          {status ? ` · ${scopeStatusLabel(status)}` : ""}
+        </p>
+        <p className="mt-1 text-sm text-muted">
+          {(row?.exposed ?? 0).toLocaleString("en-US")} affected residents
           {row && row.other > 0 ? ` · ${row.other.toLocaleString("en-US")} on systems outside the blast radius` : ""}
         </p>
       </div>

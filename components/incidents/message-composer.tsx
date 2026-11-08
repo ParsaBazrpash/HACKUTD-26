@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Send } from "lucide-react";
 import { CHANNEL_LABELS } from "@/components/incidents/labels";
 import { canCompose, draftChatBody, type ChatChannel } from "@/components/incidents/room-controls";
@@ -14,12 +14,28 @@ const fieldClass =
 const primaryButtonClass =
   "inline-flex min-h-11 items-center justify-center rounded-lg bg-signal px-4 py-2 text-sm font-medium text-signal-ink hover:bg-signal-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal";
 
-export function MessageComposer({ channel, compact = false }: { channel: ChatChannel; compact?: boolean }) {
+export function MessageComposer({
+  channel,
+  compact = false,
+  dock = false,
+}: {
+  channel: ChatChannel;
+  compact?: boolean;
+  dock?: boolean;
+}) {
   const state = useIncident();
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const field = useRef<HTMLTextAreaElement>(null);
   const allowed = canCompose(state.me?.role, state.me?.state, channel);
+
+  useEffect(() => {
+    const element = field.current;
+    if (!element) return;
+    element.style.height = "auto";
+    element.style.height = `${Math.min(element.scrollHeight, 128)}px`;
+  }, [text]);
   if (!allowed) return null;
 
   async function send(event: FormEvent<HTMLFormElement>) {
@@ -42,6 +58,51 @@ export function MessageComposer({ channel, compact = false }: { channel: ChatCha
   }
 
   const label = CHANNEL_LABELS[channel];
+
+  function onDockKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      event.currentTarget.form?.requestSubmit();
+    }
+  }
+
+  if (dock) {
+    return (
+      <form onSubmit={send} className="border-t border-line p-3" aria-label={`Message ${label}`}>
+        <div className="flex items-end gap-2">
+          <label className="sr-only" htmlFor={`message-${channel}`}>
+            Message {label}
+          </label>
+          <textarea
+            ref={field}
+            id={`message-${channel}`}
+            name={`message-${channel}`}
+            value={text}
+            maxLength={4000}
+            rows={1}
+            placeholder={`Message ${label}...`}
+            onChange={(event) => setText(event.target.value)}
+            onKeyDown={onDockKeyDown}
+            className="max-h-32 min-h-11 min-w-0 flex-1 resize-none rounded-xl border border-line bg-panel px-3 py-2.5 text-sm text-foreground placeholder:text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+          />
+          <button
+            type="submit"
+            disabled={sending || text.trim().length === 0}
+            aria-label={sending ? "Sending" : "Send"}
+            className="grid size-11 shrink-0 place-items-center rounded-xl bg-signal text-signal-ink hover:bg-signal-hover disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+          >
+            <Send aria-hidden="true" className="size-4" />
+          </button>
+        </div>
+        {error ? (
+          <p role="alert" className="mt-2 text-sm text-alert">
+            {error}
+          </p>
+        ) : null}
+      </form>
+    );
+  }
+
   if (compact) {
     return (
       <form onSubmit={send} className="mt-4" aria-label={`Message ${label}`}>

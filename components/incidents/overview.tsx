@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Activity, Ban, Calendar, ClipboardList, Crosshair, Hash, Layers } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { CHANNEL_LABELS } from "@/components/incidents/labels";
+import { CHANNEL_BLURBS, CHANNEL_LABELS } from "@/components/incidents/labels";
 import { ReachableStrip } from "@/components/incidents/paging-status";
 import { MessageComposer } from "@/components/incidents/message-composer";
 import { authorizedChatChannels, canCompose, isChatChannel } from "@/components/incidents/room-controls";
@@ -23,12 +23,6 @@ const linkClass =
   "shrink-0 text-sm text-signal hover:text-signal-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal";
 
 const panelClass = "min-w-0 rounded-xl border border-line bg-panel p-4 sm:p-5";
-
-const CHANNEL_BLURB = {
-  command: "Coordination for everyone in the room.",
-  privileged: "Privileged communication. Attorney-client privileged and confidential.",
-  technical: "Forensics and containment.",
-} as const;
 
 function Stat({
   icon: Icon,
@@ -223,7 +217,7 @@ function ChannelPreview() {
               </span>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-foreground">{CHANNEL_LABELS[channel.kind]}</p>
-                <p className="text-xs leading-5 text-muted">{CHANNEL_BLURB[channel.kind]}</p>
+                <p className="text-xs leading-5 text-muted">{CHANNEL_BLURBS[channel.kind]}</p>
                 {channel.waitingForKeys ? <p className="mt-1 text-xs text-muted">Waiting for channel keys.</p> : null}
               </div>
               <span

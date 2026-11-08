@@ -14,6 +14,12 @@ export const CHANNEL_LABELS = {
   technical: "#technical",
 } as const;
 
+export const CHANNEL_BLURBS = {
+  command: "Coordination for everyone in the room.",
+  privileged: "Privileged communication. Attorney-client privileged and confidential.",
+  technical: "Forensics and containment.",
+} as const;
+
 const PHASE_LABELS: Record<string, string> = {
   preparation: "Preparation",
   detection_analysis: "Detection and analysis",

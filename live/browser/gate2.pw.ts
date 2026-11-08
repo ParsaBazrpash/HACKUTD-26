@@ -68,11 +68,13 @@ test("commander invites counsel, counsel joins, commander admits, they exchange 
   await counsel.getByRole("link", { name: new RegExp(title) }).click();
   await expect(counsel.getByText(title).first()).toBeVisible();
   await counsel.getByRole("link", { name: "Secure Channels" }).click();
+  await counsel.getByRole("button", { name: "#privileged" }).click();
   const composer = counsel.getByRole("form", { name: /Message .*privileged/i });
   await composer.getByRole("textbox").fill(secret);
   await composer.getByRole("button", { name: "Send" }).click();
   await expect(counsel.getByText(secret).first()).toBeVisible();
   await commander.getByRole("link", { name: "Secure Channels" }).click();
+  await commander.getByRole("button", { name: "#privileged" }).click();
   await expect(commander.getByText(secret).first()).toBeVisible();
 
   // 6. Both Overview pages report that the integrity check passed.

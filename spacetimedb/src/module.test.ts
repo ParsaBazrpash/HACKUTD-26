@@ -1015,6 +1015,8 @@ describe('append-only surface (T14)', () => {
         'add_from_roster', 'approve_member', 'create_enroll_link', 'create_org', 'enroll_member', 'link_incident_org', 'my_org',
         'my_org_status', 'my_pages', 'my_roster', 'page_timeout', 'pager_org_member', 'pager_page', 'pager_update', 'request_page',
         'revoke_org_member',
+        // live presence: connect/disconnect hooks write only the presence table, never events or roles
+        'my_presence', 'presence_connect', 'presence_disconnect',
       ].sort(),
     );
     // pager_update only writes page status, gated to the pager identity; it never touches events.
@@ -1031,5 +1033,68 @@ describe('no module-side secrets (T28)', () => {
       const src = readFileSync(new URL(f, dir), 'utf8').replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
       expect(src, f).not.toMatch(/ctx\.random|Math\.random|getRandomValues|randomUUID|randomBytes/);
     }
+  });
+});
+
+// --- presence (lifecycle reducers + my_presence) ------------------------------
+
+describe('presence', () => {
+  const connect = (w: World, who: string) => call(w.h, who, mod.presence_connect, {});
+  const disconnect = (w: World, who: string) => call(w.h, who, mod.presence_disconnect, {});
+  const presenceOf = (w: World, viewer: string) =>
+    new Map(view(w.h, viewer, mod.my_presence).map((r: any) => [r.identity.toHexString() as string, r]));
+
+  it('counts connections, keeps last seen, and never goes below zero', async () => {
+    const w = await World.create();
+    await w.joinAndAdmit('dana', 'technical');
+    connect(w, 'dana');
+    connect(w, 'dana');
+    expect(presenceOf(w, 'commander').get(w.people.get('dana')!.hex)?.connections).toBe(2);
+    disconnect(w, 'dana');
+    disconnect(w, 'dana');
+    advanceMin(w.h, 5);
+    disconnect(w, 'dana');
+    const row = presenceOf(w, 'commander').get(w.people.get('dana')!.hex);
+    expect(row?.connections).toBe(0);
+    // A stray extra disconnect still records the time but never goes negative.
+    expect(row?.lastSeen.microsSinceUnixEpoch).toBe(w.h.clock.now().microsSinceUnixEpoch);
+  });
+
+  it('shows presence only to people who share an incident, using the my_members rule', async () => {
+    const w = await World.create();
+    await w.joinAndAdmit('dana', 'technical');
+    await w.join('pat', 'counsel');
+    for (const who of ['commander', 'dana', 'pat', 'stranger']) connect(w, who);
+    const hex = (n: string) => w.people.get(n)?.hex ?? identityHex(w.h, n);
+
+    // A stranger with no rows sees nobody, not even themselves.
+    expect(view(w.h, 'stranger', mod.my_presence)).toEqual([]);
+    // An active member sees everyone in the incident (pending included), and no outsider.
+    expect(new Set(presenceOf(w, 'dana').keys())).toEqual(new Set([hex('commander'), hex('dana'), hex('pat')]));
+    // A pending joiner sees only the commander and themselves.
+    expect(new Set(presenceOf(w, 'pat').keys())).toEqual(new Set([hex('commander'), hex('pat')]));
+  });
+
+  it('a revoked member stops seeing presence', async () => {
+    const w = await World.create();
+    await w.joinAndAdmit('dana', 'technical');
+    connect(w, 'commander');
+    connect(w, 'dana');
+    await w.revoke('dana');
+    expect(view(w.h, 'dana', mod.my_presence)).toEqual([]);
+    // The commander still sees the revoked person's presence row, which is harmless metadata it already had.
+    expect(presenceOf(w, 'commander').has(w.people.get('dana')!.hex)).toBe(true);
+  });
+
+  it('forgets throwaway identities when their last connection closes', async () => {
+    const w = await World.create();
+    connect(w, 'drive-by');
+    expect([...w.h.db.presence.iter()].some((r: any) => r.identity.toHexString() === identityHex(w.h, 'drive-by'))).toBe(true);
+    disconnect(w, 'drive-by');
+    expect([...w.h.db.presence.iter()].some((r: any) => r.identity.toHexString() === identityHex(w.h, 'drive-by'))).toBe(false);
+    // A member's row stays after they leave, so the commander can see when they were last here.
+    connect(w, 'commander');
+    disconnect(w, 'commander');
+    expect([...w.h.db.presence.iter()].some((r: any) => r.identity.toHexString() === w.cmd.hex)).toBe(true);
   });
 });

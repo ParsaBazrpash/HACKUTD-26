@@ -89,6 +89,16 @@ export interface BackendRows {
   invites: InviteRow[];
   joinAttempts: AttemptRow[];
   checkpoints: CheckpointRow[];
+  /** Presence of people I share an incident with (`my_presence`). Absent on backends without it. */
+  presence?: PresenceRow[];
+}
+
+export interface PresenceRow {
+  identityHex: string;
+  /** Open connections right now. Zero means offline. */
+  connections: number;
+  /** Last connect or disconnect. */
+  lastSeenMicros: bigint;
 }
 
 export type ConnectionState = 'connecting' | 'ready' | 'offline' | 'error';

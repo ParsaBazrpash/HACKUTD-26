@@ -145,6 +145,20 @@ export const REVOKE_REASON_MAX = 500;
  * Revoke from the room: only the active commander, only an active member who is not the commander
  * (and not this device). A pending person is declined on the admission card instead.
  */
+/**
+ * Replace device: the commander revokes the old seat (fresh channel keys, old keys banned for good)
+ * and then issues a new invite for the same role. Only seats an invite can recreate qualify.
+ */
+export function replaceDeviceEnabled(
+  me: { identity: string; role: Role; state: MemberStateName } | null,
+  member: { identity: string; role: Role; state: MemberStateName },
+): boolean {
+  return revokeEnabled(me, member) && isInviteRole(member.role);
+}
+
+/** Reason signed into the record when the commander left the field empty on Replace device. */
+export const REPLACE_DEVICE_REASON = "Lost device or browser. Seat replaced with a new invite.";
+
 export function revokeEnabled(
   me: { identity: string; role: Role; state: MemberStateName } | null,
   member: { identity: string; role: Role; state: MemberStateName },

@@ -54,7 +54,7 @@ The pager is three routes: `app/api/page` (a page request from the commander's b
 | `SPACETIME_HOST` | config | `https://` Spacetime host |
 | `SPACETIME_DB` | config | Database name |
 | `ORG_ADMIN_SIGN_PUB` | config | Org admin signing public keys the pager trusts, comma-separated, no spaces |
-| `PUBLIC_BASE_URL` | config | Production URL, `https://`, no trailing slash. Twilio webhooks and signatures use it |
+| `PUBLIC_BASE_URL` | config | Production URL, `https://`, no trailing slash. Twilio webhooks and signatures use it, and production redirects every other host to it so keys and passkeys stay on one web address |
 | `PAGER_ALLOWED_NUMBERS` | secret, optional | If set, the only numbers the pager will call or text, E.164, comma-separated |
 
 Setup steps:

@@ -21,7 +21,9 @@ import { ImHereButton, PagingStatus } from "@/components/incidents/paging-status
 import { linkVerifiedLabel } from "@/components/incidents/room-controls";
 import { SafeText } from "@/components/incidents/safe-text";
 import { LocalTime } from "@/components/local-time";
+import { useBrowserNow } from "@/hooks/use-browser-now";
 import { useIncident } from "@/hooks/use-incident";
+import { formatAgo } from "@/lib/client/presence";
 import { isMockIncidentClient } from "@/lib/client";
 import type { MemberView } from "@/lib/client/types";
 import {
@@ -81,7 +83,15 @@ function statusTone(member: MemberView): { label: string; dot: string; text: str
   if (member.state === "pending") return { label: "Pending", dot: "bg-muted", text: "text-muted" };
   if (member.state === "revoked") return { label: "Revoked", dot: "bg-alert", text: "text-alert" };
   if (member.online === false) return { label: "Offline", dot: "bg-muted", text: "text-muted" };
+  // Admitted is not the same as here: say Online only when the server reports a live connection.
+  if (member.online === true) return { label: "Online", dot: "bg-signal", text: "text-signal" };
   return { label: "Active", dot: "bg-signal", text: "text-signal" };
+}
+
+function lastSeenText(member: MemberView, now: number | null): string | null {
+  if (member.state !== "active" || member.online !== false) return null;
+  if (!member.lastSeenAt) return "Not seen yet";
+  return now === null ? null : `Last seen ${formatAgo(member.lastSeenAt, now)}`;
 }
 
 function matchesQuery(member: MemberView, query: string): boolean {
@@ -182,10 +192,15 @@ function AccessPill({ role }: { role: Role }) {
 
 function StatusMark({ member }: { member: MemberView }) {
   const tone = statusTone(member);
+  const now = useBrowserNow();
+  const seen = lastSeenText(member, now);
   return (
-    <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${tone.text}`}>
-      <span aria-hidden="true" className={`size-1.5 rounded-full ${tone.dot}`} />
-      {tone.label}
+    <span className="inline-flex flex-col gap-0.5">
+      <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${tone.text}`}>
+        <span aria-hidden="true" className={`size-1.5 rounded-full ${tone.dot}`} />
+        {tone.label}
+      </span>
+      {seen ? <span className="text-[11px] text-muted">{seen}</span> : null}
     </span>
   );
 }

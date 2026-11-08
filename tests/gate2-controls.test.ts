@@ -19,6 +19,8 @@ import {
   revokeConfirmPhrase,
   revokeConfirmed,
   revokeEnabled,
+  replaceDeviceEnabled,
+  REPLACE_DEVICE_REASON,
 } from "@/components/incidents/room-controls";
 import { createMockIncidentClient } from "@/lib/client/mock";
 import { ChatBodySchema } from "@/lib/protocol/events";
@@ -154,6 +156,14 @@ describe("revoke from the room", () => {
     expect(revokeEnabled({ ...me, state: "revoked" }, active)).toBe(false);
     expect(revokeEnabled({ ...me, role: "counsel" }, active)).toBe(false);
     expect(revokeEnabled(null, active)).toBe(false);
+    // Replace device follows the revoke rule and only for roles an invite can recreate.
+    expect(replaceDeviceEnabled(me, active)).toBe(true);
+    expect(replaceDeviceEnabled(me, me)).toBe(false);
+    expect(replaceDeviceEnabled(me, { ...active, role: "commander" })).toBe(false);
+    expect(replaceDeviceEnabled(me, { ...active, state: "revoked" })).toBe(false);
+    expect(replaceDeviceEnabled({ ...me, role: "counsel" }, active)).toBe(false);
+    expect(replaceDeviceEnabled(null, active)).toBe(false);
+    expect(REPLACE_DEVICE_REASON.length).toBeLessThanOrEqual(REVOKE_REASON_MAX);
 
     await commander.revokeMember(active.memberId, "Laptop seized.".slice(0, REVOKE_REASON_MAX));
     expect(commander.getState().members.find((member) => member.memberId === active.memberId)?.state).toBe("revoked");

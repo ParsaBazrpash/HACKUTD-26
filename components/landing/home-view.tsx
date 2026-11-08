@@ -1,7 +1,7 @@
 import { Fingerprint, Radio, Scale, Users } from "lucide-react";
 import { ButtonLink } from "@/components/ui/button-link";
 import { Main } from "@/components/shell/main";
-import { describeClockStart, describeOffset, LEGAL_CATALOG } from "@/lib/legal";
+import { COUNSEL_REVIEW_WARNING, LEGAL_RULES } from "@/lib/legal";
 
 const roles = [
   {
@@ -88,18 +88,35 @@ export function HomeView() {
           <p className="text-sm text-muted">Planning aids. Counsel confirms whether a duty applies.</p>
         </div>
         <ul className="mt-4 divide-y divide-line border-y border-line">
-          {LEGAL_CATALOG.map((entry) => (
-            <li key={entry.id} className="grid gap-2 py-4 sm:grid-cols-[14rem_1fr]">
+          {LEGAL_RULES.map((rule) => (
+            <li key={rule.id} className="grid gap-2 py-4 sm:grid-cols-[14rem_1fr]">
               <div>
-                <p className="font-medium text-foreground">{entry.citation}</p>
-                <p className="mt-1 font-mono text-[11px] tracking-wide text-muted">
-                  {describeOffset(entry.offset)} from {describeClockStart(entry.clockStarts)}
-                </p>
+                <p className="font-medium text-foreground">{rule.citation}</p>
+                <p className="mt-1 text-sm text-muted">{rule.jurisdiction}</p>
+                <a
+                  href={rule.sourceUrl}
+                  rel="noopener noreferrer"
+                  target="_blank"
+                  className="mt-1 inline-block break-all font-mono text-[11px] tracking-wide text-signal underline decoration-signal/40 underline-offset-2"
+                >
+                  Source
+                </a>
               </div>
-              <p className="text-sm leading-6 text-muted">{entry.obligation}</p>
+              <div>
+                <p className="text-sm leading-6 text-foreground">{rule.name}</p>
+                <p className="mt-1 text-sm leading-6 text-muted">{rule.appliesWhen}</p>
+                <p className="mt-1 text-sm leading-6 text-muted">{rule.trigger}</p>
+                <p className="mt-1 text-sm leading-6 text-muted">{rule.calculation}</p>
+              </div>
             </li>
           ))}
         </ul>
+        <p className="mt-4 text-sm leading-6 text-muted">
+          CIRCIA covered-incident reporting is not in effect. The engine does not start a CIRCIA countdown. Notice
+          duties outside the rules above, including other US states, are flagged for counsel and are not given a
+          computed date.
+        </p>
+        <p className="mt-2 text-sm leading-6 text-muted">{COUNSEL_REVIEW_WARNING}</p>
       </section>
 
       <section className="mt-16" aria-labelledby="boundary-heading">

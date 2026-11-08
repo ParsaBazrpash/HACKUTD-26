@@ -7,17 +7,12 @@ import { scopeStatusLabel } from "@/components/incidents/labels";
 import { incidentSectionHref } from "@/components/incidents/sections";
 import { SafeText } from "@/components/incidents/safe-text";
 import { StatusForm } from "@/components/incidents/status-form";
-import {
-  exposedScope,
-  formatLead,
-  mostUrgentDeadline,
-  taskCounts,
-} from "@/components/incidents/situation";
+import { exposedScope, formatLead, taskCounts } from "@/components/incidents/situation";
 import { TimelineList } from "@/components/incidents/timeline-list";
 import { useBrowserNow } from "@/hooks/use-browser-now";
 import { useIncident } from "@/hooks/use-incident";
-import { projectLegalDeadlines } from "@/lib/legal";
-import type { LegalDeadlineStatus } from "@/lib/legal";
+import { computeDeadlines, nextCountdown } from "@/lib/legal";
+import type { ClockStatus } from "@/lib/legal";
 
 const linkClass =
   "text-sm text-signal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal";
@@ -50,19 +45,10 @@ export function IncidentOverview() {
 
   const exposed = exposedScope(state.scope);
   const counts = taskCounts(state.tasks);
-  const awareness = (state.discovery?.determinedAt ?? incident.createdAt).toISOString();
-  const deadlines =
-    now === null
-      ? null
-      : projectLegalDeadlines({
-          incidentId: incident.id,
-          awarenessAt: awareness,
-          now: new Date(now),
-          materialityDeterminedAt: state.materiality?.determinedAt.toISOString() ?? null,
-        });
-  const urgent = deadlines ? mostUrgentDeadline(deadlines) : null;
-  const urgentLead = urgent?.dueAt && now !== null ? formatLead(Date.parse(urgent.dueAt) - now) : null;
-  const urgentTone = urgentStatusTone(urgent?.status);
+  const deadlines = now === null ? null : computeDeadlines(state, new Date(now));
+  const urgent = deadlines ? nextCountdown(deadlines) : null;
+  const urgentLead = urgent?.dueAt && now !== null ? formatLead(urgent.dueAt.getTime() - now) : null;
+  const urgentTone = urgentStatusTone(urgent?.clockStatus);
   const recent = [...state.timeline].reverse().slice(0, 5);
 
   return (
@@ -87,7 +73,7 @@ export function IncidentOverview() {
         <Stat
           label="NEXT DEADLINE"
           value={urgent ? urgentLead ?? "Scheduled" : "None"}
-          hint={urgent ? urgent.citation : "No clock has a due time"}
+          hint={urgent ? urgent.rule.citation : "No clock has a due time"}
           tone={urgentTone}
         />
       </dl>
@@ -167,8 +153,8 @@ export function IncidentOverview() {
   );
 }
 
-function urgentStatusTone(status: LegalDeadlineStatus | undefined): string | undefined {
+function urgentStatusTone(status: ClockStatus | undefined): string | undefined {
   if (status === "elapsed") return "text-alert";
-  if (status === "due") return "text-signal";
+  if (status === "due_soon") return "text-signal";
   return undefined;
 }

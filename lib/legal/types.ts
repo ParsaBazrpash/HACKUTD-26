@@ -1,57 +1,60 @@
-import { z } from "zod";
-
 /**
- * Types the current legal catalog still needs.
- * Moved out of the pre-contract `types/` model in B2a.
- * B3 replaces this catalog with `computeDeadlines(state, now)`.
+ * Legal-engine types. Owned by `lib/legal`.
+ * The engine reads `IncidentState` and does not import the pre-contract model.
  */
 
-const idSchema = z.string().regex(/^[a-z0-9][a-z0-9_-]{2,63}$/);
-const timestampSchema = z.iso.datetime();
-const envelopeIdSchema = z.string().regex(/^[A-Za-z0-9_.:-]{1,128}$/);
+export const COUNSEL_REVIEW_WARNING =
+  "Example rules for demonstration. Verify with counsel for each matter.";
 
-const ciphertextEnvelopeSchema = z
-  .strictObject({
-    version: z.literal(1),
-    algorithm: z.literal("AES-GCM"),
-    provenance: z.enum(["fixture", "browser-sealed"]),
-    keyId: envelopeIdSchema,
-    nonce: envelopeIdSchema,
-    ciphertext: z.string().min(1).max(200_000),
-  })
-  .refine(
-    (envelope) => envelope.provenance !== "fixture" || envelope.ciphertext.startsWith("fixture:"),
-    "Fixture envelopes must be labeled. They are not ciphertext.",
-  );
-
-export const legalClockStartSchema = z.enum([
-  "awareness",
-  "materiality_determination",
-  "ransom_payment",
-]);
-
-export type LegalClockStart = z.infer<typeof legalClockStartSchema>;
-
-export const legalDeadlineStatusSchema = z.enum(["upcoming", "due", "elapsed", "unscheduled"]);
-
-export type LegalDeadlineStatus = z.infer<typeof legalDeadlineStatusSchema>;
+/** Whether the recorded facts bring a rule onto this incident. */
+export type Applicability = "applies" | "check" | "no";
 
 /**
- * A planning clock. Citation and obligation are public statute text.
- * Case-specific counsel notes stay in `sealedCounselNote`, which is null
- * until a later legal engine stores them from IncidentState.
+ * Clock position. `needs_counsel` and `not_in_effect` never carry a countdown.
+ * `due_soon` is a six-hour display threshold, not a statutory period.
  */
-export const legalDeadlineSchema = z.strictObject({
-  id: idSchema,
-  incidentId: idSchema,
-  catalogId: idSchema,
-  citation: z.string().min(1).max(160),
-  obligation: z.string().min(1).max(500),
-  clockStarts: legalClockStartSchema,
-  dueAt: timestampSchema.nullable(),
-  status: legalDeadlineStatusSchema,
-  scheduleNote: z.string().min(1).max(400).nullable(),
-  sealedCounselNote: ciphertextEnvelopeSchema.nullable(),
-});
+export type ClockStatus =
+  | "not_applicable"
+  | "not_in_effect"
+  | "needs_counsel"
+  | "not_started"
+  | "invalid_trigger"
+  | "future_trigger"
+  | "scheduled"
+  | "due_soon"
+  | "elapsed";
 
-export type LegalDeadline = z.infer<typeof legalDeadlineSchema>;
+export interface LegalRule {
+  id: string;
+  name: string;
+  jurisdiction: string;
+  citation: string;
+  sourceUrl: string;
+  /** When the recorded profile and scope bring this rule onto the incident. */
+  appliesWhen: string;
+  /** Protocol event that starts the clock. */
+  trigger: string;
+  /** How the due instant is calculated when a countdown runs. */
+  calculation: string;
+  /** Zone used for civil dates. Null when the deadline is a pure elapsed duration. */
+  timeZone: string | null;
+}
+
+/** Workflow mark from `deadline.update`. It does not rewrite the computed instant. */
+export interface RecordedDeadline {
+  status: "open" | "in_progress" | "done" | "not_applicable";
+  owner?: string;
+  note: string;
+  at: Date;
+}
+
+export interface ComputedDeadline {
+  rule: LegalRule;
+  applicability: Applicability;
+  clockStatus: ClockStatus;
+  startedAt: Date | null;
+  dueAt: Date | null;
+  explanation: string;
+  counselReview: string;
+  recorded: RecordedDeadline | null;
+}

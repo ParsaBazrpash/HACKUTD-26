@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { createMemoryLedger, createMemorySession, parseDemoLedger } from "@/lib/client/demo-ledger";
 import { createMockIncidentClient } from "@/lib/client/mock";
-import { projectLegalDeadlines } from "@/lib/legal";
+import { computeDeadlines } from "@/lib/legal";
 import { isKindAllowed, PayloadSchema } from "@/lib/protocol/events";
 import { CLINIC_INCIDENT_ID, createClinicFixture } from "@/lib/scenario/clinic";
 import { EMPTY_PROFILE, type ProfileBody, type StatusBody } from "@/lib/client/types";
@@ -88,13 +88,7 @@ describe("mock incident client", () => {
     expect(first.channels.find((channel) => channel.kind === "privileged")?.messages[0]?.text).toMatch(/Do not forward/);
 
     expect(first.discovery).not.toBeNull();
-    expect(() =>
-      projectLegalDeadlines({
-        incidentId: first.incident?.id ?? "",
-        awarenessAt: first.discovery?.determinedAt.toISOString() ?? "",
-        now: new Date("2026-11-07T18:00:00.000Z"),
-      }),
-    ).not.toThrow();
+    expect(() => computeDeadlines(first, new Date("2026-11-07T18:00:00.000Z"))).not.toThrow();
   });
 
   test("notifies once and leaves the previous snapshot untouched", async () => {

@@ -73,7 +73,7 @@ Message and record content (including attorney-client privileged communications)
 | T27 | Client calls a scheduled reducer directly | `ctx.senderAuth.isInternal` guard on every scheduled reducer | `sweep_invites` | Module test: member and commander calls refused, scheduler call runs | Done |
 | T28 | Weak randomness | Module never generates secrets (`ctx.random` is seeded from the timestamp); all keys, IVs, codes from browser `crypto.getRandomValues` / Web Crypto | Module, `lib/crypto/` | `module.test.ts` asserts the module source contains no randomness calls | Done |
 | T29 | Nonce reuse or homemade crypto | Fresh random 96-bit IV per encryption; keys rotate per epoch; Web Crypto plus audited `@noble` only; domain-separated canonical encoding for every hash, signature, HMAC and KDF | `encoding.ts`, `lib/crypto/` | Unit tests and shared vectors | Done |
-| T30 | Server lies about time | Author-signed `sentAt` shown beside `serverTs`, drift over 5 minutes flagged; legal clocks start from signed human decisions (`legal.discovery`, `legal.materiality`) | `verify.ts`, `lib/legal/` | `legal.test.ts`, `verify.test.ts` drift case | Planned |
+| T30 | Server lies about time | Author-signed `sentAt` shown beside `serverTs`, drift over 5 minutes flagged; legal clocks start from signed human decisions (`legal.discovery`, `legal.materiality`) | `verify.ts`, `lib/legal/` | `tests/legal-deadlines.test.ts` uses the recorded determination, not server time; `verify.test.ts` drift case still open | Planned |
 | T31 | Network eavesdropping or MITM | TLS (wss, https, HSTS on Vercel); E2EE as a second layer | Hosting | Config | Planned |
 | T32 | Secrets or vulnerable dependencies in the repo | No secrets required; `.env*` ignored; gitleaks and `npm audit` in CI; lockfile; short dependency allowlist | `.github/workflows/ci.yml`, `docs/PLAN.md` | CI run (workflow is Lane B). Checked by hand 2026-11-07: `npm audit --audit-level=high` clean, 0 production vulnerabilities (8 moderate, all dev-only lint tooling via minimatch); pattern scan of tracked files found no secrets | Planned |
 
@@ -82,7 +82,7 @@ Message and record content (including attorney-client privileged communications)
 | # | Threat | Mitigation | Where | Verification | Status |
 | --- | --- | --- | --- | --- | --- |
 | T33 | Privileged material leaks into a shared report | #privileged excluded from exports unless counsel opts in; watermark when included; channel banner | `lib/report/`, report page | `report.test.ts` | Planned |
-| T34 | Missed or misstated legal deadline | Rules with citations and opened sources; tested date math including business days; "applies" vs "check with counsel"; owners on every deadline; disclaimer | `lib/legal/` | `legal.test.ts` | Planned |
+| T34 | Missed or misstated legal deadline | Rules with citations and opened sources; tested date math including business days; applies, counsel review, or not in effect; a recorded status does not rewrite the computed instant; disclaimer on every result | `lib/legal/` | `tests/legal-deadlines.test.ts`, `tests/legal-calendar.test.ts` | Done |
 | T35 | Metadata leakage | Payload kinds encrypted; still visible to the server: timestamps, channel, sizes, roles, display names, member count | Design | n/a | Accepted (documented) |
 | T36 | Commander device compromise (root of trust) | Every commander action signed and logged in #record; production: second commander (M-of-N) and passkey-backed keys | Design | n/a | Accepted (documented) |
 
@@ -100,6 +100,7 @@ Message and record content (including attorney-client privileged communications)
 - 2026-11-07 (Lane A): the client crypto library and its negative tests are in (`lib/crypto/*.test.ts`: seal, sign, wrap, invite, chain, verify, store). T7 is Done.
 - 2026-11-07 (Lane A): the module and its 34 tests are in (`spacetimedb/src/module.test.ts`), including a test that the client verifier accepts the module's hash chain. T6, T11, T12, T14, T17 and T22 are Done. T13 waits for the revoke demo, T16 and T18 for the join UI, and T2 to T5 for the two-browser demo and module-side signature checks (P1).
 - 2026-11-07 (Lane B): demo invites are stored in browser localStorage (`lib/client/demo-ledger.ts`) so a second tab can redeem them. Live mode does not use that store.
+- 2026-11-07 (Lane B): the legal engine reads `IncidentState` only. CIRCIA has no countdown. CISA's CIRCIA page, read the same day, says covered-incident and ransom reports are not required until the final rule's effective date. A draft final rule was at OIRA as of October 1, 2026, which is not an effective date. T34 is Done. T30 stays Planned because the server-drift flag is still open.
 
 ## Downgrades taken
 

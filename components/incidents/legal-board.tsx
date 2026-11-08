@@ -2,24 +2,29 @@
 
 import { HourClock } from "@/components/incidents/hour-clock";
 import { SafeText } from "@/components/incidents/safe-text";
-import { memberName, mostUrgentDeadline } from "@/components/incidents/situation";
+import { memberName } from "@/components/incidents/situation";
 import { useBrowserNow } from "@/hooks/use-browser-now";
 import { useIncident } from "@/hooks/use-incident";
-import { describeClockStart, projectLegalDeadlines } from "@/lib/legal";
-import type { LegalDeadline, LegalDeadlineStatus } from "@/lib/legal";
+import { COUNSEL_REVIEW_WARNING, computeDeadlines, formatLegalInstant, nextCountdown } from "@/lib/legal";
+import type { ClockStatus, ComputedDeadline } from "@/lib/legal";
 import { formatTimestamp } from "@/lib/time";
 
-const statusCopy: Record<LegalDeadlineStatus, string> = {
-  upcoming: "Inside the window",
-  due: "Inside six hours",
+const clockCopy: Record<ClockStatus, string> = {
+  not_applicable: "Not on this record",
+  not_in_effect: "Not in effect",
+  needs_counsel: "Review with counsel",
+  not_started: "Clock not started",
+  invalid_trigger: "Trigger unusable",
+  future_trigger: "Trigger is in the future",
+  scheduled: "Countdown running",
+  due_soon: "Inside six hours",
   elapsed: "Window passed",
-  unscheduled: "Not scheduled",
 };
 
-function tone(status: LegalDeadlineStatus): string {
+function tone(status: ClockStatus): string {
   if (status === "elapsed") return "text-alert";
-  if (status === "due") return "text-signal";
-  if (status === "upcoming") return "text-verified";
+  if (status === "due_soon" || status === "needs_counsel" || status === "not_in_effect") return "text-signal";
+  if (status === "scheduled") return "text-verified";
   return "text-muted";
 }
 
@@ -37,28 +42,26 @@ export function LegalBoard() {
   const now = useBrowserNow();
   const incident = state.incident;
   if (!incident) return null;
-  const awareness = (state.discovery?.determinedAt ?? incident.createdAt).toISOString();
-  const deadlines =
-    now === null
-      ? null
-      : projectLegalDeadlines({
-          incidentId: incident.id,
-          awarenessAt: awareness,
-          now: new Date(now),
-          materialityDeterminedAt: state.materiality?.determinedAt.toISOString() ?? null,
-        });
-  const urgent = deadlines ? mostUrgentDeadline(deadlines) : null;
-  const updates = Object.values(state.deadlineUpdates);
+  const discoveryAt = state.discovery?.determinedAt;
+  const startedAt = discoveryAt && Number.isFinite(discoveryAt.getTime()) ? discoveryAt.toISOString() : null;
+  const deadlines = now === null ? null : computeDeadlines(state, new Date(now));
+  const urgent = deadlines ? nextCountdown(deadlines) : null;
+  const running = deadlines?.filter((deadline) => deadline.dueAt && (deadline.clockStatus === "scheduled" || deadline.clockStatus === "due_soon" || deadline.clockStatus === "elapsed")).length ?? 0;
+  const reviews = deadlines?.filter((deadline) => deadline.applicability === "check" || deadline.clockStatus === "not_in_effect").length ?? 0;
 
   return (
     <div className="grid min-w-0 gap-8">
       <div>
         <h2 className="text-xl font-medium tracking-tight">Legal deadlines</h2>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-          Planning clocks for demonstration. Counsel decides whether a duty applies. Verify each matter with counsel.
-        </p>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">{COUNSEL_REVIEW_WARNING}</p>
+        {deadlines ? (
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+            {running === 1 ? "1 countdown is running." : `${running} countdowns are running.`}{" "}
+            {reviews === 1 ? "1 rule needs counsel review before a date is used." : `${reviews} rules need counsel review before a date is used.`}
+          </p>
+        ) : null}
       </div>
-      <HourClock startedAt={awareness} />
+      <HourClock startedAt={startedAt} />
       <section aria-labelledby="profile-heading">
         <h3 id="profile-heading" className="text-sm font-medium">
           Organization profile
@@ -82,7 +85,7 @@ export function LegalBoard() {
             at={state.discovery?.determinedAt}
             by={state.discovery?.by.displayName}
             basis={state.discovery?.basis}
-            empty="No discovery time is on the record. Clocks below use when the incident was opened."
+            empty="No discovery time is on the record. Clocks that start at discovery are not running."
           />
           <Determination
             label="Materiality"
@@ -102,31 +105,12 @@ export function LegalBoard() {
         ) : (
           <ul className="mt-3 divide-y divide-line border-y border-line">
             {deadlines.map((deadline) => (
-              <DeadlineRow key={deadline.id} deadline={deadline} urgent={deadline.id === urgent?.id} />
-            ))}
-          </ul>
-        )}
-      </section>
-      <section aria-labelledby="updates-heading">
-        <h3 id="updates-heading" className="text-sm font-medium">
-          Recorded deadline updates
-        </h3>
-        {updates.length === 0 ? (
-          <p className="mt-3 text-sm text-muted">No deadline update is on the record.</p>
-        ) : (
-          <ul className="mt-3 divide-y divide-line border-y border-line">
-            {updates.map((update) => (
-              <li key={update.body.ruleId} className="min-w-0 py-4">
-                <p className="font-mono text-xs text-muted">{update.body.ruleId}</p>
-                <p className="mt-1 text-sm text-foreground">
-                  {update.body.status} · {memberName(state.members, update.body.owner)}
-                </p>
-                {update.body.note ? (
-                  <p className="mt-2 break-words text-sm leading-6 text-muted">
-                    <SafeText text={update.body.note} />
-                  </p>
-                ) : null}
-              </li>
+              <DeadlineRow
+                key={deadline.rule.id}
+                deadline={deadline}
+                urgent={deadline.rule.id === urgent?.rule.id}
+                members={state.members}
+              />
             ))}
           </ul>
         )}
@@ -164,19 +148,60 @@ function Determination({
   );
 }
 
-function DeadlineRow({ deadline, urgent }: { deadline: LegalDeadline; urgent: boolean }) {
+function DeadlineRow({
+  deadline,
+  urgent,
+  members,
+}: {
+  deadline: ComputedDeadline;
+  urgent: boolean;
+  members: { identity: string; displayName: string }[];
+}) {
+  const due = deadline.dueAt
+    ? deadline.rule.timeZone
+      ? formatLegalInstant(deadline.dueAt, deadline.rule.timeZone)
+      : formatTimestamp(deadline.dueAt)
+    : "No due time";
+  const source = deadline.rule.sourceUrl.startsWith("https://") ? deadline.rule.sourceUrl : null;
   return (
     <li className="grid min-w-0 gap-2 py-4 sm:grid-cols-[11rem_minmax(0,1fr)]">
       <div>
-        <p className={`font-mono text-xs ${tone(deadline.status)}`}>{statusCopy[deadline.status]}</p>
-        <p className="mt-1 text-sm text-muted">{deadline.dueAt ? formatTimestamp(deadline.dueAt) : "No due time"}</p>
+        <p className={`font-mono text-xs ${tone(deadline.clockStatus)}`}>{clockCopy[deadline.clockStatus]}</p>
+        <p className="mt-1 text-sm text-muted">{due}</p>
         {urgent ? <p className="mt-2 text-xs text-signal">Most urgent</p> : null}
       </div>
       <div className="min-w-0">
-        <p className="text-sm font-medium text-foreground">{deadline.citation}</p>
-        <p className="mt-1 break-words text-sm leading-6 text-muted">{deadline.obligation}</p>
-        <p className="mt-2 text-sm text-muted">Starts at {describeClockStart(deadline.clockStarts)}.</p>
-        {deadline.scheduleNote ? <p className="mt-2 break-words text-sm text-foreground">{deadline.scheduleNote}</p> : null}
+        <p className="text-sm font-medium text-foreground">{deadline.rule.name}</p>
+        <p className="mt-1 text-sm text-muted">{deadline.rule.jurisdiction}</p>
+        {source ? (
+          <a
+            href={source}
+            rel="noopener noreferrer"
+            target="_blank"
+            className="mt-1 inline-block break-all text-sm text-signal underline decoration-signal/40 underline-offset-2"
+          >
+            {deadline.rule.citation}
+          </a>
+        ) : (
+          <p className="mt-1 break-words text-sm text-muted">{deadline.rule.citation}</p>
+        )}
+        <p className="mt-2 break-words text-sm leading-6 text-muted">
+          <SafeText text={deadline.explanation} />
+        </p>
+        <p className="mt-2 break-words text-sm leading-6 text-muted">
+          <SafeText text={deadline.counselReview} />
+        </p>
+        {deadline.recorded ? (
+          <p className="mt-2 break-words text-sm text-foreground">
+            Recorded {deadline.recorded.status} · {memberName(members, deadline.recorded.owner)}
+            {deadline.recorded.note ? (
+              <>
+                {" · "}
+                <SafeText text={deadline.recorded.note} />
+              </>
+            ) : null}
+          </p>
+        ) : null}
       </div>
     </li>
   );

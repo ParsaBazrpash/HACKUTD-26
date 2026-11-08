@@ -9,7 +9,7 @@ import { TimelineList } from "@/components/incidents/timeline-list";
 import { useBrowserNow } from "@/hooks/use-browser-now";
 import { useIncident } from "@/hooks/use-incident";
 import { isMockIncidentClient } from "@/lib/client";
-import { projectLegalDeadlines } from "@/lib/legal";
+import { COUNSEL_REVIEW_WARNING, computeDeadlines, formatLegalInstant } from "@/lib/legal";
 import { formatTimestamp } from "@/lib/time";
 
 export function ReportView() {
@@ -18,16 +18,7 @@ export function ReportView() {
   const mock = isMockIncidentClient();
   const incident = state.incident;
   if (!incident) return null;
-  const awareness = (state.discovery?.determinedAt ?? incident.createdAt).toISOString();
-  const deadlines =
-    now === null
-      ? null
-      : projectLegalDeadlines({
-          incidentId: incident.id,
-          awarenessAt: awareness,
-          now: new Date(now),
-          materialityDeterminedAt: state.materiality?.determinedAt.toISOString() ?? null,
-        });
+  const deadlines = now === null ? null : computeDeadlines(state, new Date(now));
 
   return (
     <article id="incident-report" className="grid min-w-0 gap-8">
@@ -115,17 +106,29 @@ export function ReportView() {
         <h3 id="report-deadlines" className="text-sm font-medium">
           Deadlines
         </h3>
-        <p className="mt-2 text-sm text-muted">Planning clocks. Verify each matter with counsel.</p>
+        <p className="mt-2 text-sm text-muted">{COUNSEL_REVIEW_WARNING}</p>
         {deadlines === null ? (
           <p className="mt-3 text-sm text-muted">Notice clocks open with the browser clock.</p>
         ) : (
           <ul className="mt-3 divide-y divide-line border-y border-line">
             {deadlines.map((deadline) => (
-              <li key={deadline.id} className="min-w-0 py-3 text-sm">
-                <p>{deadline.citation}</p>
+              <li key={deadline.rule.id} className="min-w-0 py-3 text-sm">
+                <p>
+                  {deadline.rule.name}
+                  {" · "}
+                  {deadline.rule.citation}
+                </p>
                 <p className="mt-1 text-muted">
-                  {deadline.dueAt ? formatTimestamp(deadline.dueAt) : "No due time"}
-                  {deadline.scheduleNote ? ` · ${deadline.scheduleNote}` : ""}
+                  {deadline.dueAt
+                    ? deadline.rule.timeZone
+                      ? formatLegalInstant(deadline.dueAt, deadline.rule.timeZone)
+                      : formatTimestamp(deadline.dueAt)
+                    : "No due time"}
+                  {" · "}
+                  {deadline.clockStatus}
+                </p>
+                <p className="mt-1 break-words text-muted">
+                  <SafeText text={deadline.explanation} />
                 </p>
               </li>
             ))}

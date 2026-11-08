@@ -3,11 +3,11 @@
 import type { ReactNode } from "react";
 import { IntegrityMark } from "@/components/ui/integrity-mark";
 import { connectionLabel, phaseLabel, ROLE_LABELS } from "@/components/incidents/labels";
-import { formatLead, formatSince, mostUrgentDeadline } from "@/components/incidents/situation";
+import { formatLead, formatSince } from "@/components/incidents/situation";
 import { useBrowserNow } from "@/hooks/use-browser-now";
 import { isMockIncidentClient } from "@/lib/client";
 import type { IncidentState } from "@/lib/client/types";
-import { projectLegalDeadlines } from "@/lib/legal";
+import { computeDeadlines, nextCountdown } from "@/lib/legal";
 
 function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -24,19 +24,9 @@ export function StatusBar({ state }: { state: IncidentState }) {
   const incident = state.incident;
   const detected = incident ? incident.createdAt.getTime() : Number.NaN;
   const elapsed = now === null || Number.isNaN(detected) ? null : now - detected;
-  const awareness = (state.discovery?.determinedAt ?? incident?.createdAt)?.toISOString();
-  const deadlines =
-    now === null || !incident || !awareness
-      ? null
-      : projectLegalDeadlines({
-          incidentId: incident.id,
-          awarenessAt: awareness,
-          now: new Date(now),
-          materialityDeterminedAt: state.materiality?.determinedAt.toISOString() ?? null,
-        });
-  const urgent = deadlines ? mostUrgentDeadline(deadlines) : null;
-  const urgentLead =
-    urgent?.dueAt && now !== null ? formatLead(Date.parse(urgent.dueAt) - now) : null;
+  const deadlines = now === null || !incident ? null : computeDeadlines(state, new Date(now));
+  const urgent = deadlines ? nextCountdown(deadlines) : null;
+  const urgentLead = urgent?.dueAt && now !== null ? formatLead(urgent.dueAt.getTime() - now) : null;
   const waiting = state.members.filter((member) => member.state === "pending").length;
   const severity = state.status?.severity;
 
@@ -60,7 +50,7 @@ export function StatusBar({ state }: { state: IncidentState }) {
           "Opens with the browser clock"
         ) : urgent ? (
           <span className={urgentLead?.endsWith("overdue") ? "text-alert" : undefined}>
-            {urgent.citation}
+            {urgent.rule.citation}
             {urgentLead ? ` · ${urgentLead}` : ""}
           </span>
         ) : (

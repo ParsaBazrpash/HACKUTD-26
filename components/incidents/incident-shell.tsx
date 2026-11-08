@@ -10,6 +10,7 @@ import { DemoBanner } from "@/components/incidents/demo-banner";
 import { PasskeyLockCard } from "@/components/security/passkey-lock-card";
 import { connectionLabel, phaseLabel, ROLE_LABELS } from "@/components/incidents/labels";
 import { SectionNav } from "@/components/incidents/section-nav";
+import { useChatUnreadCount } from "@/components/incidents/chat-unread";
 import { SafeText } from "@/components/incidents/safe-text";
 import { listIntegrityFindings, failureLabel, formatLead, formatSince } from "@/components/incidents/situation";
 import { computeDeadlines, nextCountdown } from "@/lib/legal";
@@ -146,13 +147,22 @@ function Room({
 }) {
   const now = useBrowserNow();
   const [collapsed, setCollapsed] = useSidebarCollapsed();
+  // New chat messages since this member last had the chat open, in channels their role can read.
+  const unreadChat = useChatUnreadCount(incidentId, state);
   const incident = state.incident;
   if (!incident) return <p className="text-sm text-muted">No incident is open in this tab.</p>;
   const findings = listIntegrityFindings(state.integrity);
   const detected = incident.createdAt.getTime();
   const elapsed = now === null || Number.isNaN(detected) ? null : now - detected;
   const severity = state.status?.severity;
-  const { badges } = attentionFor(state, now);
+  const { badges: attention } = attentionFor(state, now);
+  const badges =
+    unreadChat > 0
+      ? {
+          ...attention,
+          channels: { count: unreadChat, tone: "signal" as const, label: `${unreadChat} new message${unreadChat === 1 ? "" : "s"}` },
+        }
+      : attention;
   // PLAN 7: the deadline countdown stays visible on every section, not only the Overview.
   const urgent = now === null ? null : nextCountdown(computeDeadlines(state, new Date(now)));
   const urgentLead = urgent?.dueAt && now !== null ? formatLead(urgent.dueAt.getTime() - now) : null;

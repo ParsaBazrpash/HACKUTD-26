@@ -80,8 +80,10 @@ test("a message from someone else shows a count and a preview, and the preview o
   await composer.getByRole("button", { name: "Send" }).click();
   await expect(sam.getByText("Firewall logs pulled for the HR subnet.")).toBeVisible();
 
-  // The commander's tab sees it live.
+  // The commander's tab sees it live: on the chat button and on the sidebar link.
   await expect(page.getByRole("button", { name: "Open chat, 1 new message" })).toBeVisible();
+  const sections = page.getByRole("navigation", { name: "Incident sections" });
+  await expect(sections.getByRole("link", { name: /^Secure Channels\s*, 1 new message$/ })).toBeVisible();
   const preview = page.getByRole("button", { name: /Sam Okonkwo in #technical/ });
   await expect(preview).toContainText("Firewall logs pulled for the HR subnet.");
   await preview.click();
@@ -90,9 +92,21 @@ test("a message from someone else shows a count and a preview, and the preview o
   await expect(chat.getByRole("heading", { level: 3, name: "#technical" })).toBeVisible();
   await expect(chat.getByText("Firewall logs pulled for the HR subnet.")).toBeVisible();
 
-  // Closing marks it read.
+  // Opening the chat cleared the sidebar badge too, and it stays clear after closing.
+  await expect(sections.getByRole("link", { name: "Secure Channels", exact: true })).toBeVisible();
   await chat.getByRole("button", { name: "Close chat" }).click();
   await expect(page.getByRole("button", { name: "Open chat" })).toBeVisible();
+
+  // A second message counts again, and visiting Secure Channels clears it.
+  await composer.getByRole("textbox").fill("Second note from Sam.");
+  await composer.getByRole("button", { name: "Send" }).click();
+  await expect(sections.getByRole("link", { name: /^Secure Channels\s*, 1 new message$/ })).toBeVisible();
+  await sections.getByRole("link", { name: /^Secure Channels/ }).click();
+  await expect(page).toHaveURL(/\/channels$/);
+  await expect(sections.getByRole("link", { name: "Secure Channels", exact: true })).toBeVisible();
+  await sections.getByRole("link", { name: /^Tasks/ }).click();
+  await expect(page.getByRole("button", { name: "Open chat" })).toBeVisible();
+  await expect(sections.getByRole("link", { name: "Secure Channels", exact: true })).toBeVisible();
 });
 
 test("the side chat only offers the channels the member can read", async ({ page }) => {
@@ -107,3 +121,38 @@ test("the side chat only offers the channels the member can read", async ({ page
   const tabs = page.getByRole("dialog", { name: "Chat" }).getByRole("navigation", { name: "Chat channels" });
   await expect(tabs.getByRole("button")).toHaveText(["#command", "#privileged"]);
 });
+
+test("a privileged message pops up without its text", async ({ page, context }) => {
+  await openIncident(page);
+  const incidentPath = new URL(page.url()).pathname.replace(/\/$/, "");
+  const incidentId = incidentPath.split("/").pop() ?? "";
+  await expect(page.getByRole("button", { name: "Open chat" })).toBeVisible();
+
+  // Jordan, counsel, writes in #privileged from another tab.
+  const jordan = await context.newPage();
+  await jordan.goto("/incidents");
+  await viewAs(jordan, incidentId, 2);
+  await jordan.goto(`${incidentPath}/channels#privileged`);
+  const composer = jordan.getByRole("form", { name: "Message #privileged" });
+  await composer.getByRole("textbox").fill("Hold the AG notice until 5 pm, see https://example.com/memo");
+  await composer.getByRole("button", { name: "Send" }).click();
+  await expect(jordan.getByText("Hold the AG notice until 5 pm")).toBeVisible();
+
+  const preview = page.getByRole("button", { name: /Jordan Hale in #privileged/ });
+  await expect(preview).toContainText("Privileged message");
+  await expect(preview).not.toContainText("Hold the AG notice");
+  await expect(preview.locator("a")).toHaveCount(0);
+});
+
+test("going to Secure Channels closes the side chat, and it stays closed after", async ({ page }) => {
+  const nav = await openIncident(page);
+  await page.getByRole("button", { name: /^Open chat/ }).click();
+  await expect(page.getByRole("dialog", { name: "Chat" })).toBeVisible();
+  await nav.getByRole("link", { name: "Secure Channels", exact: true }).click();
+  await expect(page).toHaveURL(/\/channels$/);
+  await nav.getByRole("link", { name: /^Tasks/ }).click();
+  await expect(page).toHaveURL(/\/tasks$/);
+  await expect(page.getByRole("button", { name: /^Open chat/ })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Chat" })).toHaveCount(0);
+});
+

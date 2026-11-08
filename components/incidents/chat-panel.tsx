@@ -4,42 +4,24 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type Ref } from "react";
 import { Maximize2, MessagesSquare, X } from "lucide-react";
-import { cardPreviewText } from "@/components/incidents/blast-radius-model";
 import { ChannelsBoard } from "@/components/incidents/channels-board";
 import { CHANNEL_LABELS } from "@/components/incidents/labels";
+import {
+  chatSeenKey,
+  inPreviewWindow,
+  markChatSeen,
+  newestServerTime,
+  previewText,
+  readChatSeen,
+  serverTime,
+  unreadMessages,
+  useChatSeen,
+} from "@/components/incidents/chat-unread";
 import { authorizedChatChannels, type ChatChannel } from "@/components/incidents/room-controls";
-import { SafeText } from "@/components/incidents/safe-text";
 import { incidentSectionHref } from "@/components/incidents/sections";
 import { useBrowserNow } from "@/hooks/use-browser-now";
 import { useIncident } from "@/hooks/use-incident";
-import type { ChannelMessage, IncidentState } from "@/lib/client/types";
-
-/** When this tab loaded. Messages older than this were already on the record when the member arrived. */
-const TAB_OPENED_AT = typeof window === "undefined" ? Number.POSITIVE_INFINITY : performance.timeOrigin;
-/** How long a new message preview stays next to the chat button. */
-const PREVIEW_MS = 8_000;
-
-export interface UnreadMessage {
-  channel: ChatChannel;
-  message: ChannelMessage;
-}
-
-/**
- * Messages that arrived after `since`, from someone else, that passed every
- * check, in the channels this member may read. Oldest first.
- */
-export function unreadMessages(state: IncidentState, since: number): UnreadMessage[] {
-  const me = state.me?.identity;
-  const list: UnreadMessage[] = [];
-  for (const channel of authorizedChatChannels(state.me?.role, state.me?.state, state.channels)) {
-    for (const message of channel.messages) {
-      if (!message.verdict.ok || !message.author || message.author.identity === me) continue;
-      const at = message.serverTs instanceof Date ? message.serverTs.getTime() : Number.NaN;
-      if (Number.isFinite(at) && at > since) list.push({ channel: channel.kind, message });
-    }
-  }
-  return list.sort((a, b) => a.message.serverTs.getTime() - b.message.serverTs.getTime());
-}
+import type { IncidentState } from "@/lib/client/types";
 
 /**
  * Side chat for every incident page: a button at the bottom right opens the
@@ -50,19 +32,43 @@ export function unreadMessages(state: IncidentState, since: number): UnreadMessa
  */
 export function ChatPanel({ incidentId }: { incidentId: string }) {
   const state = useIncident();
+  // Mounts once this member is active in this incident, so what was already on
+  // the record at that moment counts as seen.
+  if (state.incident?.id !== incidentId || state.me?.state !== "active") return null;
+  return <ReadyChatPanel incidentId={incidentId} state={state} />;
+}
+
+function ReadyChatPanel({ incidentId, state }: { incidentId: string; state: IncidentState }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [startOn, setStartOn] = useState<ChatChannel | null>(null);
-  const [seenAt, setSeenAt] = useState<number | null>(null);
+  const [lastPath, setLastPath] = useState(pathname);
+  // Shared with the sidebar badge: server time of the newest message this member has had in front of them.
+  const seenKey = chatSeenKey(incidentId, state.me?.identity);
+  const mark = useChatSeen(seenKey);
   const panel = useRef<HTMLDivElement>(null);
   const launcher = useRef<HTMLButtonElement>(null);
   const wasOpen = useRef(false);
 
   const onChannelsPage = pathname === incidentSectionHref(incidentId, "channels");
-  const ready = state.incident?.id === incidentId && state.me?.state === "active";
-  const channels = ready ? authorizedChatChannels(state.me?.role, state.me?.state, state.channels) : [];
-  const shown = ready && channels.length > 0 && !onChannelsPage;
+  if (pathname !== lastPath) {
+    // The Secure Channels page is the chat itself; arriving there closes the side chat for good.
+    setLastPath(pathname);
+    if (onChannelsPage) setOpen(false);
+  }
+  const channels = authorizedChatChannels(state.me?.role, state.me?.state, state.channels);
+  const shown = channels.length > 0 && !onChannelsPage;
   const visible = shown && open;
+
+  // First time in this incident in this tab: what is already on the record counts as seen.
+  useEffect(() => {
+    if (readChatSeen(seenKey) === undefined) markChatSeen(seenKey, newestServerTime(state) ?? Number.NEGATIVE_INFINITY);
+  }, [seenKey, state]);
+
+  // While the chat is in front of them (side panel open, or the Secure Channels page), everything is read.
+  useEffect(() => {
+    if (visible || onChannelsPage) markChatSeen(seenKey, newestServerTime(state));
+  }, [seenKey, visible, onChannelsPage, state]);
 
   useEffect(() => {
     if (visible) {
@@ -80,12 +86,12 @@ export function ChatPanel({ incidentId }: { incidentId: string }) {
 
   function openPanel(channel: ChatChannel | null) {
     setStartOn(channel);
-    setSeenAt(Date.now());
+    markChatSeen(seenKey, newestServerTime(state));
     setOpen(true);
   }
 
   function closePanel() {
-    setSeenAt(Date.now());
+    markChatSeen(seenKey, newestServerTime(state));
     setOpen(false);
   }
 
@@ -141,7 +147,7 @@ export function ChatPanel({ incidentId }: { incidentId: string }) {
           </div>
         </div>
       ) : (
-        <ChatLauncher ref={launcher} state={state} since={seenAt ?? TAB_OPENED_AT} onOpen={openPanel} />
+        <ChatLauncher ref={launcher} state={state} since={mark ?? Number.POSITIVE_INFINITY} onOpen={openPanel} />
       )}
     </div>
   );
@@ -163,7 +169,7 @@ function ChatLauncher({
   const now = useBrowserNow();
   const unread = unreadMessages(state, since);
   const newest = unread.at(-1);
-  const preview = newest && now !== null && now - newest.message.serverTs.getTime() < PREVIEW_MS ? newest : null;
+  const preview = newest && inPreviewWindow(now, serverTime(newest.message)) ? newest : null;
   const count = unread.length;
 
   return (
@@ -178,9 +184,8 @@ function ChatLauncher({
             <span className="font-medium text-foreground">{preview.message.author?.displayName ?? "Someone"}</span> in{" "}
             {CHANNEL_LABELS[preview.channel]}
           </span>
-          <span className="mt-1 line-clamp-2 block break-words text-sm text-foreground">
-            <SafeText text={cardPreviewText(preview.message.text)} />
-          </span>
+          {/* Plain text: a link here would sit inside the button and leave the app. */}
+          <span className="mt-1 line-clamp-2 block break-words text-sm text-foreground">{previewText(preview)}</span>
         </button>
       ) : null}
       <button

@@ -16,7 +16,8 @@ const { SafeText } = await import('@/components/incidents/safe-text');
 const { TimelineList } = await import('@/components/incidents/timeline-list');
 const { ScopeList } = await import('@/components/incidents/scope-list');
 const { ChannelsBoard } = await import('@/components/incidents/channels-board');
-const { BlastRadius } = await import('@/components/incidents/blast-radius');
+const { BlastRadius, SystemDetail } = await import('@/components/incidents/blast-radius');
+const { AttachedCardChip, CardPickerList } = await import('@/components/incidents/card-attach');
 const { EMPTY_PROFILE } = await import('@/lib/client/types');
 
 const IMG = '<img src=x onerror=alert(1)>';
@@ -229,5 +230,103 @@ describe('render safety (T21, script injection via decrypted text)', () => {
     expect(html).toContain('data-live-card="system"');
     expect(html).not.toContain('data-live-card="blast"');
     expect(html).toContain('[card:blast]');
+  });
+});
+
+function hostileScopeItem(itemId: string): ScopeItem {
+  const latest = {
+    itemId,
+    system: HOSTILE,
+    assetType: 'server',
+    status: 'encrypted',
+    dataTypes: ['ssn'],
+    recordCount: 10,
+    affected: [{ state: 'TX', count: 10 }],
+    notes: '',
+  };
+  return {
+    itemId,
+    latest,
+    history: [{ seq: 1n, by: member, at, sentAt: at, verdict: ok, body: latest }],
+  } as unknown as ScopeItem;
+}
+
+describe('render safety for the card picker (T21)', () => {
+  it('the paperclip list and the attached chip show hostile system names as escaped text', () => {
+    const itemId = '00000000-0000-4000-8000-000000000005';
+    holder.state = { ...baseState(), scope: [hostileScopeItem(itemId)] };
+    const list = renderToStaticMarkup(createElement(CardPickerList, { onPick: () => undefined }));
+    expectInert(list);
+    expect(list).toContain('Live blast radius');
+    const chip = renderToStaticMarkup(createElement(AttachedCardChip, { card: { kind: 'system', itemId }, onRemove: () => undefined }));
+    expectInert(chip);
+    expect(chip).toContain('Remove the attached card');
+  });
+
+  it('a card for a system this reader does not have shows a neutral label, not the pointer', () => {
+    holder.state = baseState();
+    const chip = renderToStaticMarkup(
+      createElement(AttachedCardChip, { card: { kind: 'system', itemId: '00000000-0000-4000-8000-0000000000ff' }, onRemove: () => undefined }),
+    );
+    expect(chip).toContain('A system');
+    expect(chip).not.toContain('[card:');
+  });
+});
+
+// Negative checks on the map controls (AGENTS.md: security logic needs a negative test).
+// The module still refuses a scope.set from a role that may not write #record; these
+// tests prove the screen never offers the write or a share into a channel the member
+// may not post in.
+describe('map controls follow the role table', () => {
+  const itemId = '00000000-0000-4000-8000-000000000006';
+  const allChannels = (['command', 'privileged', 'technical'] as const).map((kind) => ({ kind, messages: [], waitingForKeys: false }));
+
+  function renderDetail(role: 'commander' | 'counsel' | 'technical' | 'executive', memberState: 'active' | 'pending' | 'revoked' = 'active') {
+    const state = {
+      ...baseState(),
+      me: { ...member, displayName: 'Me', role, state: memberState },
+      scope: [hostileScopeItem(itemId)],
+      channels: allChannels,
+    } as unknown as IncidentState;
+    holder.state = state;
+    return {
+      detail: renderToStaticMarkup(createElement(SystemDetail, { state, itemId })),
+      map: renderToStaticMarkup(createElement(BlastRadius, {})),
+    };
+  }
+
+  function offered(html: string): string[] {
+    return [...html.matchAll(/<option value="(command|privileged|technical)"/g)].map((m) => m[1]);
+  }
+
+  it('the commander gets the status picker and can share into every chat channel', () => {
+    const { detail } = renderDetail('commander');
+    expect(detail).toContain('Save status');
+    expect(detail).toContain('Share to chat');
+    expect(offered(detail)).toEqual(['command', 'privileged', 'technical']);
+  });
+
+  it('an executive cannot change a status from the map and cannot share into #technical', () => {
+    const { detail, map } = renderDetail('executive');
+    expect(detail).not.toContain('Save status');
+    expect(detail).not.toContain('quick-status-');
+    expect(offered(detail)).toEqual(['command', 'privileged']);
+    expect(offered(map)).toEqual(['command', 'privileged']);
+  });
+
+  it('a technical lead never gets #privileged as a share target', () => {
+    const { detail } = renderDetail('technical');
+    expect(detail).toContain('Save status');
+    expect(offered(detail)).toEqual(['command', 'technical']);
+  });
+
+  it('a pending or removed member gets no status picker and no share control at all', () => {
+    for (const memberState of ['pending', 'revoked'] as const) {
+      const { detail, map } = renderDetail('commander', memberState);
+      expect(detail, memberState).not.toContain('Save status');
+      expect(detail, memberState).not.toContain('Share to chat');
+      expect(map, memberState).not.toContain('Share the map to chat');
+      expect(offered(map), memberState).toEqual([]);
+    }
   });
 });

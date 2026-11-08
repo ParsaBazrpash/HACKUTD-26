@@ -342,3 +342,24 @@ export function cardPreviewText(text: string): string {
     parsed.card.kind === "blast" ? "blast radius" : parsed.card.kind === "system" ? "system" : "legal clock";
   return `${parsed.caption ? `${parsed.caption} ` : ""}[Live card: ${what}]`;
 }
+
+const DEFAULT_ATTACH_CAPTION = "Shared a live card.";
+
+/**
+ * Chat text for a message with an attached card: the author's own words, kept
+ * as typed, then the pointer. With no words, a default caption.
+ */
+export function attachCardText(text: string, card: LiveCard): string {
+  const caption = typeof text === "string" ? text.trim() : "";
+  return `${caption.length > 0 ? caption : DEFAULT_ATTACH_CAPTION} ${cardToken(card)}`;
+}
+
+/** The note after a timed write. It is this device's own round trip; others get the commit after their own network delay. */
+export function roundTripNote(ms: number): string {
+  return `Spacetime round trip ${Math.round(ms)} ms from this device.`;
+}
+
+/** Link to a chat channel. The channels page opens the channel named in the hash when this member may read it. */
+export function channelHref(incidentId: string, channel: string): string {
+  return `/incidents/${encodeURIComponent(incidentId)}/channels#${encodeURIComponent(channel)}`;
+}

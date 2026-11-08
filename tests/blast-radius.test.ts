@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, test } from "vitest";
 import {
+  attachCardText,
   buildBlastModel,
   cardMessageText,
+  channelHref,
   cardPreviewText,
   exposureStep,
   NODE_CAP,
@@ -9,6 +11,7 @@ import {
   RING_CAP,
   RINGS,
   ringOf,
+  roundTripNote,
   shortCount,
   stateDeadlines,
   US_TILES,
@@ -16,7 +19,8 @@ import {
 import type { IncidentState, MemberRef, ScopeBody, ScopeItem } from "@/lib/client/types";
 import { EMPTY_PROFILE } from "@/lib/client/types";
 import { computeDeadlines } from "@/lib/legal";
-import { medianSync, recordSync, resetSyncSamples, syncSamples } from "@/lib/client/sync-meter";
+import { authorizedChatChannels, draftChatBody, pickChatChannel } from "@/components/incidents/room-controls";
+import { medianSync, recordSync, resetSyncSamples, syncCount, syncSampleSince, syncSamples } from "@/lib/client/sync-meter";
 
 const DANA: MemberRef = { identity: "b".repeat(64), displayName: "Dana", role: "technical" };
 const OK = { ok: true, failures: [], warnings: [] };
@@ -222,10 +226,60 @@ describe("live cards in chat", () => {
     expect(parseCardMessage(`[card:blast] [card:system:${uuid(2)}]`)?.card).toEqual({ kind: "system", itemId: uuid(2) });
   });
 
+  test("a card attached from the paperclip keeps the typed message and parses back", () => {
+    const text = attachCardText("  Look at this one.\nTexas is lit.  ", { kind: "deadline", ruleId: "tx-521-ag" });
+    expect(text).toBe("Look at this one.\nTexas is lit. [card:deadline:tx-521-ag]");
+    expect(parseCardMessage(text)).toEqual({ caption: "Look at this one.\nTexas is lit.", card: { kind: "deadline", ruleId: "tx-521-ag" } });
+    expect(attachCardText("   ", { kind: "blast" })).toBe("Shared a live card. [card:blast]");
+    expect(attachCardText(undefined as unknown as string, { kind: "blast" })).toBe("Shared a live card. [card:blast]");
+  });
+
+  test("an attached card does not get around the 4000 character limit", () => {
+    const tooLong = attachCardText("x".repeat(3995), { kind: "system", itemId: uuid(1) });
+    expect(draftChatBody(tooLong)).toMatchObject({ ok: false });
+    const fits = attachCardText("x".repeat(3900), { kind: "system", itemId: uuid(1) });
+    expect(draftChatBody(fits)).toMatchObject({ ok: true });
+  });
+
+  test("the share note names this device's round trip, and the channel link stays on this site", () => {
+    expect(roundTripNote(41.6)).toBe("Spacetime round trip 42 ms from this device.");
+    expect(roundTripNote(41.6)).not.toMatch(/everyone/i);
+    expect(channelHref("abc-123", "technical")).toBe("/incidents/abc-123/channels#technical");
+    expect(channelHref("../x?y", "#z")).toBe("/incidents/..%2Fx%3Fy/channels#%23z");
+  });
+
   test("previews and the printed report show a readable label", () => {
     expect(cardPreviewText("Shared the live blast radius. [card:blast]")).toBe("Shared the live blast radius. [Live card: blast radius]");
     expect(cardPreviewText("[card:deadline:tx-521-ag]")).toBe("[Live card: legal clock]");
     expect(cardPreviewText("plain words")).toBe("plain words");
+  });
+});
+
+describe("channel links", () => {
+  const all = (["command", "privileged", "technical", "record"] as const).map((kind) => ({ kind, messages: [], waitingForKeys: false }));
+  const open = (role: MemberRef["role"], linked: string | null, picked: string | null = null, memberState: "active" | "pending" = "active") =>
+    pickChatChannel(authorizedChatChannels(role, memberState, all), picked, linked)?.kind;
+
+  test("a link to a channel the member cannot read lands on #command", () => {
+    expect(open("technical", "privileged")).toBe("command");
+    expect(open("executive", "technical")).toBe("command");
+  });
+
+  test("#record, junk and an empty link land on #command", () => {
+    for (const linked of ["record", "Privileged", "technical ", "../privileged", "", null]) {
+      expect(open("commander", linked), String(linked)).toBe("command");
+    }
+  });
+
+  test("a link opens a channel the member can read, and an explicit pick wins over the link", () => {
+    expect(open("technical", "technical")).toBe("technical");
+    expect(open("counsel", "privileged")).toBe("privileged");
+    expect(open("commander", "technical", "privileged")).toBe("privileged");
+    expect(open("technical", "technical", "privileged")).toBe("technical");
+  });
+
+  test("a pending member opens nothing", () => {
+    expect(open("commander", "command", null, "pending")).toBeUndefined();
   });
 });
 
@@ -242,5 +296,18 @@ describe("sync meter", () => {
     expect(syncSamples()[0].ms).toBe(6);
     expect(medianSync(syncSamples())).toBe(16);
     expect(medianSync([])).toBeNull();
+  });
+
+  test("a new round trip is still noticed after the kept list is full", () => {
+    for (let i = 1; i <= 25; i++) recordSync(i, "record");
+    const mark = syncCount();
+    expect(syncSampleSince(mark)).toBeNull();
+    recordSync(99, "command");
+    expect(syncSamples()).toHaveLength(20);
+    expect(syncSampleSince(mark)).toMatchObject({ ms: 99, channel: "command" });
+    // A rejected value is not a new round trip.
+    const after = syncCount();
+    recordSync(Number.NaN, "command");
+    expect(syncSampleSince(after)).toBeNull();
   });
 });

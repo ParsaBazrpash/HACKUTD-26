@@ -2,9 +2,9 @@
 //
 // A sample is the time from sending an already encrypted and signed event to
 // the reducer result coming back. The Spacetime SDK applies the new rows to
-// the local cache before that result resolves, and the same commit is pushed
-// to every other subscriber, so this is the honest "your change is live" time
-// as seen from this device. It holds timings only, never content.
+// the local cache before that result resolves. It is this device's own round
+// trip: other members get the same commit, but after their own network delay.
+// It holds timings only, never content.
 
 export interface SyncSample {
   ms: number;
@@ -14,16 +14,30 @@ export interface SyncSample {
 
 const MAX_SAMPLES = 20;
 let samples: SyncSample[] = [];
+// Counts every sample ever recorded. It only goes up, so a caller can tell a
+// new sample arrived even once the kept list is full.
+let recorded = 0;
 const listeners = new Set<() => void>();
 
 export function recordSync(ms: number, channel: string, at = Date.now()): void {
   if (!Number.isFinite(ms) || ms < 0 || ms > 120_000) return;
   samples = [...samples, { ms: Math.round(ms), at, channel }].slice(-MAX_SAMPLES);
+  recorded += 1;
   for (const listener of [...listeners]) listener();
 }
 
 export function syncSamples(): readonly SyncSample[] {
   return samples;
+}
+
+/** How many samples were ever recorded. Take it before a write, then pass it to syncSampleSince. */
+export function syncCount(): number {
+  return recorded;
+}
+
+/** The newest sample when one was recorded after `mark` (a syncCount() value), otherwise null. */
+export function syncSampleSince(mark: number): SyncSample | null {
+  return recorded > mark && samples.length > 0 ? samples[samples.length - 1] : null;
 }
 
 export function subscribeSync(listener: () => void): () => void {

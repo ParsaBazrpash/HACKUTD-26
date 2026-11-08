@@ -62,6 +62,26 @@ export function authorizedChatChannels(
   );
 }
 
+/**
+ * The chat channel to show. An explicit pick wins, then a channel named in a
+ * link (the /channels#name hash), then #command, then the first one. Both are
+ * only looked up inside `channels`, which the caller has already filtered with
+ * authorizedChatChannels, so a link can never open a channel this member cannot
+ * read, and #record or junk falls through to #command.
+ */
+export function pickChatChannel<T extends { kind: ChatChannel }>(
+  channels: readonly T[],
+  picked: string | null,
+  linked: string | null,
+): T | undefined {
+  return (
+    channels.find((channel) => channel.kind === picked) ??
+    channels.find((channel) => channel.kind === linked) ??
+    channels.find((channel) => channel.kind === "command") ??
+    channels[0]
+  );
+}
+
 /** True when this member may post chat into the channel. #record is never included. */
 export function canCompose(
   role: Role | undefined,

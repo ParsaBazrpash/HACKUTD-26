@@ -3,7 +3,7 @@ import { EMPTY_PROFILE, type ChannelView, type IncidentState, type MemberView, t
 import { showsConfirmedCountdown } from "@/lib/legal";
 import { incidentAccess } from "@/lib/report/access";
 import { buildIncidentReport, type IncidentReport, type ReportOptions } from "@/lib/report";
-import { executiveBullets, coverActions, coverDecisions } from "@/lib/report/sheet";
+import { executiveBullets, coverActions, coverDecisions, coverStats, phaseSteps, severityTone } from "@/lib/report/sheet";
 import { boardEntries } from "@/components/incidents/board";
 
 const NOW = new Date("2026-11-08T18:00:00.000Z");
@@ -476,5 +476,33 @@ describe("incident report", () => {
       counselReview: "",
       recorded: null,
     })).toBe(false);
+  });
+});
+
+describe("cover helpers", () => {
+  test("phaseSteps marks the recorded phase and phases before it", () => {
+    const report = { phase: "Containment" } as IncidentReport;
+    expect(phaseSteps(report).map((step) => step.state)).toEqual(["done", "done", "current", "todo", "todo", "todo"]);
+    expect(phaseSteps({ phase: "Not recorded" } as IncidentReport).every((step) => step.state === "todo")).toBe(true);
+  });
+
+  test("severityTone reads SEV levels and defaults to low", () => {
+    expect(severityTone("SEV1")).toBe("high");
+    expect(severityTone("SEV 2")).toBe("medium");
+    expect(severityTone("Not recorded")).toBe("low");
+  });
+
+  test("coverStats counts from the report only", () => {
+    const report = {
+      systems: [{ status: "Encrypted" }, { status: "Contained" }],
+      evidence: [{}],
+      tasks: [{ status: "Done" }, { status: "Open" }],
+      roster: [{ state: "Active" }, { state: "Pending" }],
+      integrity: { channels: [{ eventsChecked: 4 }, { eventsChecked: 6 }] },
+    } as unknown as IncidentReport;
+    const stats = coverStats(report);
+    expect(stats.map((stat) => stat.value)).toEqual(["2", "1", "1/2", "1"]);
+    expect(stats[0].sub).toBe("1 encrypted or exfiltrated");
+    expect(stats[3].sub).toBe("10 signed events checked");
   });
 });

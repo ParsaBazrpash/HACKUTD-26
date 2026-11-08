@@ -283,3 +283,135 @@ h1 {
   border-color: rgba(47, 140, 64, 0.35);
   color: rgba(47, 140, 64, 0.16);
 }
+
+/* Printable incident report cover */
+.report-sheet .report-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 22px;
+  padding: 26px 28px 40px;
+  color: #fff;
+  background:
+    radial-gradient(circle at 88% 8%, rgba(111, 208, 74, 0.38), transparent 46%),
+    radial-gradient(circle at 6% 110%, rgba(52, 150, 90, 0.35), transparent 50%),
+    linear-gradient(135deg, #0b1610 0%, #12261a 100%);
+}
+
+.report-sheet .report-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.5;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 28px 28px;
+  pointer-events: none;
+}
+
+.report-sheet .report-hero > * {
+  position: relative;
+}
+
+.report-sheet .severity-pill {
+  border-radius: 999px;
+  padding: 4px 14px;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.report-sheet .severity-high {
+  background: #ff5a4d;
+  color: #fff;
+}
+
+.report-sheet .severity-medium {
+  background: #ffb02e;
+  color: #2b1b00;
+}
+
+.report-sheet .severity-low {
+  background: #6fd04a;
+  color: #0c1710;
+}
+
+.report-sheet .phase-bar {
+  display: block;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.report-sheet .phase-step {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.report-sheet .phase-num {
+  display: inline-flex;
+  width: 15px;
+  height: 15px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  font-size: 9px;
+}
+
+.report-sheet .phase-done {
+  color: #bfe9ae;
+}
+
+.report-sheet .phase-done .phase-bar {
+  background: #4f9f3a;
+}
+
+.report-sheet .phase-current {
+  color: #fff;
+}
+
+.report-sheet .phase-current .phase-bar {
+  background: #7fe85a;
+  box-shadow: 0 0 12px rgba(127, 232, 90, 0.7);
+}
+
+.report-sheet .phase-current .phase-num {
+  background: #7fe85a;
+  color: #0c1710;
+}
+
+.report-sheet .system-chip {
+  flex-shrink: 0;
+  border-radius: 999px;
+  padding: 1px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #eef0ee;
+  color: #4b554e;
+}
+
+.report-sheet .system-exfiltrated,
+.report-sheet .system-encrypted {
+  background: #fde4e1;
+  color: #a33b32;
+}
+
+.report-sheet .system-suspected,
+.report-sheet .system-unknown {
+  background: #fff1d6;
+  color: #8a5a00;
+}
+
+.report-sheet .system-contained,
+.report-sheet .system-eradicated,
+.report-sheet .system-restored {
+  background: #e1f4d9;
+  color: #2f7a3a;
+}
+
+@media print {
+  #incident-report .report-cover {
+    min-height: 0;
+  }
+
+}

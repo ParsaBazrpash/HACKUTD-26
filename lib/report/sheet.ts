@@ -32,6 +32,56 @@ export interface CoverDecision {
   meta: string;
 }
 
+export interface PhaseStep {
+  label: string;
+  state: "done" | "current" | "todo";
+}
+
+const PHASE_STEPS: ReadonlyArray<readonly [string, string]> = [
+  ["Preparation", "Prepare"],
+  ["Detection and analysis", "Detect"],
+  ["Containment", "Contain"],
+  ["Eradication", "Eradicate"],
+  ["Recovery", "Recover"],
+  ["Post-incident", "Review"],
+];
+
+/** The six response phases with the recorded one marked. Every step is "todo" when no phase is recorded. */
+export function phaseSteps(report: IncidentReport): PhaseStep[] {
+  const index = PHASE_STEPS.findIndex(([full]) => full === report.phase);
+  return PHASE_STEPS.map(([, short], i) => ({
+    label: short,
+    state: index < 0 ? "todo" : i < index ? "done" : i === index ? "current" : "todo",
+  }));
+}
+
+export interface CoverStat {
+  label: string;
+  value: string;
+  sub: string;
+}
+
+/** Counts taken from the built report. Nothing here is author-controlled text. */
+export function coverStats(report: IncidentReport): CoverStat[] {
+  const hit = report.systems.filter((system) => system.status === "Exfiltrated" || system.status === "Encrypted").length;
+  const done = report.tasks.filter((task) => task.status === "Done").length;
+  const active = report.roster.filter((member) => member.state === "Active").length;
+  const events = report.integrity.channels.reduce((sum, channel) => sum + channel.eventsChecked, 0);
+  return [
+    { label: "Systems affected", value: String(report.systems.length), sub: hit > 0 ? `${hit} encrypted or exfiltrated` : "None encrypted or exfiltrated" },
+    { label: "Evidence items", value: String(report.evidence.length), sub: "Hashed with SHA-256" },
+    { label: "Tasks done", value: `${done}/${report.tasks.length}`, sub: report.tasks.length === 0 ? "No tasks recorded" : `${report.tasks.length - done} still open` },
+    { label: "Responders", value: String(active), sub: `${events} signed events checked` },
+  ];
+}
+
+export function severityTone(severity: string): "high" | "medium" | "low" {
+  const level = /^SEV\s*([0-9])/i.exec(severity.trim())?.[1];
+  if (level === "1") return "high";
+  if (level === "2") return "medium";
+  return "low";
+}
+
 export function incidentStanding(phase: string): "Open" | "Closed" {
   return phase === "Post-incident" ? "Closed" : "Open";
 }

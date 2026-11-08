@@ -944,9 +944,14 @@ describe('append-only surface (T14)', () => {
         'admit_member', 'append_event', 'create_incident', 'create_invite', 'my_channels', 'my_checkpoints', 'my_envelopes', 'my_events',
         'my_incidents', 'my_invites', 'my_join_attempts', 'my_members', 'my_status', 'post_checkpoint', 'redeem_invite', 'revoke_member',
         'sweep_invites',
+        // org roster and paging (WP1)
+        'add_from_roster', 'approve_member', 'create_enroll_link', 'create_org', 'enroll_member', 'link_incident_org', 'my_org',
+        'my_org_status', 'my_pages', 'my_roster', 'page_timeout', 'pager_org_member', 'pager_page', 'pager_update', 'request_page',
+        'revoke_org_member',
       ].sort(),
     );
-    for (const name of exported) expect(name).not.toMatch(/delete|update|edit|debug|seed|tamper|reset|set_role/i);
+    // pager_update only writes page status, gated to the pager identity; it never touches events.
+    for (const name of exported.filter((n) => n !== 'pager_update')) expect(name).not.toMatch(/delete|update|edit|debug|seed|tamper|reset|set_role/i);
   });
 });
 

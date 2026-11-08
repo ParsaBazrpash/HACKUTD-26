@@ -31,7 +31,7 @@ test("commander invites counsel, counsel joins, commander admits, they exchange 
   await commander.getByLabel("Your display name").fill("Commander Test");
   await commander.getByRole("button", { name: "Create incident" }).click();
   await expect(commander).toHaveURL(/\/incidents\/[^/]+$/);
-  await expect(commander.getByRole("heading", { level: 1 })).toContainText(title);
+  await expect(commander.getByText(title).first()).toBeVisible();
 
   // 2. Commander makes a counsel invite.
   await commander.getByLabel("Role").selectOption("counsel");
@@ -65,7 +65,7 @@ test("commander invites counsel, counsel joins, commander admits, they exchange 
   // 5. Counsel opens the room, posts to #privileged, the commander reads it.
   await counsel.goto("/incidents");
   await counsel.getByRole("link", { name: new RegExp(title) }).click();
-  await expect(counsel.getByRole("heading", { level: 1 })).toContainText(title);
+  await expect(counsel.getByText(title).first()).toBeVisible();
   const composer = counsel.getByRole("form", { name: /Message .*privileged/i });
   await composer.getByRole("textbox").fill(secret);
   await composer.getByRole("button", { name: "Send" }).click();

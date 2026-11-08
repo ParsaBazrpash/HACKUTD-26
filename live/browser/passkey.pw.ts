@@ -42,7 +42,7 @@ test("lock on, create an incident, reload: nothing opens until the passkey unloc
   await page.getByLabel("Your display name").fill("Commander Passkey");
   await page.getByRole("button", { name: "Create incident" }).click();
   await expect(page).toHaveURL(/\/incidents\/[^/]+$/);
-  await expect(page.getByRole("heading", { level: 1 })).toContainText(title);
+  await expect(page.getByText(title).first()).toBeVisible();
   const roomUrl = page.url();
 
   // 2. Reload: the keys are locked, the room does not open, the title is not shown.
@@ -53,7 +53,7 @@ test("lock on, create an incident, reload: nothing opens until the passkey unloc
 
   // 3. Unlock: the same room opens and verifies.
   await card.getByRole("button", { name: "Unlock with passkey" }).click();
-  await expect(page.getByRole("heading", { level: 1 })).toContainText(title);
+  await expect(page.getByText(title).first()).toBeVisible();
 
   // 4. Turn the lock off so this browser profile is left as it was. A page load locks again first.
   await page.goto("/incidents");

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { CircleCheck } from "lucide-react";
 import { attentionFor } from "@/components/incidents/attention";
+import { cardPreviewText } from "@/components/incidents/blast-radius-model";
 import { CHANNEL_LABELS, phaseLabel } from "@/components/incidents/labels";
 import { ReachableStrip } from "@/components/incidents/paging-status";
 import { isChatChannel } from "@/components/incidents/room-controls";
@@ -75,7 +76,7 @@ function activityItems(state: IncidentState, mock: boolean): ActivityItem[] {
     items.push({
       id: `message-${message.message.messageId}`,
       title: failed ? "Secure channel check failed" : "Secure channel message",
-      detail: message.message.text,
+      detail: cardPreviewText(message.message.text),
       meta: `Message in ${CHANNEL_LABELS[message.kind]} by ${author}`,
       at: message.message.sentAt,
       tone: failed ? "alert" : "good",

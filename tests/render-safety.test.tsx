@@ -5,7 +5,7 @@ import type { IncidentState, TimelineItem, ScopeItem, ChannelMessage } from '@/l
 
 // Hostile text must reach the screen only as escaped text. These tests render
 // the real components that show user-supplied text (messages, timeline, scope)
-// and check the markup. They cover threat rows T21 and T32.
+// and check the markup. They cover threat row T21.
 
 const holder: { state: IncidentState | null } = { state: null };
 vi.mock('@/hooks/use-incident', () => ({
@@ -66,7 +66,7 @@ function baseState(): IncidentState {
   } as unknown as IncidentState;
 }
 
-describe('render safety (T21, T32)', () => {
+describe('render safety (T21, script injection via decrypted text)', () => {
   it('SafeText escapes hostile markup and never emits a non-http link', () => {
     const html = renderToStaticMarkup(createElement(SafeText, { text: HOSTILE }));
     expectInert(html);

@@ -3,6 +3,8 @@ name: CI
 on:
   push:
   pull_request:
+  # Run by hand to scan the full git history with gitleaks.
+  workflow_dispatch:
 
 permissions:
   contents: read

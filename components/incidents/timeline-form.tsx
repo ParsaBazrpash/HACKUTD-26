@@ -10,6 +10,7 @@ import {
   recordDenial,
   toDatetimeLocalValue,
 } from "@/components/incidents/record-actions";
+import { entryOwners } from "@/components/incidents/board";
 import { useIncident } from "@/hooks/use-incident";
 import { getIncidentClient } from "@/lib/client";
 import { clientErrorMessage } from "@/lib/client/errors";
@@ -43,6 +44,7 @@ function EntryCard({ children }: { children: ReactNode }) {
 
 export function TimelineForm() {
   const state = useIncident();
+  const owners = entryOwners(state.timeline);
   const allowed = canAuthorRecord(state.me?.role, state.me?.state, "timeline.add");
   const [occurredAt, setOccurredAt] = useState(() => toDatetimeLocalValue(new Date()));
   const [phase, setPhase] = useState<string>(state.status?.phase ?? "detection_analysis");
@@ -152,8 +154,9 @@ export function TimelineForm() {
               className={fieldClass}
             >
               <option value="">New entry</option>
-              {state.timeline.map((item) => (
-                <option key={item.entry.entryId} value={item.entry.entryId}>
+              {/* Only the first entry by seq owns an id, so only owners can be amended. */}
+              {state.timeline.filter((item) => owners.get(item.entry.entryId) === item).map((item) => (
+                <option key={`${item.entry.entryId}-${item.seq.toString()}`} value={item.entry.entryId}>
                   {clockReady ? `${formatTimestamp(item.entry.occurredAt)} · ` : ""}
                   {item.entry.text.slice(0, 48)}
                 </option>

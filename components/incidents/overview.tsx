@@ -93,7 +93,7 @@ function activityItems(state: IncidentState, mock: boolean): ActivityItem[] {
     const entry = state.timeline[state.timeline.length - 1];
     if (entry) {
       items.push({
-        id: `timeline-${entry.entry.entryId}`,
+        id: `timeline-${entry.entry.entryId}-${entry.seq.toString()}`,
         title: entry.verdict.ok ? "Timeline entry" : "Timeline check failed",
         detail: entry.entry.text,
         at: entry.sentAt ?? entry.at,

@@ -56,6 +56,8 @@ export interface ReportTimelineEntry {
   author: string;
   /** Role label of the signing member, from the verified roster. Null when the author is unknown. */
   authorRole: string | null;
+  /** True when the signing member is the commander. Only the commander's "Decision: " lines are decisions. */
+  byCommander: boolean;
   /**
    * Board standing, by the status board's own rules: "decision" is a commander decision that no later
    * commander entry replaced; "proposed" is a "Decision: " line from anyone else. Null for other entries.
@@ -359,6 +361,7 @@ function timeline(items: readonly TimelineItem[]): { timeline: ReportTimelineGro
       text: item.entry.text,
       author: item.by?.displayName.trim() || "Unknown author",
       authorRole: item.by ? label(ROLE_LABELS, item.by.role) : null,
+      byCommander: item.by?.role === "commander",
       board: decided.has(item) ? "decision" : proposed.has(item) ? "proposed" : null,
       signedAt: stamp(item.sentAt),
       serverAt: stamp(item.at) ?? "Unusable time",

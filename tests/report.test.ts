@@ -441,6 +441,27 @@ describe("incident report", () => {
     expect(coverDecisions(report)).toEqual([]);
   });
 
+  test("a replaced proposal still prints as a proposal on the cover timeline", () => {
+    const current = state("commander");
+    const commander = current.incident!.commander;
+    const counsel = current.members.find((m) => m.role === "counsel")!;
+    const item = mk(current);
+    const A = "00000000-0000-4000-8000-0000000000f1";
+    const B = "00000000-0000-4000-8000-0000000000f2";
+    current.timeline = [
+      item(1n, A, "Decision: Pay the ransom", counsel, "2026-11-08T10:00:00.000Z"),
+      item(2n, B, "Decision: Pay the ransom today", counsel, "2026-11-08T10:30:00.000Z", A),
+      item(3n, "00000000-0000-4000-8000-0000000000f3", "Decision: Do not pay", commander, "2026-11-08T11:00:00.000Z", B),
+    ];
+    const report = buildIncidentReport(current, options())!;
+    expect(coverDecisions(report).map((d) => d.title)).toEqual(["Do not pay"]);
+    expect(executiveBullets(report).join(" ")).toMatch(/do not pay has been decided/i);
+    const titles = coverActions(report, [], "Avery Commander").map((action) => action.title);
+    expect(titles).toContain("Proposed: Pay the ransom");
+    expect(titles).toContain("Proposed: Pay the ransom today");
+    expect(titles.filter((title) => title.startsWith("Decision: "))).toEqual([]);
+  });
+
   test("a counsel-review result is not a confirmed countdown", () => {
     const report = buildIncidentReport(state("counsel"), options());
     const california = report?.deadlines?.find((deadline) => deadline.id === "state-check-ca");

@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { Bell, Info, Lock, MessagesSquare, Users } from "lucide-react";
 import { CHANNEL_BLURBS, CHANNEL_LABELS, ROLE_LABELS } from "@/components/incidents/labels";
 import { MessageComposer } from "@/components/incidents/message-composer";
+import { parseCardMessage } from "@/components/incidents/blast-radius-model";
+import { LiveCardView } from "@/components/incidents/live-card";
 import { authorizedChatChannels, canCompose, type ChatChannel } from "@/components/incidents/room-controls";
 import { SafeText } from "@/components/incidents/safe-text";
 import { selectMessages } from "@/components/incidents/situation";
@@ -237,6 +239,8 @@ export function ChannelsBoard({ limit }: { limit?: number }) {
 function MessageRow({ message, clockReady }: { message: ChannelMessage; clockReady: boolean }) {
   const name = message.author?.displayName ?? "Unknown author";
   const tone = message.author ? AUTHOR_TONE[message.author.role] : "text-foreground";
+  // Only a message that passed every check may draw a live card; anything else stays plain text.
+  const shared = message.verdict.ok ? parseCardMessage(message.text) : null;
   return (
     <li className="flex min-w-0 gap-3 px-4 py-2">
       <span
@@ -258,9 +262,20 @@ function MessageRow({ message, clockReady }: { message: ChannelMessage; clockRea
             <span className="text-xs text-alert"> · seq {message.seq.toString()}</span>
           )}
         </p>
-        <p className="mt-0.5 break-words text-sm leading-6 text-foreground">
-          <SafeText text={message.text} />
-        </p>
+        {shared ? (
+          <>
+            {shared.caption ? (
+              <p className="mt-0.5 break-words text-sm leading-6 text-foreground">
+                <SafeText text={shared.caption} />
+              </p>
+            ) : null}
+            <LiveCardView card={shared.card} sharedAt={message.serverTs} />
+          </>
+        ) : (
+          <p className="mt-0.5 break-words text-sm leading-6 text-foreground">
+            <SafeText text={message.text} />
+          </p>
+        )}
         <VerdictNote verdict={message.verdict} />
       </div>
     </li>

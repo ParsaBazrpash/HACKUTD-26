@@ -16,6 +16,7 @@ const { SafeText } = await import('@/components/incidents/safe-text');
 const { TimelineList } = await import('@/components/incidents/timeline-list');
 const { ScopeList } = await import('@/components/incidents/scope-list');
 const { ChannelsBoard } = await import('@/components/incidents/channels-board');
+const { BlastRadius } = await import('@/components/incidents/blast-radius');
 const { EMPTY_PROFILE } = await import('@/lib/client/types');
 
 const IMG = '<img src=x onerror=alert(1)>';
@@ -153,5 +154,80 @@ describe('render safety (T21, script injection via decrypted text)', () => {
     } as unknown as ScopeItem;
     const html = renderToStaticMarkup(createElement(ScopeList, { items: [item] }));
     expectInert(html);
+  });
+
+  it('the live blast radius map renders hostile system and author names as escaped text', () => {
+    const latest = {
+      itemId: '00000000-0000-4000-8000-000000000003',
+      system: HOSTILE,
+      assetType: 'database',
+      status: 'exfiltrated',
+      dataTypes: ['ssn'],
+      recordCount: 12400,
+      affected: [{ state: 'TX', count: 9800 }],
+      notes: HOSTILE,
+    };
+    const item = {
+      itemId: latest.itemId,
+      latest,
+      history: [{ seq: 1n, by: member, at, sentAt: at, verdict: ok, body: latest }],
+    } as unknown as ScopeItem;
+    holder.state = { ...baseState(), scope: [item] };
+    const html = renderToStaticMarkup(createElement(BlastRadius, {}));
+    // Names also sit in aria-label and title attributes, where React escapes them. Blank every quoted
+    // attribute value first, then no tag may carry an event-handler attribute of its own.
+    expect(html.replace(/="[^"]*"/g, '=""')).not.toMatch(/<[a-z][^>]*\son\w+=/i);
+    // The map's own chart is the only svg that is not an app icon; nothing injected may sit next to it.
+    const content = withoutAppIcons(html);
+    expect(content.match(/<svg/g) ?? []).toHaveLength(1);
+    expect(content).toMatch(/<svg viewBox="[-0-9 ]+" role="group"/);
+    expect(content).not.toMatch(/<img|<script|<foreignObject|<a\s[^>]*href=["']?\s*(javascript|data|vbscript):/i);
+    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+    expect(html).toContain('Eve &lt;img');
+    expect(html).toContain('TX');
+  });
+
+  it('a live card in chat draws hostile system names as escaped text, and a failed message draws no card', () => {
+    const latest = {
+      itemId: '00000000-0000-4000-8000-000000000004',
+      system: HOSTILE,
+      assetType: 'server',
+      status: 'encrypted',
+      dataTypes: [],
+      affected: [{ state: 'CA', count: 3 }],
+      notes: '',
+    };
+    const item = {
+      itemId: latest.itemId,
+      latest,
+      history: [{ seq: 1n, by: member, at, sentAt: at, verdict: ok, body: latest }],
+    } as unknown as ScopeItem;
+    const card: ChannelMessage = {
+      seq: 2n,
+      messageId: 'm2',
+      author: member,
+      sentAt: at,
+      serverTs: at,
+      text: `${IMG} [card:system:${latest.itemId}]`,
+      mentions: [],
+      verdict: ok,
+    };
+    const failed: ChannelMessage = {
+      ...card,
+      seq: 3n,
+      messageId: 'm3',
+      text: '[card:blast]',
+      verdict: { ok: false, failures: ['bad_signature'], warnings: [] },
+    };
+    holder.state = {
+      ...baseState(),
+      scope: [item],
+      channels: [{ kind: 'command', messages: [card, failed], waitingForKeys: false }],
+    } as unknown as IncidentState;
+    const html = renderToStaticMarkup(createElement(ChannelsBoard, {}));
+    expectInert(html);
+    expect(html).toContain('data-live-card="system"');
+    expect(html).not.toContain('data-live-card="blast"');
+    expect(html).toContain('[card:blast]');
   });
 });

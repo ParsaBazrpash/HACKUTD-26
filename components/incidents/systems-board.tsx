@@ -2,6 +2,7 @@
 
 import { BlastRadius } from "@/components/incidents/blast-radius";
 import { scopeStatusLabel } from "@/components/incidents/labels";
+import { ImportPanel } from "@/components/incidents/import-panel";
 import { ScopeForm } from "@/components/incidents/scope-form";
 import { ScopeList } from "@/components/incidents/scope-list";
 import { exposedScope, groupScope } from "@/components/incidents/situation";
@@ -22,6 +23,7 @@ export function SystemsBoard() {
           encrypted, or exfiltrated.
         </p>
       </div>
+      <ImportPanel />
       {groups.length === 0 ? (
         <p className="text-sm text-muted">No systems recorded yet.</p>
       ) : (

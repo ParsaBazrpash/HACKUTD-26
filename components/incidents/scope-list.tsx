@@ -1,9 +1,11 @@
 "use client";
 
 import { assetLabel, dataTypeLabel, scopeStatusLabel } from "@/components/incidents/labels";
+import { ImportedChip } from "@/components/incidents/import-panel";
 import { SafeText } from "@/components/incidents/safe-text";
 import { VerdictNote } from "@/components/incidents/verdict-note";
 import type { ScopeItem } from "@/lib/client/types";
+import { importedNotesSource } from "@/lib/import/label";
 
 function tone(status: string): string {
   if (status === "exfiltrated") return "text-alert";
@@ -17,10 +19,13 @@ export function ScopeList({ items }: { items: readonly ScopeItem[] }) {
 
   return (
     <ul className="divide-y divide-line border-y border-line">
-      {items.map((item) => (
+      {items.map((item) => {
+        const imported = importedNotesSource(item.latest.notes);
+        return (
         <li key={item.itemId} className="min-w-0 py-4">
-          <p className="break-words text-sm text-foreground">
+          <p className="flex flex-wrap items-center gap-2 break-words text-sm text-foreground">
             <SafeText text={item.latest.system} />
+            {imported ? <ImportedChip source={imported} /> : null}
           </p>
           <p className={`mt-1 text-sm ${tone(item.latest.status)}`}>
             {scopeStatusLabel(item.latest.status)}
@@ -50,7 +55,7 @@ export function ScopeList({ items }: { items: readonly ScopeItem[] }) {
           ) : null}
           {item.latest.notes ? (
             <p className="mt-3 break-words text-sm leading-6 text-muted">
-              <SafeText text={item.latest.notes} />
+              {imported ? item.latest.notes : <SafeText text={item.latest.notes} />}
             </p>
           ) : null}
           {item.history.length > 1 ? (
@@ -58,7 +63,8 @@ export function ScopeList({ items }: { items: readonly ScopeItem[] }) {
           ) : null}
           {item.history.at(-1) ? <VerdictNote verdict={item.history[item.history.length - 1].verdict} /> : null}
         </li>
-      ))}
+        );
+      })}
     </ul>
   );
 }

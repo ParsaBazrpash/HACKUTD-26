@@ -5,7 +5,7 @@ import { bytesEqual } from '@/lib/crypto/hash';
 import { openContact, verifyEnrollment, verifyPageRequest } from '@/lib/crypto/org';
 import { parsePageRequestBody, type PageRequestWire } from '@/lib/protocol/org';
 import type { PagerConfig } from './config';
-import { pagerUpdate, readPagerState, type MemberRow } from './spacetime';
+import { pagerReadProblems, pagerUpdate, readPagerState, type MemberRow } from './spacetime';
 import { placeCall } from './twilio';
 
 /** A request may be at most this far from the pager's clock, either way. */
@@ -109,7 +109,7 @@ export async function handlePage(rawBody: string, deps: PageDeps): Promise<PageR
 
   // 5. Spacetime must agree: commander and targets active and unchanged, a fresh 'requested' page row for each target.
   const state = await readPagerState(cfg, deps.fetch);
-  if (!state) return refuse(503, 'unavailable', 'could not read pager_org_member/pager_page from Spacetime (SPACETIME_PAGER_TOKEN, SPACETIME_HOST, SPACETIME_DB, or views)');
+  if (!state) return refuse(503, 'unavailable', `could not read pager views: ${pagerReadProblems.join('; ') || 'network error or exception (check SPACETIME_HOST)'}`);
   const commanderRow = state.members.find((m) => m.orgId === req.orgId && m.identity === req.commander.identity);
   if (!commanderRow || !matches(commanderRow, req.orgId, req.commander.identity, req.commander)) {
     return refuse(403, 'state_mismatch', !commanderRow ? 'commander not in org_member view' : 'commander row differs from certificate or is not active');

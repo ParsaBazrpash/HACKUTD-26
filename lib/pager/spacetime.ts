@@ -106,14 +106,26 @@ function rowsOf(json: unknown): Record<string, unknown>[] | null {
 // so the browser-code scan for SQL strings (tests/static-scan) stays about browser code.
 const selectAll = (view: string): string => ['SELECT', '*', 'FROM', view].join(' ');
 
+/** Why the last pager read returned null. Names the view and HTTP status or shape problem; no secrets. For server logs. */
+export const pagerReadProblems: string[] = [];
+
 async function query(cfg: PagerConfig, doFetch: typeof fetch, view: string): Promise<Record<string, unknown>[] | null> {
   const res = await doFetch(`${cfg.spacetimeHost}/v1/database/${encodeURIComponent(cfg.spacetimeDb)}/sql`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${cfg.spacetimeToken}`, 'Content-Type': 'text/plain' },
     body: selectAll(view),
   });
-  if (!res.ok) return null;
-  return rowsOf(await res.json());
+  if (!res.ok) {
+    pagerReadProblems.push(`${view}: HTTP ${res.status}`);
+    return null;
+  }
+  const json: unknown = await res.json();
+  const rows = rowsOf(json);
+  if (!rows) {
+    const sample = JSON.stringify(json).slice(0, 160).replace(/[0-9a-fA-F]{24,}/g, '<hex>');
+    pagerReadProblems.push(`${view}: unexpected response shape ${sample}`);
+  }
+  return rows;
 }
 
 /**
@@ -121,6 +133,7 @@ async function query(cfg: PagerConfig, doFetch: typeof fetch, view: string): Pro
  * is malformed: the caller then refuses to dial. Filtering happens in the caller.
  */
 export async function readPagerState(cfg: PagerConfig, doFetch: typeof fetch): Promise<PagerState | null> {
+  pagerReadProblems.length = 0;
   try {
     const [m, p] = await Promise.all([query(cfg, doFetch, 'pager_org_member'), query(cfg, doFetch, 'pager_page')]);
     if (!m || !p) return null;
@@ -133,7 +146,13 @@ export async function readPagerState(cfg: PagerConfig, doFetch: typeof fetch): P
       const ecdhPub = bytes(r.ecdhpub);
       const sealedContact = bytes(r.sealedcontact);
       const state = text(r.state);
-      if (!orgId || orgMemberId === null || !identity || !signPub || !ecdhPub || !sealedContact || !state) return null;
+      if (!orgId || orgMemberId === null || !identity || !signPub || !ecdhPub || !sealedContact || !state) {
+        const bad = Object.entries({ orgid: orgId, orgmemberid: orgMemberId, identity, signpub: signPub, ecdhpub: ecdhPub, sealedcontact: sealedContact, state })
+          .filter(([, v]) => !v && v !== 0)
+          .map(([k]) => k);
+        pagerReadProblems.push(`pager_org_member row: unparsable column(s) ${bad.join(',')}`);
+        return null;
+      }
       members.push({ orgId, orgMemberId, identity, signPub, ecdhPub, sealedContact, state });
     }
     const pages: PageRow[] = [];
@@ -143,11 +162,18 @@ export async function readPagerState(cfg: PagerConfig, doFetch: typeof fetch): P
       const orgMemberId = id(r.orgmemberid);
       const status = text(r.status);
       const requestedBy = hex(r.requestedby);
-      if (!pageId || !incidentId || orgMemberId === null || !status || !requestedBy) return null;
+      if (!pageId || !incidentId || orgMemberId === null || !status || !requestedBy) {
+        const bad = Object.entries({ pageid: pageId, incidentid: incidentId, orgmemberid: orgMemberId, status, requestedby: requestedBy })
+          .filter(([, v]) => !v && v !== 0)
+          .map(([k]) => k);
+        pagerReadProblems.push(`pager_page row: unparsable column(s) ${bad.join(',')}`);
+        return null;
+      }
       pages.push({ pageId, incidentId, orgMemberId, status, requestedBy });
     }
     return { members, pages };
-  } catch {
+  } catch (e) {
+    pagerReadProblems.push(`read threw: ${e instanceof Error ? e.message.slice(0, 120) : 'unknown'}`);
     return null;
   }
 }

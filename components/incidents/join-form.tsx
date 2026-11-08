@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { DemoBanner } from "@/components/incidents/demo-banner";
+import { PasskeyLockCard } from "@/components/security/passkey-lock-card";
 import {
   applyInviteHash,
   fragmentKind,
@@ -93,6 +94,7 @@ export function JoinForm() {
   return (
     <div className="grid max-w-xl gap-5">
       <DemoBanner />
+      <PasskeyLockCard />
       {fragment === null ? <p className="text-sm text-muted">Reading the invite link…</p> : null}
       {fragment === "" && !joined ? (
         <p className="text-sm leading-6 text-muted">

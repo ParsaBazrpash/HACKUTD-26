@@ -50,6 +50,11 @@ export function securityHeaders(opts: { spacetimeHost: string; dev: boolean }): 
     { key: 'X-Frame-Options', value: 'DENY' },
     { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
     { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
-    { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()' },
+    // Passkeys (WebAuthn) stay allowed for this origin only, for the opt-in key lock (lib/client/passkey-lock.ts).
+    {
+      key: 'Permissions-Policy',
+      value:
+        'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=(), publickey-credentials-create=(self), publickey-credentials-get=(self)',
+    },
   ];
 }

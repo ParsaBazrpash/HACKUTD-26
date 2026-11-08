@@ -425,6 +425,8 @@ Seeded from `lib/scenario/clinic.ts`: "Ransomware at Lakeside Family Clinic (300
 
 Per incident: device key pairs, pinned commander keys and fingerprint, unwrapped channel keys (non-extractable CryptoKeys), invite secrets (commander), pinned chain heads, last author counter. The Spacetime auth token lives in `localStorage` (SDK default). Nothing else persists. Tests use `fake-indexeddb`.
 
+**Passkey lock (opt-in, `lib/crypto/vault.ts`, `lib/client/passkey-lock.ts`).** One passkey per browser profile. Its WebAuthn PRF output (user verification required) goes through HKDF to an AES-GCM-256 vault key held in memory only. While the lock is on, new device private keys are generated extractable just long enough to `wrapKey('pkcs8')` under the vault key (AAD binds vault id, incident, key use and both public keys), then unwrapped as non-extractable keys for use; IndexedDB holds only the wrapped form. Channel keys are not persisted in this mode; after unlock they are unwrapped again from the server's envelopes. Every page load starts locked. Keys created before the lock was turned on stay plain (non-extractable keys cannot be wrapped). Turning the lock off re-stores locked keys as plain non-extractable keys. Browsers or passkeys without PRF never enable it, so nothing changes for them.
+
 ---
 
 ## 7. UI spec (Lane B)

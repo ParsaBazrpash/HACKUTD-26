@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import { DemoBanner } from "@/components/incidents/demo-banner";
+import { PasskeyLockCard } from "@/components/security/passkey-lock-card";
 import { ROLE_LABELS } from "@/components/incidents/labels";
 import { SectionNav } from "@/components/incidents/section-nav";
 import { SafeText } from "@/components/incidents/safe-text";
@@ -76,7 +77,8 @@ export function IncidentShell({ incidentId, children }: { incidentId: string; ch
 
   if (state.connection === "error" && state.incident?.id !== incidentId) {
     return (
-      <div>
+      <div className="grid gap-4">
+        <PasskeyLockCard when="locked" />
         <p role="alert" className="text-sm text-alert">
           {state.error ?? "The incident client could not open this incident."}
         </p>

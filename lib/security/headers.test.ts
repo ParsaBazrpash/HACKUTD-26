@@ -33,4 +33,12 @@ describe('security headers (T25, T31, T21)', () => {
     expect(h['Strict-Transport-Security']).toContain('max-age=');
     expect(h['Permissions-Policy']).toContain('camera=()');
   });
+
+  it('allows passkeys for this origin only, and needs no CSP relaxation for them', () => {
+    const h = Object.fromEntries(securityHeaders({ spacetimeHost: HOST, dev: false }).map((x) => [x.key, x.value]));
+    expect(h['Permissions-Policy']).toContain('publickey-credentials-create=(self)');
+    expect(h['Permissions-Policy']).toContain('publickey-credentials-get=(self)');
+    expect(h['Permissions-Policy']).not.toMatch(/publickey-credentials-(create|get)=\*/);
+    expect(h['Content-Security-Policy']).not.toContain('unsafe-eval');
+  });
 });

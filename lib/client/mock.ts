@@ -21,6 +21,7 @@ import {
   type LedgerMember,
   type LedgerWorld,
 } from "@/lib/client/demo-ledger";
+import { browserDemoOrgStore, type DemoOrgStore } from "@/lib/client/demo-org-store";
 import { foldEvents } from "@/lib/client/fold";
 import { demoFingerprint, demoSafety } from "@/lib/scenario/demo-codes";
 import {
@@ -86,8 +87,13 @@ export interface MockClientOptions {
   ledger?: DemoLedgerPort | null;
   /** Which member this tab is. Undefined uses sessionStorage in the browser. */
   session?: DemoSessionPort | null;
-  /** Start with the seeded Lakeside org (default). False starts with no org. */
+  /** Start with the seeded Lakeside org (default). False starts with no org. A saved leave wins over the seed. */
   seedOrg?: boolean;
+  /**
+   * Shared demo org. Undefined uses localStorage in the browser when this client
+   * also owns the browser ledger. Null keeps the org in memory for this process.
+   */
+  orgStore?: DemoOrgStore | null;
 }
 
 interface DemoInvite {
@@ -217,6 +223,9 @@ class MockIncidentClient implements IncidentClient {
   private currentId: string | null = null;
   private nextIdentity = 6;
   private readonly orgs: MockOrg;
+  private readonly orgStore: DemoOrgStore | null;
+  private orgUnsub: (() => void) | null = null;
+  private applyingOrg = false;
   private tail: Promise<void> = Promise.resolve();
 
   constructor(options: MockClientOptions = {}) {
@@ -224,7 +233,8 @@ class MockIncidentClient implements IncidentClient {
     this.ledger = options.ledger === undefined ? browserDemoLedger() : options.ledger;
     this.session = options.session === undefined ? browserDemoSession() : options.session;
     this.now = options.now ?? Date.now;
-    this.orgs = new MockOrg(this.orgHooks(), { seed: options.seedOrg });
+    this.orgStore = options.orgStore === undefined ? (options.ledger === undefined ? browserDemoOrgStore() : null) : options.orgStore;
+    this.orgs = new MockOrg(this.orgHooks(), { seed: options.seedOrg, store: this.orgStore });
     const clinic = createClinicFixture();
     const world: World = {
       id: clinic.incidentId,
@@ -242,6 +252,7 @@ class MockIncidentClient implements IncidentClient {
     this.state = freezeDeep(blank("connecting", new Date(this.now())));
     this.publish();
     this.ledger?.subscribe?.(() => this.onRemoteLedger());
+    this.orgUnsub = this.orgStore?.subscribe?.(() => this.onRemoteOrg()) ?? null;
   }
 
   getState = (): IncidentState => this.state;
@@ -476,6 +487,9 @@ class MockIncidentClient implements IncidentClient {
   revokeOrgMember(orgMemberId: bigint, reason: string): Promise<void> {
     return this.run(() => this.orgs.revokeOrgMember(orgMemberId, reason));
   }
+  leaveOrg(): Promise<void> {
+    return this.run(() => this.orgs.leaveOrg());
+  }
   addFromRoster(picks: { orgMemberId: bigint; role: "counsel" | "technical" | "executive" }[]): Promise<void> {
     return this.run(() => this.orgs.addFromRoster(picks));
   }
@@ -488,6 +502,8 @@ class MockIncidentClient implements IncidentClient {
 
   /** Clears pending page timers. */
   dispose(): void {
+    this.orgUnsub?.();
+    this.orgUnsub = null;
     this.orgs.dispose();
     this.listeners.clear();
   }
@@ -515,7 +531,10 @@ class MockIncidentClient implements IncidentClient {
         this.announceAs(identity);
         this.saveLedger();
       },
-      changed: () => this.publish(),
+      changed: () => {
+        this.persistOrg();
+        this.publish();
+      },
     };
   }
 
@@ -609,6 +628,31 @@ class MockIncidentClient implements IncidentClient {
       this.publish();
     } catch {
       // A bad ledger must not take down the tab that already has the record.
+    }
+  }
+
+  /** The org record is separate from the incident ledger, which has no org rows. */
+  private persistOrg(): void {
+    if (!this.orgStore || this.applyingOrg) return;
+    this.applyingOrg = true;
+    try {
+      this.orgStore.write(this.orgs.serialize());
+    } catch {
+      // The tab still shows the leave. A reload may show the seeded clinic again.
+    } finally {
+      this.applyingOrg = false;
+    }
+  }
+
+  private onRemoteOrg(): void {
+    if (this.applyingOrg) return;
+    this.applyingOrg = true;
+    try {
+      if (this.orgs.reload()) this.publish();
+    } catch {
+      // A bad org record must not take down the tab that already has one.
+    } finally {
+      this.applyingOrg = false;
     }
   }
 

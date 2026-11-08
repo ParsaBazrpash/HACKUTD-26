@@ -310,6 +310,8 @@ export interface IncidentClient {
   enroll(i: { fragment: string; displayName: string; phone: string }): Promise<{ safetyCode: string }>;
   approveMember(orgMemberId: bigint): Promise<void>;
   revokeOrgMember(orgMemberId: bigint, reason: string): Promise<void>;
+  /** Drops the caller's own roster row. After it resolves they can create another org. */
+  leaveOrg(): Promise<void>;
   addFromRoster(picks: { orgMemberId: bigint; role: 'counsel' | 'technical' | 'executive' }[]): Promise<void>;
   /** Calling it again for the same people is the retry. */
   page(orgMemberIds: bigint[]): Promise<{ pageId: string }>;

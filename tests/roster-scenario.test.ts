@@ -5,6 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createMemoryLedger, createMemorySession } from "@/lib/client/demo-ledger";
+import { createMemoryOrgStore, parseDemoOrg } from "@/lib/client/demo-org-store";
 import { createMockIncidentClient } from "@/lib/client/mock";
 import { MAX_OPEN_ENROLL_LINKS, PAGE_TIMELINE_MS } from "@/lib/client/mock-org";
 import type { IncidentClient, IncidentState, PageView, RosterMember } from "@/lib/client/types";
@@ -245,6 +246,88 @@ describe("mock org: refusals", () => {
       await expect(client.page([5n])).rejects.toThrow("Only the org admin");
       await expect(client.addFromRoster([{ orgMemberId: 5n, role: "technical" }])).rejects.toThrow("Only the org admin");
       await expect(client.revokeOrgMember(5n, "x")).rejects.toThrow("Only the org admin");
+    } finally {
+      client.dispose();
+    }
+  });
+
+  test("leaving an org clears it so a new one can be created", async () => {
+    const client = await seeded();
+    try {
+      expect(client.getState().org?.name).toBe("Lakeside Family Clinic");
+      await client.leaveOrg();
+      expect(client.getState().org).toBeNull();
+      expect(client.getState().roster).toEqual([]);
+      const created = await client.createOrg({ name: "North Clinic", displayName: "Avery Chen", phone: PHONE });
+      expect(client.getState().org).toMatchObject({ orgId: created.orgId, name: "North Clinic", myRole: "admin" });
+      await expect(client.createOrg({ name: "Other", displayName: "Avery Chen", phone: PHONE })).rejects.toThrow("already has an org");
+      await client.leaveOrg();
+      await expect(client.leaveOrg()).rejects.toThrow("not in an org");
+    } finally {
+      client.dispose();
+    }
+  });
+
+  test("leaving an org stays left when another demo tab opens the same record", async () => {
+    const orgStore = createMemoryOrgStore();
+    const opened = () =>
+      createMockIncidentClient({
+        origin: ORIGIN,
+        ledger: null,
+        session: null,
+        orgStore,
+        now: () => Date.now(),
+      });
+    const first = opened();
+    try {
+      expect(first.getState().org?.name).toBe("Lakeside Family Clinic");
+      await first.leaveOrg();
+      expect(first.getState().org).toBeNull();
+      expect(first.getState().roster).toEqual([]);
+    } finally {
+      first.dispose();
+    }
+
+    const second = opened();
+    let createdId = "";
+    try {
+      expect(second.getState().org).toBeNull();
+      expect(second.getState().roster).toEqual([]);
+      await expect(second.leaveOrg()).rejects.toThrow("not in an org");
+      const created = await second.createOrg({ name: "North Clinic", displayName: "Avery Chen", phone: PHONE });
+      createdId = created.orgId;
+      expect(orgStore.read()).not.toContain(PHONE);
+    } finally {
+      second.dispose();
+    }
+
+    const third = opened();
+    try {
+      expect(third.getState().org).toMatchObject({ orgId: createdId, name: "North Clinic", myRole: "admin" });
+    } finally {
+      third.dispose();
+    }
+  });
+
+  test("a stored org record with extra fields is ignored", () => {
+    expect(parseDemoOrg('{"v":1,"org":null}')).toEqual({ v: 1, org: null });
+    expect(parseDemoOrg('{"v":1,"org":null,"phone":"+15555550123"}')).toBeNull();
+    expect(parseDemoOrg('{"v":1,"org":{"phone":"+15555550123"}}')).toBeNull();
+    expect(parseDemoOrg("{")).toBeNull();
+    expect(parseDemoOrg("")).toBeNull();
+  });
+
+  test("a member who is not the admin can leave the org", async () => {
+    const client = createMockIncidentClient({
+      origin: ORIGIN,
+      ledger: createMemoryLedger(),
+      session: createMemorySession(),
+      viewer: "technical",
+    });
+    try {
+      expect(client.getState().org?.myRole).toBe("member");
+      await client.leaveOrg();
+      expect(client.getState().org).toBeNull();
     } finally {
       client.dispose();
     }

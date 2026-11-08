@@ -11,7 +11,12 @@ const ADDRESS = 'https://haven-2026.vercel.app';
 const FP = 'abcd 1234 abcd 1234 abcd 1234 abcd 1234';
 const HOSTILE = '<img src=x onerror=alert(1)> ‮gpj.exe';
 
-function render(props: { orgName: string | null; address?: string; adminFingerprint: string | null }) {
+function render(props: {
+  orgName: string | null;
+  address?: string;
+  adminFingerprint: string | null;
+  instructions?: boolean;
+}) {
   return renderToStaticMarkup(createElement(BreakGlassCard, { address: ADDRESS, ...props }));
 }
 
@@ -78,5 +83,14 @@ describe('BreakGlassCard markup', () => {
       expect(text).not.toMatch(/[–—]/);
     }
     expect(html).not.toMatch(/[–—]/);
+  });
+  it('omits the how-to on the Org page', () => {
+    const html = render({ orgName: 'Acme', adminFingerprint: FP, instructions: false });
+    expect(html).toContain('Save as image');
+    expect(html).toContain(ADDRESS);
+    expect(html).not.toContain(CARD_HOW_TO.handyTitle);
+    expect(html).not.toContain(CARD_HOW_TO.whenTitle);
+    expect(html).not.toContain(CARD_HOW_TO.whereTitle);
+    expect(html).not.toContain(CARD_HOW_TO.howTitle);
   });
 });

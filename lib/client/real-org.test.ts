@@ -72,6 +72,7 @@ function withOrg(b: HarnessBackend): HarnessBackend & { org: OrgBackend } {
     enrollMember: (a) => call(mod.enroll_member, a),
     approveMember: (a) => call(mod.approve_member, a),
     revokeOrgMember: (a) => call(mod.revoke_org_member, a),
+    leaveOrg: (a) => call(mod.leave_org, a),
     linkIncidentOrg: (a) => call(mod.link_incident_org, a),
     addFromRoster: (a) => call(mod.add_from_roster, a),
     requestPage: (a) => call(mod.request_page, a),
@@ -280,6 +281,50 @@ describe('org creation and enrollment', () => {
     const jordan = await enrollPerson(hub, pager, admin, 'Jordan');
     await expect(jordan.client.createEnrollLink({ ttlHours: 1 })).rejects.toThrow(/admin/);
     await expect(jordan.client.approveMember(1n)).rejects.toThrow(/admin/);
+  });
+
+  it('a member can leave, which stays revoked even if the row is set active again, and then create their own org', async () => {
+    const hub = new HarnessHub();
+    const pager = await newPager();
+    const { admin, jordan, orgId } = await startIncident(hub, pager);
+    const jordanId = rosterId(admin.client, 'Jordan');
+    await jordan.client.leaveOrg();
+    await settle();
+    expect(jordan.client.getState().org).toBeNull();
+    expect(await new OrgStore(orgId, jordan.db).getLockedKeys()).toBeUndefined();
+    expect(admin.client.getState().roster.find((r) => r.orgMemberId === jordanId)!.state).toBe('revoked');
+    operator(hub, admin, (ctx) => {
+      const cur = ctx.db.org_member.id.find(jordanId);
+      ctx.db.org_member.id.update({ ...cur, state: 'active', revokeSig: new Uint8Array(0), revokedAt: undefined });
+    });
+    await settle();
+    expect(admin.client.getState().roster.find((r) => r.orgMemberId === jordanId)!.state).toBe('revoked');
+    await expect(admin.client.addFromRoster([{ orgMemberId: jordanId, role: 'technical' }])).rejects.toThrow(/revoked/);
+    await expect(jordan.client.leaveOrg()).rejects.toThrow(/not in an organization/i);
+    const created = await jordan.client.createOrg({ name: 'North Clinic', displayName: 'Jordan', phone: PHONES.Jordan });
+    await settle();
+    expect(created.orgId).not.toBe(orgId);
+    expect(jordan.client.getState().org).toMatchObject({ orgId: created.orgId, name: 'North Clinic', myRole: 'admin' });
+  });
+
+  it('the admin can leave and then create another org', async () => {
+    const hub = new HarnessHub();
+    const pager = await newPager();
+    const { admin, orgId } = await startOrg(hub, pager);
+    const jordan = await enrollPerson(hub, pager, admin, 'Jordan');
+    admin.vault.lock();
+    await expect(admin.client.leaveOrg()).rejects.toThrow(ORG_LOCKED_MESSAGE);
+    expect(admin.client.getState().org?.orgId).toBe(orgId);
+    await admin.vault.unlock();
+    await admin.client.leaveOrg();
+    await settle();
+    expect(admin.client.getState().org).toBeNull();
+    expect(await new OrgStore(orgId, admin.db).getLockedKeys()).toBeUndefined();
+    expect(jordan.client.getState().org).toMatchObject({ orgId, myRole: 'member' });
+    const created = await admin.client.createOrg({ name: 'North Clinic', displayName: 'Casey', phone: PHONES.Casey });
+    await settle();
+    expect(created.orgId).not.toBe(orgId);
+    expect(admin.client.getState().org).toMatchObject({ orgId: created.orgId, name: 'North Clinic', myRole: 'admin' });
   });
 
   it('revoking a person marks them revoked for everyone and wipes their org keys', async () => {

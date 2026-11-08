@@ -1,8 +1,10 @@
 // Org roster, enrollment and paging for the demo client (WP4).
 //
-// Everything here is demo data held in memory. It does not seal, sign, hash or
-// call a carrier, and it never stores a phone number: the number a caller types
-// is checked for E.164 shape and then dropped. Paging is a simulated timeline.
+// Everything here is demo data. It does not seal, sign, hash or call a carrier,
+// and it never stores a phone number: the number a caller types is checked for
+// E.164 shape and then dropped. Paging is a simulated timeline. When a store is
+// attached, the org (or the fact that this browser left) is kept there so a
+// reload does not put the seeded clinic back.
 //
 // MockIncidentClient owns the incident world. This class reaches it only through
 // the hooks below, so the incident rules (roles, channels) stay in mock.ts.
@@ -15,6 +17,7 @@ import {
 } from "@/lib/scenario/org";
 import { demoFingerprint, demoSafety } from "@/lib/scenario/demo-codes";
 import type { OrgView, PageStatus, PageView, RosterMember } from "@/lib/client/types";
+import { parseDemoOrg, serializeDemoOrg, type DemoOrgStore, type StoredOrg } from "@/lib/client/demo-org-store";
 import {
   ENROLL_LINK_CODE_LEN,
   isE164,
@@ -104,8 +107,10 @@ export interface OrgSlice {
 }
 
 export interface MockOrgOptions {
-  /** Start with the seeded Lakeside org. Defaults to true. False starts with no org. */
+  /** Start with the seeded Lakeside org. Defaults to true. False starts with no org. A saved record wins over both. */
   seed?: boolean;
+  /** When set, a leave or a created org is read back the next time a client opens. */
+  store?: DemoOrgStore | null;
 }
 
 function parseEnrollFragment(fragment: string): { orgId: string; code: string } | "live" | null {
@@ -126,13 +131,49 @@ function randomCode(): string {
 export class MockOrg {
   private org: OrgState | null;
   private readonly pages = new Map<bigint, PageRow>();
+  private readonly store: DemoOrgStore | null;
   private disposed = false;
 
   constructor(
     private readonly hooks: MockOrgHooks,
     options: MockOrgOptions = {},
   ) {
-    this.org = options.seed === false ? null : this.fromFixture();
+    this.store = options.store ?? null;
+    const saved = this.readStore();
+    if (saved) this.org = saved.org;
+    else this.org = options.seed === false ? null : this.fromFixture();
+  }
+
+  /** Writes the current org, including a deliberate leave (`org: null`). */
+  serialize(): string {
+    return serializeDemoOrg({ v: 1, org: this.org ? this.toStored(this.org) : null });
+  }
+
+  /**
+   * Replaces the in-memory org from the store. Page timers are dropped.
+   * Returns false when there is nothing new to apply.
+   */
+  reload(): boolean {
+    const saved = this.readStore();
+    if (!saved) return false;
+    for (const row of this.pages.values()) this.clear(row);
+    this.pages.clear();
+    this.org = saved.org;
+    return true;
+  }
+
+  private readStore(): { org: OrgState | null } | null {
+    if (!this.store) return null;
+    let raw: string | null;
+    try {
+      raw = this.store.read();
+    } catch {
+      return null;
+    }
+    if (!raw) return null;
+    const file = parseDemoOrg(raw);
+    if (!file) return null;
+    return { org: file.org ? this.fromStored(file.org) : null };
   }
 
   /** Clears every pending page timer. The org keeps its state. */
@@ -262,6 +303,14 @@ export class MockOrg {
     if (target.state !== "pending") throw new Error("That person is not waiting for approval.");
     target.state = "active";
     target.approvedAt = new Date(this.hooks.now());
+    this.hooks.changed();
+  }
+
+  leaveOrg(): void {
+    if (!this.org) throw new Error("You are not in an org.");
+    for (const row of this.pages.values()) this.clear(row);
+    this.pages.clear();
+    this.org = null;
     this.hooks.changed();
   }
 
@@ -395,6 +444,62 @@ export class MockOrg {
     if (!this.org) throw new Error("Create an org first.");
     if (!this.hooks.isAdmin()) throw new Error("Only the org admin can do this.");
     return this.org;
+  }
+
+  private toStored(org: OrgState): StoredOrg {
+    return {
+      orgId: org.orgId,
+      name: org.name,
+      adminIdentity: org.adminIdentity,
+      adminFingerprint: org.adminFingerprint,
+      nextMemberId: org.nextMemberId.toString(),
+      nextSerial: org.nextSerial,
+      links: org.links.map((link) => ({ code: link.code, expiresAt: link.expiresAt })),
+      members: org.members.map((member) => ({
+        orgMemberId: member.orgMemberId.toString(),
+        identity: member.identity,
+        displayName: member.displayName,
+        state: member.state,
+        fingerprint: member.fingerprint,
+        safetyCode: member.safetyCode,
+        enrolledAt: member.enrolledAt.toISOString(),
+        approvedAt: member.approvedAt ? member.approvedAt.toISOString() : null,
+        keyChanged: member.keyChanged,
+        suggestedRole: member.suggestedRole,
+        phoneBehavior: member.phoneBehavior,
+        attempts: member.attempts,
+        revokedAt: member.revokedAt ? member.revokedAt.toISOString() : null,
+        role: member.role,
+      })),
+    };
+  }
+
+  private fromStored(org: StoredOrg): OrgState {
+    return {
+      orgId: org.orgId,
+      name: org.name,
+      adminIdentity: org.adminIdentity,
+      adminFingerprint: org.adminFingerprint,
+      nextMemberId: BigInt(org.nextMemberId),
+      nextSerial: org.nextSerial,
+      links: org.links.map((link) => ({ code: link.code, expiresAt: link.expiresAt })),
+      members: org.members.map((member) => ({
+        orgMemberId: BigInt(member.orgMemberId),
+        identity: member.identity,
+        displayName: member.displayName,
+        state: member.state,
+        fingerprint: member.fingerprint,
+        safetyCode: member.safetyCode,
+        enrolledAt: new Date(member.enrolledAt),
+        approvedAt: member.approvedAt ? new Date(member.approvedAt) : null,
+        keyChanged: member.keyChanged,
+        suggestedRole: member.suggestedRole,
+        phoneBehavior: member.phoneBehavior,
+        attempts: member.attempts,
+        revokedAt: member.revokedAt ? new Date(member.revokedAt) : null,
+        role: member.role,
+      })),
+    };
   }
 
   private fromFixture(): OrgState {

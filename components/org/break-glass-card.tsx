@@ -7,6 +7,37 @@ import { CARD_FOOTER, CARD_HOW_TO, CARD_NO_FINGERPRINT, CARD_PURPOSE, CARD_REPLA
 
 const labelClass = "font-mono text-[11px] tracking-[0.18em] text-muted";
 
+function CardInstructions() {
+  return (
+    <div className="no-print grid gap-4 rounded-2xl border border-line bg-panel px-4 py-4 text-sm leading-6">
+      <div>
+        <h3 className={labelClass}>{CARD_HOW_TO.handyTitle}</h3>
+        <ul className="mt-2 grid list-disc gap-2 pl-5">
+          {CARD_HOW_TO.handy.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      </div>
+      <div>
+        <h3 className={labelClass}>{CARD_HOW_TO.whenTitle}</h3>
+        <p className="mt-2">{CARD_HOW_TO.when}</p>
+      </div>
+      <div>
+        <h3 className={labelClass}>{CARD_HOW_TO.whereTitle}</h3>
+        <p className="mt-2">{CARD_HOW_TO.where}</p>
+      </div>
+      <div>
+        <h3 className={labelClass}>{CARD_HOW_TO.howTitle}</h3>
+        <ol className="mt-2 grid list-decimal gap-2 pl-5">
+          {CARD_HOW_TO.how.map((step) => (
+            <li key={step}>{step}</li>
+          ))}
+        </ol>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Pocket card. It holds the org name, the HAVEN address and the admin fingerprint,
  * all public. No code, key, token or enrollment link is ever put on it.
@@ -15,10 +46,13 @@ export function BreakGlassCard({
   orgName,
   address,
   adminFingerprint,
+  instructions = true,
 }: {
   orgName: string | null;
   address: string;
   adminFingerprint: string | null;
+  /** Enrollment shows the how-to. The Org page does not repeat it. */
+  instructions?: boolean;
 }) {
   const [qrState, setQr] = useState<{ text: string; url: string } | null>(null);
   const [status, setStatus] = useState<{ text: string; error: boolean } | null>(null);
@@ -123,32 +157,7 @@ export function BreakGlassCard({
       <p role="status" className={`no-print min-h-5 text-sm ${status?.error ? "text-alert" : "text-muted"}`}>
         {status?.text ?? ""}
       </p>
-      <div className="no-print grid gap-4 rounded-2xl border border-line bg-panel px-4 py-4 text-sm leading-6">
-        <div>
-          <h3 className={labelClass}>{CARD_HOW_TO.handyTitle}</h3>
-          <ul className="mt-2 grid list-disc gap-2 pl-5">
-            {CARD_HOW_TO.handy.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-        </div>
-        <div>
-          <h3 className={labelClass}>{CARD_HOW_TO.whenTitle}</h3>
-          <p className="mt-2">{CARD_HOW_TO.when}</p>
-        </div>
-        <div>
-          <h3 className={labelClass}>{CARD_HOW_TO.whereTitle}</h3>
-          <p className="mt-2">{CARD_HOW_TO.where}</p>
-        </div>
-        <div>
-          <h3 className={labelClass}>{CARD_HOW_TO.howTitle}</h3>
-          <ol className="mt-2 grid list-decimal gap-2 pl-5">
-            {CARD_HOW_TO.how.map((step) => (
-              <li key={step}>{step}</li>
-            ))}
-          </ol>
-        </div>
-      </div>
+      {instructions ? <CardInstructions /> : null}
     </section>
   );
 }

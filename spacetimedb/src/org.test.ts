@@ -9,6 +9,7 @@ import { computeJoinTag, newInvite } from '@/lib/crypto/invite';
 import { generateDeviceKeys, type DeviceKeys } from '@/lib/crypto/keys';
 import { sign } from '@/lib/crypto/sign';
 import { enrollLinkHash, sealContact, signEnrollment, signRevocation } from '@/lib/crypto/org';
+import { ORG_LEAVE_REASON } from './shared/org';
 import { sha256 } from '@noble/hashes/sha2.js';
 
 // --- harness plumbing ------------------------------------------------------
@@ -178,6 +179,11 @@ class Org {
   }
 
   async revokeSig(who: string, reason = 'lost phone', signer = this.admin.keys) {
+    const r = this.row(who);
+    return signRevocation(signer.signPriv, { orgId: this.orgId, orgMemberId: r.id, identityHex: r.identity.toHexString(), reason });
+  }
+
+  async leaveSig(who: string, reason = ORG_LEAVE_REASON, signer = this.people.get(who)!.keys) {
     const r = this.row(who);
     return signRevocation(signer.signPriv, { orgId: this.orgId, orgMemberId: r.id, identityHex: r.identity.toHexString(), reason });
   }
@@ -1014,5 +1020,101 @@ describe('org views', () => {
       expect(view(h, who, realMod.pager_org_member)).toEqual([]);
       expect(view(h, who, realMod.pager_page)).toEqual([]);
     }
+  });
+});
+
+describe('leave_org', () => {
+  it('only the member can leave, and only with their own signature over the fixed reason', async () => {
+    const o = await Org.create();
+    await o.enrollApproved('alice', 'Alice');
+    const row = o.row('alice');
+    const good = await o.leaveSig('alice');
+    const wrongReason = await o.leaveSig('alice', 'lost phone');
+    const adminSigned = await o.revokeSig('alice', ORG_LEAVE_REASON);
+    const leave = (who: string, revokeSig: Uint8Array, orgMemberId = row.id) =>
+      call(o.h, who, mod.leave_org, { orgId: o.orgId, orgMemberId, revokeSig });
+    bad(() => leave('bob', good)); // not alice
+    bad(() => leave('admin', good)); // the admin cannot leave someone else
+    bad(() => leave('alice', wrongReason));
+    bad(() => leave('alice', adminSigned)); // signed by the admin key, not alice's
+    bad(() => leave('alice', new Uint8Array(64)));
+    bad(() => leave('alice', good, o.row('admin').id)); // alice cannot drop the admin
+    expect(o.row('alice').state).toBe('active');
+    leave('alice', good);
+    expect(o.row('alice').state).toBe('revoked');
+    expect(view(o.h, 'alice', mod.my_org)).toEqual([]);
+    bad(() => leave('alice', good)); // already left
+    // The same keys cannot enroll again. enroll_member records a failure and returns.
+    const again = o.link();
+    const person = o.people.get('alice')!;
+    const sealed = await sealContact(o.pagerPub, o.orgId, person.hex, person.phone);
+    call(o.h, 'alice', mod.enroll_member, {
+      orgId: o.orgId,
+      code: again,
+      displayName: 'Alice',
+      signPub: person.keys.signPub,
+      ecdhPub: person.keys.ecdhPub,
+      joinTag: new Uint8Array(32),
+      sealedContact: sealed,
+    });
+    const rows = [...o.h.db.org_member.iter()].filter((m) => m.identity.toHexString() === person.hex);
+    expect(rows.map((m) => m.state)).toEqual(['revoked']);
+  });
+
+  it('a pending person can drop the enrollment', async () => {
+    const o = await Org.create();
+    await o.enroll('alice', 'Alice');
+    expect(o.row('alice').state).toBe('pending');
+    call(o.h, 'alice', mod.leave_org, { orgId: o.orgId, orgMemberId: o.row('alice').id, revokeSig: await o.leaveSig('alice') });
+    expect(o.row('alice').state).toBe('revoked');
+    expect(view(o.h, 'alice', mod.my_org)).toEqual([]);
+  });
+
+  it('the admin can leave and then create another org; the admin revoke path still refuses them', async () => {
+    const o = await Org.create();
+    await o.enrollApproved('alice', 'Alice');
+    const adminRow = o.row('admin');
+    const selfRevoke = await o.revokeSig('admin');
+    bad(() =>
+      call(o.h, 'admin', mod.revoke_org_member, {
+        orgId: o.orgId,
+        orgMemberId: adminRow.id,
+        reason: 'lost phone',
+        revokeSig: selfRevoke,
+      }),
+    );
+    call(o.h, 'admin', mod.leave_org, { orgId: o.orgId, orgMemberId: adminRow.id, revokeSig: await o.leaveSig('admin') });
+    expect(o.row('admin').state).toBe('revoked');
+    expect(o.row('alice').state).toBe('active');
+    expect(view(o.h, 'admin', mod.my_org)).toEqual([]);
+    const aliceRevoke = await o.revokeSig('alice');
+    bad(() =>
+      call(o.h, 'admin', mod.revoke_org_member, {
+        orgId: o.orgId,
+        orgMemberId: o.row('alice').id,
+        reason: 'lost phone',
+        revokeSig: aliceRevoke,
+      }),
+    );
+    const keys = await generateDeviceKeys();
+    const orgId = uuid();
+    const sealed = await sealContact(o.pagerPub, orgId, o.admin.hex, '+15550000009');
+    call(o.h, 'admin', mod.create_org, {
+      orgId,
+      name: 'North Clinic',
+      displayName: 'Casey',
+      signPub: keys.signPub,
+      ecdhPub: keys.ecdhPub,
+      sealedContact: sealed,
+      enrollSig: await signEnrollment(keys.signPriv, {
+        orgId,
+        identityHex: o.admin.hex,
+        displayName: 'Casey',
+        signPub: keys.signPub,
+        ecdhPub: keys.ecdhPub,
+        sealedContact: sealed,
+      }),
+    });
+    expect(view(o.h, 'admin', mod.my_org).map((org: { id: string }) => org.id)).toEqual([orgId]);
   });
 });

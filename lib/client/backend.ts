@@ -185,6 +185,7 @@ export interface OrgBackend {
   }): Promise<void>;
   approveMember(a: { orgId: string; orgMemberId: bigint; enrollSig: Uint8Array }): Promise<void>;
   revokeOrgMember(a: { orgId: string; orgMemberId: bigint; reason: string; revokeSig: Uint8Array }): Promise<void>;
+  leaveOrg(a: { orgId: string; orgMemberId: bigint; revokeSig: Uint8Array }): Promise<void>;
   linkIncidentOrg(a: { incidentId: string; orgId: string }): Promise<void>;
   addFromRoster(a: { incidentId: string; picks: PickWire[] }): Promise<void>;
   requestPage(a: { incidentId: string; pageId: string; orgMemberIds: bigint[] }): Promise<void>;

@@ -1014,7 +1014,7 @@ describe('append-only surface (T14)', () => {
         // org roster and paging (WP1)
         'add_from_roster', 'approve_member', 'create_enroll_link', 'create_org', 'enroll_member', 'link_incident_org', 'my_org',
         'my_org_status', 'my_pages', 'my_roster', 'page_timeout', 'pager_org_member', 'pager_page', 'pager_update', 'request_page',
-        'revoke_org_member',
+        'leave_org', 'revoke_org_member',
         // live presence: connect/disconnect hooks write only the presence table, never events or roles
         'my_presence', 'presence_connect', 'presence_disconnect',
       ].sort(),

@@ -43,6 +43,7 @@ import CreateIncidentReducer from "./create_incident_reducer";
 import CreateInviteReducer from "./create_invite_reducer";
 import CreateOrgReducer from "./create_org_reducer";
 import EnrollMemberReducer from "./enroll_member_reducer";
+import LeaveOrgReducer from "./leave_org_reducer";
 import LinkIncidentOrgReducer from "./link_incident_org_reducer";
 import PagerUpdateReducer from "./pager_update_reducer";
 import PostCheckpointReducer from "./post_checkpoint_reducer";
@@ -200,6 +201,7 @@ const reducersSchema = __reducers(
   __reducerSchema("create_invite", CreateInviteReducer),
   __reducerSchema("create_org", CreateOrgReducer),
   __reducerSchema("enroll_member", EnrollMemberReducer),
+  __reducerSchema("leave_org", LeaveOrgReducer),
   __reducerSchema("link_incident_org", LinkIncidentOrgReducer),
   __reducerSchema("pager_update", PagerUpdateReducer),
   __reducerSchema("post_checkpoint", PostCheckpointReducer),

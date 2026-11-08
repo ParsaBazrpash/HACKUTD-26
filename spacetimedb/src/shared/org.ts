@@ -38,6 +38,12 @@ export const SEALED_CONTACT_LEN = SEALED_CONTACT_HEADER + CONTACT_PLAINTEXT_LEN 
 export const SEALED_CONTACT_MIN = SEALED_CONTACT_LEN;
 export const SEALED_CONTACT_MAX = SEALED_CONTACT_LEN;
 export const MAX_ORG_REASON = 200;
+/**
+ * The only reason a member's own leave signature covers. The module stores the
+ * signature, not the reason, so every verifier rebuilds this exact statement.
+ * Distinct from an admin revocation, which uses a different fixed reason.
+ */
+export const ORG_LEAVE_REASON = 'left the org';
 
 const E164 = /^\+[0-9]{8,15}$/;
 /** E.164 only: "+" then 8 to 15 digits. No spaces, dashes or leading zero after the plus. */

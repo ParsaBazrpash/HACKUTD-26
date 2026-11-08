@@ -347,6 +347,7 @@ export class SpacetimeBackend implements IncidentBackend {
     enrollMember: (a) => this.reducers().enrollMember(a),
     approveMember: (a) => this.reducers().approveMember(a),
     revokeOrgMember: (a) => this.reducers().revokeOrgMember(a),
+    leaveOrg: (a) => this.reducers().leaveOrg(a),
     linkIncidentOrg: (a) => this.reducers().linkIncidentOrg(a),
     addFromRoster: (a) => this.reducers().addFromRoster(a),
     requestPage: (a) => this.reducers().requestPage(a),

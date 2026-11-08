@@ -101,7 +101,7 @@ import {
   parseEnrollFragment,
   type PageRequestWire,
 } from '@/lib/protocol/org';
-import { MAX_ORG_REASON, SEALED_CONTACT_LEN } from '@/spacetimedb/src/shared/org';
+import { MAX_ORG_REASON, ORG_LEAVE_REASON, SEALED_CONTACT_LEN } from '@/spacetimedb/src/shared/org';
 import { isInvitableRole } from '@/spacetimedb/src/shared/policy';
 import { unwrapChannelKey, wrapChannelKey } from '@/lib/crypto/wrap';
 import { createStore, get as idbGet, set as idbSet, type UseStore } from 'idb-keyval';
@@ -1449,6 +1449,16 @@ export class RealIncidentClient implements IncidentClient {
           const id = r.orgMemberId.toString();
           const certified =
             r.enrollSig.length === 64 && (await verifyEnrollment(pin.adminSignPub!, this.enrollmentFields(o.id, r), r.enrollSig));
+          // A member can leave on their own. That signature counts only under the key the admin certified.
+          const selfLeft =
+            r.state === 'revoked' &&
+            certified &&
+            (await verifyRevocation(r.signPub, { ...this.revocationFields(o.id, r), reason: ORG_LEAVE_REASON }, r.revokeSig));
+          if (selfLeft) {
+            signedRevokedIds.add(id);
+            if (!revokedBefore.has(id)) newlyRevoked.push(id);
+            for (const e of revokedKeyEntries(r)) revokedKeyList.add(e);
+          }
           let keyChanged = false;
           const cached = cache[id];
           const hash = sha256(r.sealedContact);
@@ -1463,7 +1473,7 @@ export class RealIncidentClient implements IncidentClient {
           }
           // An active row without a valid certificate is treated like a changed key: that person cannot be added.
           if (r.state === 'active' && !certified) keyChanged = true;
-          // A revocation counts only with the admin's signature; once seen it is remembered for good.
+          // A revocation counts with the admin's signature, or with the member's own leave under the certified key.
           const signedRevoked = signedRevokedIds.has(id);
           if (signedRevoked && !revokedBefore.has(id)) newlyRevoked.push(id);
           // A row carrying a revoked key counts as revoked whatever its id or state.
@@ -1511,9 +1521,19 @@ export class RealIncidentClient implements IncidentClient {
         const shown = live ?? pinned.find((r) => r.state === 'revoked');
         if (shown) {
           roster = [view(shown.orgId, shown, false)];
-          const adminPub = (await this.orgStore(shown.orgId).getPin())?.adminSignPub;
-          if (!live && shown.state === 'revoked' && adminPub && !this.orgWiped.has(shown.orgId)) {
-            if (shown.revokeSig.length === 64 && (await verifyRevocation(adminPub, this.revocationFields(shown.orgId, shown), shown.revokeSig))) {
+          if (!live && shown.state === 'revoked' && !this.orgWiped.has(shown.orgId)) {
+            const adminPub = (await this.orgStore(shown.orgId).getPin())?.adminSignPub;
+            const adminOk =
+              !!adminPub &&
+              shown.revokeSig.length === 64 &&
+              (await verifyRevocation(adminPub, this.revocationFields(shown.orgId, shown), shown.revokeSig));
+            const rec = await this.orgStore(shown.orgId).getLockedKeys();
+            const selfOk =
+              !!rec &&
+              bytesEqual(rec.signPub, shown.signPub) &&
+              shown.revokeSig.length === 64 &&
+              (await verifyRevocation(shown.signPub, { ...this.revocationFields(shown.orgId, shown), reason: ORG_LEAVE_REASON }, shown.revokeSig));
+            if (adminOk || selfOk) {
               this.orgWiped.add(shown.orgId);
               this.orgKeyCache.delete(shown.orgId);
               await this.orgStore(shown.orgId).wipe();
@@ -1562,7 +1582,7 @@ export class RealIncidentClient implements IncidentClient {
       .rows()
       .roster.find((r) => r.orgId === snap.orgId && r.orgMemberId === orgMemberId);
     if ((await this.orgStore(snap.orgId).getRevoked()).has(orgMemberId.toString())) {
-      throw new ClientError(`${row?.displayName ?? 'That person'} was revoked by the admin and cannot be added.`);
+      throw new ClientError(`${row?.displayName ?? 'That person'} was revoked and cannot be added.`);
     }
     // A revoked key stays revoked, whatever id or state a row carrying it shows.
     if (row && carriesRevokedKey(await this.orgStore(snap.orgId).getRevokedKeys(), row)) {
@@ -1787,6 +1807,51 @@ export class RealIncidentClient implements IncidentClient {
         throw new ClientError('Could not revoke that person');
       }
       await this.waitFor(() => ob.rows().roster.some((r) => r.orgMemberId === orgMemberId && r.state === 'revoked'));
+      await this.refresh();
+    });
+  }
+
+  /** The caller's live roster row: the org on screen, or a pending enrollment this device still holds keys for. */
+  private async ownLiveOrgRow(): Promise<OrgMemberRow | null> {
+    const snap = [...this.orgSnaps.values()][0];
+    if (snap) {
+      const mine = [...snap.members.values()].find((m) => m.row.identityHex === snap.myHex && m.row.state !== 'revoked' && !m.revoked);
+      return mine?.row ?? null;
+    }
+    for (const r of this.orgBackend().rows().own) {
+      if (r.state !== 'pending' && r.state !== 'active') continue;
+      const rec = await this.orgStore(r.orgId).getLockedKeys();
+      if (rec && bytesEqual(rec.signPub, r.signPub) && bytesEqual(rec.ecdhPub, r.ecdhPub)) return r;
+    }
+    return null;
+  }
+
+  async leaveOrg(): Promise<void> {
+    const ob = this.orgBackend();
+    return this.exclusive(async () => {
+      await this.refresh();
+      const row = await this.ownLiveOrgRow();
+      if (!row) throw new ClientError('You are not in an organization');
+      const keys = await this.orgKeys(row.orgId);
+      if (!bytesEqual(keys.signPub, row.signPub) || !bytesEqual(keys.ecdhPub, row.ecdhPub)) {
+        throw new ClientError('This device does not hold the keys for your organization seat');
+      }
+      const revokeSig = await signRevocation(keys.signPriv, {
+        orgId: row.orgId,
+        orgMemberId: row.orgMemberId,
+        identityHex: row.identityHex,
+        reason: ORG_LEAVE_REASON,
+      });
+      try {
+        await ob.leaveOrg({ orgId: row.orgId, orgMemberId: row.orgMemberId, revokeSig });
+      } catch {
+        throw new ClientError('Could not leave the organization');
+      }
+      const seen = await this.waitFor(() => ob.rows().own.some((r) => r.orgMemberId === row.orgMemberId && r.state === 'revoked'));
+      if (!seen) throw new ClientError('The server did not confirm that you left');
+      this.orgWiped.add(row.orgId);
+      this.orgKeyCache.delete(row.orgId);
+      await this.orgStore(row.orgId).wipe();
       await this.refresh();
     });
   }

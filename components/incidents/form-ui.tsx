@@ -1,5 +1,8 @@
-export const fieldClass =
-  "min-h-10 w-full min-w-0 rounded-lg border border-line bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal";
+/** Shared field chrome. Width is separate: in Tailwind, `w-full` beats a later `w-14` on the same element. */
+export const fieldChrome =
+  "min-h-10 min-w-0 rounded-lg border border-line bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal";
+
+export const fieldClass = `w-full ${fieldChrome}`;
 
 export const primaryButtonClass =
   "inline-flex min-h-10 items-center justify-center rounded-lg bg-signal px-4 py-2 text-sm font-medium text-signal-ink hover:bg-signal-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal";

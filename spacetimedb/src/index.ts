@@ -58,6 +58,7 @@ import {
   MAX_ORG_REASON,
   MAX_PAGE_TARGETS,
   normalizeOrgName,
+  ORG_LEAVE_REASON,
   orgRevokeStatement,
   SEALED_CONTACT_LEN,
 } from './shared/org';
@@ -1171,6 +1172,23 @@ export const revoke_org_member = spacetimedb.reducer(
     if (!sigOk(o.adminSignPub, orgRevokeStatement(orgId, orgMemberId, target.identity.toHexString(), reason), revokeSig)) throw invalid();
     ctx.db.org_member.id.update({ ...target, state: 'revoked', revokeSig, revokedAt: ctx.timestamp });
     console.log(`org member revoked in ${orgId}`);
+  },
+);
+
+/** The caller drops their own roster row. The signature is theirs, over the fixed leave reason. */
+export const leave_org = spacetimedb.reducer(
+  { orgId: t.string(), orgMemberId: t.u64(), revokeSig: t.byteArray() },
+  (ctx, { orgId, orgMemberId, revokeSig }) => {
+    if (!isUuidV4(orgId) || !bytesLen(revokeSig, SIG_LEN)) throw invalid();
+    const target = ctx.db.org_member.id.find(orgMemberId);
+    if (!target || target.orgId !== orgId) throw invalid();
+    if (target.identity.toHexString() !== ctx.sender.toHexString()) throw notAuthorized();
+    if (target.state !== 'pending' && target.state !== 'active') throw invalid();
+    if (!sigOk(target.signPub, orgRevokeStatement(orgId, orgMemberId, target.identity.toHexString(), ORG_LEAVE_REASON), revokeSig)) {
+      throw invalid();
+    }
+    ctx.db.org_member.id.update({ ...target, state: 'revoked', revokeSig, revokedAt: ctx.timestamp });
+    console.log(`org member left ${orgId}`);
   },
 );
 

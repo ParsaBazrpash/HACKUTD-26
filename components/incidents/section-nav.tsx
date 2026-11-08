@@ -7,15 +7,15 @@ import { INCIDENT_SECTIONS, incidentSectionActive, incidentSectionHref } from "@
 
 function linkClass(active: boolean): string {
   return active
-    ? "inline-flex min-h-11 shrink-0 items-center rounded-lg bg-panel px-3 text-sm text-signal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
-    : "inline-flex min-h-11 shrink-0 items-center rounded-lg px-3 text-sm text-muted hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal";
+    ? "inline-flex min-h-9 shrink-0 items-center rounded-lg bg-signal px-3 text-sm font-medium text-signal-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+    : "inline-flex min-h-9 shrink-0 items-center rounded-lg px-3 text-sm text-muted hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal";
 }
 
 function SectionLinks({ incidentId, pathname }: { incidentId: string; pathname: string | null }) {
   return (
     <nav
       aria-label="Incident sections"
-      className="no-print sticky top-0 z-30 mt-6 flex gap-1 overflow-x-auto border-b border-line bg-background py-2"
+      className="no-print mt-5 flex gap-1 overflow-x-auto rounded-xl border border-line p-1"
     >
       {INCIDENT_SECTIONS.map((section) => {
         const href = incidentSectionHref(incidentId, section.slug);

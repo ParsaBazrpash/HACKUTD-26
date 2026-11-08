@@ -9,7 +9,8 @@ import { CHANNEL_LABELS, connectionLabel, phaseLabel } from "@/components/incide
 import { IntegrityMark } from "@/components/ui/integrity-mark";
 import { getIncidentClient, isMockIncidentClient } from "@/lib/client";
 import { clientErrorMessage } from "@/lib/client/errors";
-import { formatTimestamp } from "@/lib/time";
+import { formatLocalTimestamp } from "@/lib/time";
+import { useBrowserNow } from "@/hooks/use-browser-now";
 import { useIncident } from "@/hooks/use-incident";
 
 const fieldClass =
@@ -17,6 +18,7 @@ const fieldClass =
 
 export function IncidentList() {
   const state = useIncident();
+  const now = useBrowserNow();
   const mock = isMockIncidentClient();
   const router = useRouter();
   const [title, setTitle] = useState("");
@@ -91,8 +93,7 @@ export function IncidentList() {
                 </span>
                 <span className="mt-1 block break-words text-sm text-muted">
                   {state.status ? phaseLabel(state.status.phase) : "No status yet"}
-                  {" · "}
-                  {formatTimestamp(incident.createdAt)}
+                  {now === null ? "" : ` · ${formatLocalTimestamp(incident.createdAt)}`}
                   {channelNames.length > 0 ? ` · ${channelNames.join(" · ")}` : ""}
                 </span>
               </span>

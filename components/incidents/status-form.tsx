@@ -48,7 +48,7 @@ export function StatusForm() {
   if (!allowed) return <Denied>{recordDenial("status.set")}</Denied>;
 
   return (
-    <form onSubmit={submit} className="grid gap-4 rounded-2xl border border-line bg-panel px-4 py-4 sm:px-5" aria-label="Incident status">
+    <form onSubmit={submit} className="grid gap-4" aria-label="Incident status">
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="grid gap-2 text-sm" htmlFor="status-severity">
           Severity
@@ -91,8 +91,9 @@ export function StatusForm() {
           value={summary}
           maxLength={500}
           rows={4}
+          placeholder="Add a concise status update..."
           onChange={(event) => setSummary(event.target.value)}
-          className={`${fieldClass} min-h-24`}
+          className={`${fieldClass} min-h-24 resize-y`}
         />
       </label>
       <FormError message={error} />

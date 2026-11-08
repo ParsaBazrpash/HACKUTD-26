@@ -17,11 +17,12 @@ test("shell routes render the clinic incident", async ({ page }) => {
   await expect(page.getByText("Demo data").first()).toBeVisible();
 
   await page.getByRole("link", { name: /Lakeside Family Clinic/ }).click();
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("Lakeside Family Clinic");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("SEV1");
+  await expect(page.getByText("Lakeside Family Clinic").first()).toBeVisible();
   await expect(page.getByText("Demo data").first()).toBeVisible();
   await expect(page.getByText("structured event log")).toBeVisible();
   await expect(page.getByText("Demo sequence check passed").first()).toBeVisible();
-  await expect(page.getByText("still exposed")).toBeVisible();
+  await expect(page.getByText("Still suspected, encrypted, or exfiltrated")).toBeVisible();
   await expect(page.getByText("#privileged").first()).toBeVisible();
   await expect(page.getByText("Privileged communication").first()).toBeVisible();
   await expect(page.locator("body")).not.toContainText("PRIVATE KEY");
@@ -94,7 +95,8 @@ test("incident sections fit a 375px screen", async ({ page }) => {
   await page.goto("/incidents");
   await noHorizontalOverflow(page);
   await page.getByRole("link", { name: /Lakeside Family Clinic/ }).click();
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("Lakeside Family Clinic");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("SEV1");
+  await expect(page.getByText("Lakeside Family Clinic").first()).toBeVisible();
   const nav = page.getByRole("navigation", { name: "Incident sections" });
   for (const name of ["Overview", "Timeline", "Affected Systems", "Tasks", "Secure Channels", "People & Access", "Legal Deadlines", "Report"]) {
     await nav.getByRole("link", { name, exact: true }).click();

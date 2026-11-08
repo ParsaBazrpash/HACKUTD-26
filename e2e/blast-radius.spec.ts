@@ -40,7 +40,7 @@ test("live blast radius: state clocks, quick status change, and live cards in ch
   await expect(systemCard).toContainText("HR-SQL-01");
   await expect(systemCard).toContainText("Contained");
   const blastCard = page.locator('[data-live-card="blast"]').last();
-  await expect(blastCard).toContainText("3 of 6 systems in the blast radius");
+  await expect(blastCard).toContainText("4 of 7 systems in the blast radius");
   await expect(page.locator("body")).not.toContainText("[card:");
 });
 

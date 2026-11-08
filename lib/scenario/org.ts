@@ -5,6 +5,7 @@
 
 import type { Role } from "@/spacetimedb/src/shared/policy";
 import type { RosterMember } from "@/lib/client/types";
+import { demoFingerprint, demoSafety } from "@/lib/scenario/demo-codes";
 
 export const ORG_ID = "00000000-0000-4000-8000-0000000000a1";
 export const ORG_NAME = "Lakeside Family Clinic";
@@ -33,15 +34,6 @@ function demoIdentity(n: number): string {
   return n.toString(16).padStart(64, "0");
 }
 
-export function demoOrgFingerprint(n: number): string {
-  return `de30 0000 de30 0000 de30 0000 de30 ${n.toString(16).padStart(4, "0")}`;
-}
-
-export function demoOrgSafety(n: number): string {
-  const digits = (n * 7919).toString().padStart(12, "0");
-  return `${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6, 9)} ${digits.slice(9, 12)}`;
-}
-
 function seed(
   id: number,
   serial: number,
@@ -56,8 +48,8 @@ function seed(
     identity: demoIdentity(serial),
     displayName,
     state,
-    fingerprint: demoOrgFingerprint(serial),
-    safetyCode: demoOrgSafety(serial),
+    fingerprint: demoFingerprint(serial),
+    safetyCode: demoSafety(serial),
     enrolledAt: new Date(enrolledAt),
     approvedAt: state === "pending" ? null : new Date(enrolledAt),
     keyChanged: false,
@@ -71,18 +63,20 @@ export function createOrgFixture(): OrgFixture {
   const members: OrgMemberSeed[] = [
     // The commander and the three people already in the clinic incident share
     // their identities with createClinicFixture (serials 1 to 4).
-    seed(1, 1, "Avery Chen", "active", "executive", "2026-10-01T15:00:00.000Z"),
-    seed(2, 2, "Jordan Hale", "active", "counsel", "2026-10-01T15:05:00.000Z"),
-    seed(3, 3, "Sam Okonkwo", "active", "technical", "2026-10-01T15:10:00.000Z"),
-    seed(4, 4, "Riley Patel", "active", "executive", "2026-10-01T15:15:00.000Z"),
+    seed(1, 1, "Avery Chen", "active", "executive", "2026-10-01T14:02:00.000Z"),
+    seed(2, 2, "Jordan Hale", "active", "counsel", "2026-10-01T14:31:00.000Z"),
+    seed(3, 3, "Sam Okonkwo", "active", "technical", "2026-10-01T15:12:00.000Z"),
+    seed(4, 4, "Riley Patel", "active", "executive", "2026-10-02T13:47:00.000Z"),
     // Not yet in the incident.
-    seed(5, 0x201, "Morgan Diaz", "active", "technical", "2026-10-02T15:00:00.000Z"),
-    seed(6, 0x202, "Priya Shah", "active", "executive", "2026-10-02T15:05:00.000Z"),
-    seed(7, 0x203, "Lee Carter", "active", "technical", "2026-10-02T15:10:00.000Z", "no_answer_first"),
+    seed(5, 0x201, "Morgan Diaz", "active", "technical", "2026-10-05T15:20:00.000Z"),
+    seed(6, 0x202, "Priya Shah", "active", "executive", "2026-10-06T14:18:00.000Z"),
+    seed(7, 0x203, "Lee Carter", "active", "technical", "2026-10-08T16:05:00.000Z", "no_answer_first"),
+    seed(8, 0x206, "Drew Kim", "active", "technical", "2026-10-12T14:40:00.000Z"),
+    seed(9, 5, "Noah Ellis", "active", "technical", "2026-10-14T15:25:00.000Z"),
     // Waiting for approval, with a visible demo safety code.
-    seed(8, 0x204, "Casey Brooks", "pending", "technical", "2026-11-07T10:55:00.000Z"),
+    seed(10, 0x204, "Casey Brooks", "pending", "technical", "2026-11-07T10:55:00.000Z"),
     // Lost phone.
-    seed(9, 0x205, "Taylor Nguyen", "revoked", "technical", "2026-10-02T15:15:00.000Z"),
+    seed(11, 0x205, "Taylor Nguyen", "revoked", "technical", "2026-10-09T15:30:00.000Z"),
   ];
   return {
     orgId: ORG_ID,

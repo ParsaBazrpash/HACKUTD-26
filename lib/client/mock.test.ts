@@ -4,6 +4,7 @@ import { createMockIncidentClient } from "@/lib/client/mock";
 import { computeDeadlines } from "@/lib/legal";
 import { isKindAllowed, PayloadSchema } from "@/lib/protocol/events";
 import { CLINIC_INCIDENT_ID, createClinicFixture } from "@/lib/scenario/clinic";
+import { demoSafety } from "@/lib/scenario/demo-codes";
 import { EMPTY_PROFILE, type ProfileBody, type StatusBody } from "@/lib/client/types";
 
 function containsText(value: unknown, needle: string): boolean {
@@ -50,7 +51,7 @@ describe("mock incident client", () => {
     expect(first.me?.role).toBe("commander");
     expect(first.me?.verified).toBe(false);
     expect(first.status?.severity).toBe("SEV1");
-    expect(first.status?.phase).toBe("recovery");
+    expect(first.status?.phase).toBe("eradication");
     expect(first.members).toHaveLength(5);
     expect(first.members.filter((member) => member.state === "active").map((member) => member.role)).toEqual([
       "commander",
@@ -59,9 +60,9 @@ describe("mock incident client", () => {
       "executive",
     ]);
     expect(first.timeline).toHaveLength(12);
-    expect(first.scope).toHaveLength(6);
+    expect(first.scope).toHaveLength(7);
     expect(first.tasks).toHaveLength(6);
-    expect(first.evidence).toHaveLength(2);
+    expect(first.evidence).toHaveLength(3);
     expect(first.profile.hipaaCoveredEntity).toBe(true);
     expect(first.discovery?.basis).toMatch(/02:13/);
     expect(first.materiality).toBeNull();
@@ -70,12 +71,14 @@ describe("mock incident client", () => {
 
     const hr = first.scope.find((item) => item.latest.system === "HR-SQL-01");
     expect(hr?.latest.status).toBe("exfiltrated");
-    expect(hr?.latest.recordCount).toBe(12400);
-    expect(hr?.latest.dataTypes).toEqual(["ssn"]);
-    expect(hr?.latest.affected).toEqual([
-      { state: "TX", count: 9800 },
-      { state: "CA", count: 2600 },
-    ]);
+    expect(hr?.latest.recordCount).toBe(342);
+    expect(hr?.latest.dataTypes).toEqual(["ssn", "employee_hr", "financial_account"]);
+    expect(hr?.latest.affected).toEqual([{ state: "TX", count: 342 }]);
+    const pm = first.scope.find((item) => item.latest.system === "PM-SQL-01");
+    expect(pm?.latest.status).toBe("exfiltrated");
+    expect(pm?.latest.recordCount).toBe(41200);
+    expect(pm?.latest.affected).toEqual([{ state: "TX", count: 41200 }]);
+    expect(first.scope.some((item) => item.latest.affected.some((a) => a.state === "CA"))).toBe(false);
     expect(first.scope.find((item) => item.latest.system === "FS-CLINIC-01")?.latest.status).toBe("encrypted");
     expect(first.scope.find((item) => item.latest.system === "EHR-APP-01")?.latest.dataTypes).toEqual(["phi"]);
     expect(first.scope.find((item) => item.latest.system === "BACKUP-VEEAM")?.latest.status).toBe("contained");
@@ -153,7 +156,8 @@ describe("mock incident client", () => {
     expect(state.channels).toEqual([]);
     expect(state.timeline).toEqual([]);
     expect(state.members.map((member) => member.role).sort()).toEqual(["commander", "technical"]);
-    expect(state.me?.safetyCode).toBe("000 000 000 005");
+    expect(state.me?.safetyCode).toBe(demoSafety(5));
+    expect(state.me?.safetyCode).toMatch(/^\d{3} \d{3} \d{3} \d{3}$/);
     expect(state.me?.linkVerified).toBeUndefined();
     expect(containsText(state, "Do not forward")).toBe(false);
   });
@@ -313,10 +317,10 @@ describe("mock incident client", () => {
     await client.addEvidence({
       label: "Downtime roster photo",
       sha256: "ab".repeat(32),
-      location: "Demo placeholder. This digest was not computed from a photo.",
+      location: "Plano front desk, shared phone",
       custodian: "Avery Chen",
     });
-    expect(client.getState().evidence).toHaveLength(3);
+    expect(client.getState().evidence).toHaveLength(4);
 
     const counsel = createMockIncidentClient({ viewer: "counsel" });
     const profile: ProfileBody = { ...EMPTY_PROFILE, hipaaCoveredEntity: true, euDataSubjects: true };

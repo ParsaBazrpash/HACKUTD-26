@@ -32,6 +32,7 @@ interface Loaded {
   size: number;
   sha256: string;
   format: ImportFormat;
+  warnings: string[];
   columns: string[];
   rows: Row[];
   /** System names on the record when the file was opened. */
@@ -117,6 +118,7 @@ function ImportPanelInner() {
         size: read.size,
         sha256: read.sha256,
         format: read.format,
+        warnings: read.warnings,
         columns: table.columns,
         rows: table.rows,
         existing: state.scope.map((item) => item.latest.system),
@@ -251,6 +253,14 @@ function ImportPanelInner() {
                   </dd>
                 </div>
               </dl>
+
+              {loaded.warnings.length > 0 ? (
+                <ul className="grid gap-1 text-sm text-muted">
+                  {loaded.warnings.map((w) => (
+                    <li key={w}>{w}</li>
+                  ))}
+                </ul>
+              ) : null}
 
               {platform !== "generic" ? (
                 <div className="grid gap-1 text-sm">

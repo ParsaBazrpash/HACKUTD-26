@@ -62,10 +62,23 @@ const HOST_OK = /^[A-Za-z0-9 ._\-\\()]{1,120}$/;
 
 export type HostResult = { ok: true; host: string } | { ok: false; reason: string };
 
+const FORMULA_START = new Set(['=', '+', '-', '@', '\t', '\r']);
+
+/** True when a spreadsheet would read text that starts this way as a formula. */
+export function startsLikeFormula(s: string): boolean {
+  return s.length > 0 && FORMULA_START.has(s[0]);
+}
+
+/** For any future spreadsheet export: a leading apostrophe keeps a cell from being read as a formula. */
+export function neutralizeFormula(s: string): string {
+  return startsLikeFormula(s) ? `'${s}` : s;
+}
+
 export function cleanHost(raw: string): HostResult {
   if (raw.length > 400) return { ok: false, reason: 'unsafe host name' };
   const host = cleanText(raw, 120);
-  if (!HOST_OK.test(host)) return { ok: false, reason: 'unsafe host name' };
+  // A host that a spreadsheet would read as a formula is refused (real host names never start this way).
+  if (!HOST_OK.test(host) || startsLikeFormula(host)) return { ok: false, reason: 'unsafe host name' };
   return { ok: true, host };
 }
 

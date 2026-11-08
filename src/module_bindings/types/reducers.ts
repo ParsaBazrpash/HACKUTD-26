@@ -6,19 +6,37 @@
 import { type Infer as __Infer } from "spacetimedb";
 
 // Import all reducer arg schemas
+import AddFromRosterReducer from "../add_from_roster_reducer";
 import AdmitMemberReducer from "../admit_member_reducer";
 import AppendEventReducer from "../append_event_reducer";
+import ApproveMemberReducer from "../approve_member_reducer";
+import CreateEnrollLinkReducer from "../create_enroll_link_reducer";
 import CreateIncidentReducer from "../create_incident_reducer";
 import CreateInviteReducer from "../create_invite_reducer";
+import CreateOrgReducer from "../create_org_reducer";
+import EnrollMemberReducer from "../enroll_member_reducer";
+import LinkIncidentOrgReducer from "../link_incident_org_reducer";
+import PagerUpdateReducer from "../pager_update_reducer";
 import PostCheckpointReducer from "../post_checkpoint_reducer";
 import RedeemInviteReducer from "../redeem_invite_reducer";
+import RequestPageReducer from "../request_page_reducer";
 import RevokeMemberReducer from "../revoke_member_reducer";
+import RevokeOrgMemberReducer from "../revoke_org_member_reducer";
 
+export type AddFromRosterParams = __Infer<typeof AddFromRosterReducer>;
 export type AdmitMemberParams = __Infer<typeof AdmitMemberReducer>;
 export type AppendEventParams = __Infer<typeof AppendEventReducer>;
+export type ApproveMemberParams = __Infer<typeof ApproveMemberReducer>;
+export type CreateEnrollLinkParams = __Infer<typeof CreateEnrollLinkReducer>;
 export type CreateIncidentParams = __Infer<typeof CreateIncidentReducer>;
 export type CreateInviteParams = __Infer<typeof CreateInviteReducer>;
+export type CreateOrgParams = __Infer<typeof CreateOrgReducer>;
+export type EnrollMemberParams = __Infer<typeof EnrollMemberReducer>;
+export type LinkIncidentOrgParams = __Infer<typeof LinkIncidentOrgReducer>;
+export type PagerUpdateParams = __Infer<typeof PagerUpdateReducer>;
 export type PostCheckpointParams = __Infer<typeof PostCheckpointReducer>;
 export type RedeemInviteParams = __Infer<typeof RedeemInviteReducer>;
+export type RequestPageParams = __Infer<typeof RequestPageReducer>;
 export type RevokeMemberParams = __Infer<typeof RevokeMemberReducer>;
+export type RevokeOrgMemberParams = __Infer<typeof RevokeOrgMemberReducer>;
 

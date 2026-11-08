@@ -31,6 +31,16 @@ export const Checkpoint = __t.object("Checkpoint", {
 });
 export type Checkpoint = __Infer<typeof Checkpoint>;
 
+export const EnrollLink = __t.object("EnrollLink", {
+  id: __t.u64(),
+  codeHash: __t.string(),
+  orgId: __t.string(),
+  expiresAt: __t.timestamp(),
+  used: __t.bool(),
+  usedBy: __t.identity(),
+});
+export type EnrollLink = __Infer<typeof EnrollLink>;
+
 export const EnvelopeAdmit = __t.object("EnvelopeAdmit", {
   kind: __t.string(),
   epoch: __t.u32(),
@@ -74,6 +84,12 @@ export const Incident = __t.object("Incident", {
   closed: __t.bool(),
 });
 export type Incident = __Infer<typeof Incident>;
+
+export const IncidentOrg = __t.object("IncidentOrg", {
+  incidentId: __t.string(),
+  orgId: __t.string(),
+});
+export type IncidentOrg = __Infer<typeof IncidentOrg>;
 
 export const Invite = __t.object("Invite", {
   id: __t.u64(),
@@ -159,8 +175,95 @@ export type MyJoinAttempts = __Infer<typeof MyJoinAttempts>;
 export const MyMembers = __t.object("MyMembers", {});
 export type MyMembers = __Infer<typeof MyMembers>;
 
+export const MyOrg = __t.object("MyOrg", {});
+export type MyOrg = __Infer<typeof MyOrg>;
+
+export const MyOrgStatus = __t.object("MyOrgStatus", {});
+export type MyOrgStatus = __Infer<typeof MyOrgStatus>;
+
+export const MyPages = __t.object("MyPages", {});
+export type MyPages = __Infer<typeof MyPages>;
+
+export const MyRoster = __t.object("MyRoster", {});
+export type MyRoster = __Infer<typeof MyRoster>;
+
 export const MyStatus = __t.object("MyStatus", {});
 export type MyStatus = __Infer<typeof MyStatus>;
+
+export const Org = __t.object("Org", {
+  id: __t.string(),
+  name: __t.string(),
+  admin: __t.identity(),
+  adminSignPub: __t.byteArray(),
+  adminEcdhPub: __t.byteArray(),
+  createdAt: __t.timestamp(),
+});
+export type Org = __Infer<typeof Org>;
+
+export const OrgMember = __t.object("OrgMember", {
+  id: __t.u64(),
+  orgId: __t.string(),
+  identity: __t.identity(),
+  displayName: __t.string(),
+  signPub: __t.byteArray(),
+  ecdhPub: __t.byteArray(),
+  joinTag: __t.byteArray(),
+  sealedContact: __t.byteArray(),
+  state: __t.string(),
+  enrollSig: __t.byteArray(),
+  revokeSig: __t.byteArray(),
+  enrolledAt: __t.timestamp(),
+  approvedAt: __t.option(__t.timestamp()),
+  revokedAt: __t.option(__t.timestamp()),
+});
+export type OrgMember = __Infer<typeof OrgMember>;
+
+export const Page = __t.object("Page", {
+  id: __t.u64(),
+  pageId: __t.string(),
+  incidentId: __t.string(),
+  orgMemberId: __t.u64(),
+  status: __t.string(),
+  carrierReported: __t.bool(),
+  requestedBy: __t.identity(),
+  createdAt: __t.timestamp(),
+  updatedAt: __t.timestamp(),
+});
+export type Page = __Infer<typeof Page>;
+
+export const PageSweep = __t.object("PageSweep", {
+  scheduledId: __t.u64(),
+  scheduledAt: __t.scheduleAt(),
+  pageId: __t.string(),
+});
+export type PageSweep = __Infer<typeof PageSweep>;
+
+export const PagerMemberRec = __t.object("PagerMemberRec", {
+  orgId: __t.string(),
+  orgMemberId: __t.u64(),
+  identity: __t.string(),
+  displayName: __t.string(),
+  signPub: __t.byteArray(),
+  ecdhPub: __t.byteArray(),
+  sealedContact: __t.byteArray(),
+  state: __t.string(),
+});
+export type PagerMemberRec = __Infer<typeof PagerMemberRec>;
+
+export const PagerOrgMember = __t.object("PagerOrgMember", {});
+export type PagerOrgMember = __Infer<typeof PagerOrgMember>;
+
+export const PagerPage = __t.object("PagerPage", {});
+export type PagerPage = __Infer<typeof PagerPage>;
+
+export const PagerPageRec = __t.object("PagerPageRec", {
+  pageId: __t.string(),
+  incidentId: __t.string(),
+  orgMemberId: __t.u64(),
+  status: __t.string(),
+  requestedBy: __t.string(),
+});
+export type PagerPageRec = __Infer<typeof PagerPageRec>;
 
 export const RateBucket = __t.object("RateBucket", {
   identity: __t.identity(),
@@ -168,6 +271,16 @@ export const RateBucket = __t.object("RateBucket", {
   updatedAtMicros: __t.u64(),
 });
 export type RateBucket = __Infer<typeof RateBucket>;
+
+export const RosterPick = __t.object("RosterPick", {
+  orgMemberId: __t.u64(),
+  role: __t.string(),
+  admitSig: __t.byteArray(),
+  get envelopes() {
+    return __t.array(EnvelopeAdmit);
+  },
+});
+export type RosterPick = __Infer<typeof RosterPick>;
 
 export const Rotation = __t.object("Rotation", {
   kind: __t.string(),

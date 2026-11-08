@@ -34,13 +34,22 @@ import {
 } from "spacetimedb";
 
 // Import all reducer arg schemas
+import AddFromRosterReducer from "./add_from_roster_reducer";
 import AdmitMemberReducer from "./admit_member_reducer";
 import AppendEventReducer from "./append_event_reducer";
+import ApproveMemberReducer from "./approve_member_reducer";
+import CreateEnrollLinkReducer from "./create_enroll_link_reducer";
 import CreateIncidentReducer from "./create_incident_reducer";
 import CreateInviteReducer from "./create_invite_reducer";
+import CreateOrgReducer from "./create_org_reducer";
+import EnrollMemberReducer from "./enroll_member_reducer";
+import LinkIncidentOrgReducer from "./link_incident_org_reducer";
+import PagerUpdateReducer from "./pager_update_reducer";
 import PostCheckpointReducer from "./post_checkpoint_reducer";
 import RedeemInviteReducer from "./redeem_invite_reducer";
+import RequestPageReducer from "./request_page_reducer";
 import RevokeMemberReducer from "./revoke_member_reducer";
+import RevokeOrgMemberReducer from "./revoke_org_member_reducer";
 
 // Import all procedure arg schemas
 
@@ -53,7 +62,13 @@ import MyIncidentsRow from "./my_incidents_table";
 import MyInvitesRow from "./my_invites_table";
 import MyJoinAttemptsRow from "./my_join_attempts_table";
 import MyMembersRow from "./my_members_table";
+import MyOrgRow from "./my_org_table";
+import MyOrgStatusRow from "./my_org_status_table";
+import MyPagesRow from "./my_pages_table";
+import MyRosterRow from "./my_roster_table";
 import MyStatusRow from "./my_status_table";
+import PagerOrgMemberRow from "./pager_org_member_table";
+import PagerPageRow from "./pager_page_table";
 
 /** Type-only namespace exports for generated type groups. */
 
@@ -115,6 +130,34 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, MyMembersRow),
+  myOrg: __table({
+    name: 'my_org',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyOrgRow),
+  myOrgStatus: __table({
+    name: 'my_org_status',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyOrgStatusRow),
+  myPages: __table({
+    name: 'my_pages',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyPagesRow),
+  myRoster: __table({
+    name: 'my_roster',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyRosterRow),
   myStatus: __table({
     name: 'my_status',
     indexes: [
@@ -122,17 +165,40 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, MyStatusRow),
+  pagerOrgMember: __table({
+    name: 'pager_org_member',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, PagerOrgMemberRow),
+  pagerPage: __table({
+    name: 'pager_page',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, PagerPageRow),
 });
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
 const reducersSchema = __reducers(
+  __reducerSchema("add_from_roster", AddFromRosterReducer),
   __reducerSchema("admit_member", AdmitMemberReducer),
   __reducerSchema("append_event", AppendEventReducer),
+  __reducerSchema("approve_member", ApproveMemberReducer),
+  __reducerSchema("create_enroll_link", CreateEnrollLinkReducer),
   __reducerSchema("create_incident", CreateIncidentReducer),
   __reducerSchema("create_invite", CreateInviteReducer),
+  __reducerSchema("create_org", CreateOrgReducer),
+  __reducerSchema("enroll_member", EnrollMemberReducer),
+  __reducerSchema("link_incident_org", LinkIncidentOrgReducer),
+  __reducerSchema("pager_update", PagerUpdateReducer),
   __reducerSchema("post_checkpoint", PostCheckpointReducer),
   __reducerSchema("redeem_invite", RedeemInviteReducer),
+  __reducerSchema("request_page", RequestPageReducer),
   __reducerSchema("revoke_member", RevokeMemberReducer),
+  __reducerSchema("revoke_org_member", RevokeOrgMemberReducer),
 );
 
 /** The schema information for all procedures in this module. This is defined the same way as the procedures would have been defined in the server. */
@@ -157,8 +223,20 @@ type __SchemaWithTableAccessorAliases = Omit<typeof tablesSchema.schemaType, "ta
     readonly "my_join_attempts": Omit<typeof tablesSchema.schemaType.tables["myJoinAttempts"], "accessorName"> & { readonly accessorName: "my_join_attempts" };
     /** @deprecated Use `myMembers` instead. This alias will be removed in the next major version. */
     readonly "my_members": Omit<typeof tablesSchema.schemaType.tables["myMembers"], "accessorName"> & { readonly accessorName: "my_members" };
+    /** @deprecated Use `myOrg` instead. This alias will be removed in the next major version. */
+    readonly "my_org": Omit<typeof tablesSchema.schemaType.tables["myOrg"], "accessorName"> & { readonly accessorName: "my_org" };
+    /** @deprecated Use `myOrgStatus` instead. This alias will be removed in the next major version. */
+    readonly "my_org_status": Omit<typeof tablesSchema.schemaType.tables["myOrgStatus"], "accessorName"> & { readonly accessorName: "my_org_status" };
+    /** @deprecated Use `myPages` instead. This alias will be removed in the next major version. */
+    readonly "my_pages": Omit<typeof tablesSchema.schemaType.tables["myPages"], "accessorName"> & { readonly accessorName: "my_pages" };
+    /** @deprecated Use `myRoster` instead. This alias will be removed in the next major version. */
+    readonly "my_roster": Omit<typeof tablesSchema.schemaType.tables["myRoster"], "accessorName"> & { readonly accessorName: "my_roster" };
     /** @deprecated Use `myStatus` instead. This alias will be removed in the next major version. */
     readonly "my_status": Omit<typeof tablesSchema.schemaType.tables["myStatus"], "accessorName"> & { readonly accessorName: "my_status" };
+    /** @deprecated Use `pagerOrgMember` instead. This alias will be removed in the next major version. */
+    readonly "pager_org_member": Omit<typeof tablesSchema.schemaType.tables["pagerOrgMember"], "accessorName"> & { readonly accessorName: "pager_org_member" };
+    /** @deprecated Use `pagerPage` instead. This alias will be removed in the next major version. */
+    readonly "pager_page": Omit<typeof tablesSchema.schemaType.tables["pagerPage"], "accessorName"> & { readonly accessorName: "pager_page" };
   };
 };
 
@@ -185,7 +263,13 @@ const tableAccessorAliases = {
   "my_invites": "myInvites",
   "my_join_attempts": "myJoinAttempts",
   "my_members": "myMembers",
+  "my_org": "myOrg",
+  "my_org_status": "myOrgStatus",
+  "my_pages": "myPages",
+  "my_roster": "myRoster",
   "my_status": "myStatus",
+  "pager_org_member": "pagerOrgMember",
+  "pager_page": "pagerPage",
 } as const;
 
 function __withTableAccessorAliases<T extends object>(target: T, freeze = false): T {
@@ -222,8 +306,20 @@ export type DbView = __DbViewBase & {
   readonly "my_join_attempts": __DbViewBase["myJoinAttempts"];
   /** @deprecated Use `myMembers` instead. This alias will be removed in the next major version. */
   readonly "my_members": __DbViewBase["myMembers"];
+  /** @deprecated Use `myOrg` instead. This alias will be removed in the next major version. */
+  readonly "my_org": __DbViewBase["myOrg"];
+  /** @deprecated Use `myOrgStatus` instead. This alias will be removed in the next major version. */
+  readonly "my_org_status": __DbViewBase["myOrgStatus"];
+  /** @deprecated Use `myPages` instead. This alias will be removed in the next major version. */
+  readonly "my_pages": __DbViewBase["myPages"];
+  /** @deprecated Use `myRoster` instead. This alias will be removed in the next major version. */
+  readonly "my_roster": __DbViewBase["myRoster"];
   /** @deprecated Use `myStatus` instead. This alias will be removed in the next major version. */
   readonly "my_status": __DbViewBase["myStatus"];
+  /** @deprecated Use `pagerOrgMember` instead. This alias will be removed in the next major version. */
+  readonly "pager_org_member": __DbViewBase["pagerOrgMember"];
+  /** @deprecated Use `pagerPage` instead. This alias will be removed in the next major version. */
+  readonly "pager_page": __DbViewBase["pagerPage"];
 };
 
 type __TablesBase = __QueryBuilder<typeof tablesSchema.schemaType>;
@@ -244,8 +340,20 @@ export type Tables = __TablesBase & {
   readonly "my_join_attempts": __TablesBase["myJoinAttempts"];
   /** @deprecated Use `myMembers` instead. This alias will be removed in the next major version. */
   readonly "my_members": __TablesBase["myMembers"];
+  /** @deprecated Use `myOrg` instead. This alias will be removed in the next major version. */
+  readonly "my_org": __TablesBase["myOrg"];
+  /** @deprecated Use `myOrgStatus` instead. This alias will be removed in the next major version. */
+  readonly "my_org_status": __TablesBase["myOrgStatus"];
+  /** @deprecated Use `myPages` instead. This alias will be removed in the next major version. */
+  readonly "my_pages": __TablesBase["myPages"];
+  /** @deprecated Use `myRoster` instead. This alias will be removed in the next major version. */
+  readonly "my_roster": __TablesBase["myRoster"];
   /** @deprecated Use `myStatus` instead. This alias will be removed in the next major version. */
   readonly "my_status": __TablesBase["myStatus"];
+  /** @deprecated Use `pagerOrgMember` instead. This alias will be removed in the next major version. */
+  readonly "pager_org_member": __TablesBase["pagerOrgMember"];
+  /** @deprecated Use `pagerPage` instead. This alias will be removed in the next major version. */
+  readonly "pager_page": __TablesBase["pagerPage"];
 };
 
 /** The tables available in this remote SpacetimeDB module. Each table reference doubles as a query builder. */

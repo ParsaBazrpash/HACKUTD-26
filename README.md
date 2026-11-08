@@ -69,7 +69,7 @@ Setup steps:
    ```
 
    The output is one line of 87 characters starting with `BA`. Add it to `ORG_ADMIN_SIGN_PUB` (append with a comma to keep older keys) and redeploy.
-5. Check the pager with one test page to your own phone (it rings and texts). A half-configured deploy refuses to page and names the missing settings in the server log (names only).
+5. Check the pager with one test page to your own phone. It rings. The text arrives only once the number's A2P 10DLC registration is approved; until then Twilio refuses it with error 30034 and the call still goes through. A half-configured deploy refuses to page and names the missing settings in the server log (names only).
 
 A page is a phone call and, at the same time, a text from the same number. Both say to open HAVEN on your personal phone and that HAVEN never asks for a code; pressing 4 on the call, or replying `4` to the text, marks the page acknowledged. That is all it does. A person counts as joined only after they act in the room with their own keys. Page status is reported by the server and by Twilio, not signed by the person.
 

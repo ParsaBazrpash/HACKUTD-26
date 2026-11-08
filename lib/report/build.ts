@@ -26,6 +26,7 @@ import { localTimeZone } from "@/lib/time";
 import { CHANNELS, canRead } from "@/spacetimedb/src/shared/policy";
 import { incidentAccess } from "@/lib/report/access";
 import { formatReportStamp } from "@/lib/report/format";
+import { boardEntries } from "@/components/incidents/board";
 
 export const PRIVILEGED_WATERMARK = "PRIVILEGED / CONFIDENTIAL";
 
@@ -53,6 +54,13 @@ export interface ReportTimelineEntry {
   csf: string;
   text: string;
   author: string;
+  /** Role label of the signing member, from the verified roster. Null when the author is unknown. */
+  authorRole: string | null;
+  /**
+   * Board standing, by the status board's own rules: "decision" is a commander decision that no later
+   * commander entry replaced; "proposed" is a "Decision: " line from anyone else. Null for other entries.
+   */
+  board: "decision" | "proposed" | null;
   signedAt: string | null;
   serverAt: string;
   amendment: string | null;
@@ -331,6 +339,9 @@ function determination(
 function timeline(items: readonly TimelineItem[]): { timeline: ReportTimelineGroup[]; timelineEmpty: string | null } {
   if (items.length === 0) return { timeline: [], timelineEmpty: "No timeline entries are on the record." };
   const byId = new Map(items.map((item) => [item.entry.entryId, item]));
+  const board = boardEntries(items);
+  const decided = new Set(board.decisions.map((entry) => entry.item.entry.entryId));
+  const proposed = new Set(board.proposed.map((entry) => entry.item.entry.entryId));
   const groups = new Map<string, ReportTimelineEntry[]>();
   for (const item of items) {
     const phase = item.entry.phase;
@@ -344,6 +355,8 @@ function timeline(items: readonly TimelineItem[]): { timeline: ReportTimelineGro
       csf: item.entry.csf,
       text: item.entry.text,
       author: item.by?.displayName.trim() || "Unknown author",
+      authorRole: item.by ? label(ROLE_LABELS, item.by.role) : null,
+      board: decided.has(item.entry.entryId) ? "decision" : proposed.has(item.entry.entryId) ? "proposed" : null,
       signedAt: stamp(item.sentAt),
       serverAt: stamp(item.at) ?? "Unusable time",
       amendment: item.entry.amends

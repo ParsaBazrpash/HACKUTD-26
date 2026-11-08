@@ -16,6 +16,7 @@ import { AdmissionControls } from "@/components/incidents/admission-controls";
 import { InviteControls } from "@/components/incidents/invite-controls";
 import { memberStateLabel, ROLE_LABELS, CHANNEL_LABELS } from "@/components/incidents/labels";
 import { PagePicker } from "@/components/incidents/page-picker";
+import { RevokeControl } from "@/components/incidents/revoke-control";
 import { ImHereButton, PagingStatus } from "@/components/incidents/paging-status";
 import { linkVerifiedLabel } from "@/components/incidents/room-controls";
 import { SafeText } from "@/components/incidents/safe-text";
@@ -485,7 +486,12 @@ function MembersPanel({
                   <p className="text-xs text-muted">
                     Joined <LocalTime value={member.joinedAt} />
                   </p>
-                  {open ? <MemberFacts member={member} mock={mock} /> : null}
+                  {open ? (
+                    <>
+                      <MemberFacts member={member} mock={mock} />
+                      <RevokeControl member={member} />
+                    </>
+                  ) : null}
                 </li>
               );
             })}
@@ -547,7 +553,10 @@ function MemberRows({
       {open ? (
         <tr className="border-b border-line last:border-0">
           <td colSpan={6} className="px-4 py-3">
-            <MemberFacts member={member} mock={mock} />
+            <div className="grid gap-3">
+              <MemberFacts member={member} mock={mock} />
+              <RevokeControl member={member} />
+            </div>
           </td>
         </tr>
       ) : null}

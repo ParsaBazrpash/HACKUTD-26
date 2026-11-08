@@ -67,10 +67,10 @@ test("shell routes render the clinic incident", async ({ page }) => {
 
   await nav.getByRole("link", { name: "People & Access" }).click();
   await expect(page).toHaveURL(/\/people$/);
-  await expect(page.getByText("Commander").first()).toBeVisible();
-  await expect(page.getByText("Counsel").first()).toBeVisible();
-  await expect(page.getByText("Technical").first()).toBeVisible();
-  await expect(page.getByText("Executive").first()).toBeVisible();
+  // The People filters list every role as a hidden <option>, so look only at visible text.
+  for (const role of ["Commander", "Counsel", "Technical", "Executive"]) {
+    await expect(page.getByText(role, { exact: true }).filter({ visible: true }).first()).toBeVisible();
+  }
   await expect(page.getByText("Noah Ellis").first()).toBeVisible();
 
   await nav.getByRole("link", { name: "Legal Deadlines" }).click();
@@ -80,9 +80,8 @@ test("shell routes render the clinic incident", async ({ page }) => {
 
   await nav.getByRole("link", { name: "Report", exact: true }).click();
   await expect(page).toHaveURL(/\/report$/);
-  await expect(page.getByRole("heading", { name: "Incident Report" })).toBeVisible();
-  await page.getByRole("button", { name: "Incident Overview" }).click();
-  await expect(page.getByRole("region", { name: "Incident summary" })).toContainText("E2E status summary for the clinic.");
+  await expect(page.getByRole("heading", { name: "Incident Report", exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Incident Summary", exact: true })).toContainText("E2E status summary for the clinic.");
   await expect(page.getByText("E2E command note: clinics remain on paper.")).toHaveCount(0);
   await expect(page.getByText("Do not forward")).toHaveCount(0);
 
@@ -104,4 +103,29 @@ test("incident sections fit a 375px screen", async ({ page }) => {
     await nav.getByRole("link", { name, exact: true }).click();
     await noHorizontalOverflow(page);
   }
+});
+
+test("the commander revokes an active member after typing their name", async ({ page }) => {
+  await page.goto("/incidents");
+  await page.getByRole("link", { name: /Lakeside Family Clinic/ }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("SEV1");
+  await page.getByRole("navigation", { name: "Incident sections" }).getByRole("link", { name: "People & Access" }).click();
+  await expect(page).toHaveURL(/\/people$/);
+
+  // The commander's own row offers no revoke.
+  await page.getByRole("button", { name: "Details for Avery Chen" }).filter({ visible: true }).first().click();
+  await expect(page.getByRole("button", { name: "Revoke access" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Details for Riley Patel" }).filter({ visible: true }).first().click();
+  await page.getByRole("button", { name: "Revoke access" }).filter({ visible: true }).first().click();
+  const form = page.getByRole("form", { name: "Revoke Riley Patel" }).filter({ visible: true }).first();
+  const submit = form.getByRole("button", { name: "Revoke and rotate keys" });
+  await expect(submit).toBeDisabled();
+  await form.getByLabel(/to confirm/).fill("riley patel");
+  await expect(submit).toBeDisabled();
+  await form.getByLabel(/to confirm/).fill("Riley Patel");
+  await form.getByLabel(/Reason/).fill("Laptop seized.");
+  await submit.click();
+  await expect(page.getByText("Revoked Riley Patel in the demo.").first()).toBeVisible();
+  await expect(page.getByRole("row", { name: /Riley Patel/ }).first()).toContainText("Revoked");
 });

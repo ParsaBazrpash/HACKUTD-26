@@ -17,7 +17,7 @@ Winstead's scenario: the attacker can see normal company communications, ransomw
 ## How HAVEN answers the scenario
 
 - **It runs outside the company network.** The client is hosted on Vercel and the data lives on SpacetimeDB Maincloud. Nothing depends on the victim's servers, directory or mail.
-- **It pages personal phones.** The incident commander picks people from the organization's roster and HAVEN places a phone call to each personal mobile number and sends a text to it at the same time. Both say to open HAVEN on your own phone, and that HAVEN never asks for a code. Pressing 4 on the call, or replying 4 to the text, acknowledges.
+- **It pages personal phones.** The incident commander picks people from the organization's roster and HAVEN places a phone call to each personal mobile number and sends a text to it at the same time. Both say to open HAVEN on your own phone, and that HAVEN never asks for a code. Pressing 4 on the call, or replying 4 to the text, acknowledges. In our demo only the call goes through: US carriers block texts from a new Twilio number until its A2P 10DLC registration is approved (Twilio error 30034), so the text path is built and tested but not yet delivered.
 - **It needs no company email at incident time.** Enrollment happens ahead of time with a link and a safety code, and the roster, the keys and the phone numbers are already in place when the incident starts.
 - **The attacker watching normal channels learns nothing useful.** The call and the text carry no code, no link and no secret. Acknowledging only records that the page was answered; a person counts as joined only when they act in the room with their own keys.
 
@@ -25,13 +25,13 @@ Winstead's scenario: the attacker can see normal company communications, ransomw
 
 - **A standing org roster.** An org admin sets up the organization before any incident. People enroll with a one-time link, their name and their personal phone number, and the admin approves each one after comparing a safety code. The admin signs a certificate over every enrollment, and the phone number is sealed so the database cannot read it.
 - **Spin up in seconds.** The incident commander creates an incident and adds responders straight from the roster, or invites them by one-time link or QR code, each with a role: Commander, Counsel, Technical or Executive. Nobody gets in until the commander confirms them with a 12-digit safety code or adds them from the verified roster.
-- **Phone paging with status.** One tap rings and texts the chosen people through Twilio. The roster shows each person as requested, ringing, acknowledged, no answer or failed, and the commander can retry the ones who did not pick up. Acknowledged is reported by the phone network and is not signed; joined appears only after a signed action in the room.
+- **Phone paging with status.** One tap rings the chosen people through Twilio (the text that goes with it waits on carrier registration, see above). The roster shows each person as requested, ringing, acknowledged, no answer or failed, and the commander can retry the ones who did not pick up. Acknowledged is reported by the phone network and is not signed; joined appears only after a signed action in the room.
 - **One live incident record,** organized by NIST SP 800-61 phases and tagged with NIST CSF 2.0 response categories: timeline, status, severity and tasks, updated on every screen in real time.
 - **A status board** of what we know, who owns what, the open tasks and the decisions, built from signed room entries. Only the commander's lines count as decisions.
 - **A blast-radius board** for every affected system and data store: suspected, encrypted, exfiltrated, contained or restored, with data types, record counts and affected states.
 - **A legal clock.** When counsel records the discovery time and the scope shows whose data was exposed, HAVEN lists the notification deadlines that apply, each with its statute citation, and counts them down with an owner.
 - **Encrypted channels:** #command for everyone, #technical for the forensics work, and an attorney-client #privileged channel that technical staff cannot decrypt even with database access.
-- **One-click revoke.** A compromised account is cut off instantly and every channel it could read gets a new key. A revoked person can come back only under fresh keys that the admin or commander approves again.
+- **Revoke from the People page.** The commander types the person's name to confirm, the account is cut off at once and every channel it could read gets a new key. A revoked person can come back only under fresh keys that the admin or commander approves again.
 - **Proof, not promises.** An integrity panel re-verifies every signature and the full hash chain, and the after-action report ends with a cryptographic attestation of the record.
 
 ## Security model

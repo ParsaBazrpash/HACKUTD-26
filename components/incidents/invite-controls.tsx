@@ -93,7 +93,8 @@ export function InviteControls() {
             Invite people
           </h2>
           <p className="mt-1 text-sm leading-6 text-muted">
-            Grant time-limited access to external responders, such as counsel or forensics.
+            Bring in outside responders, such as counsel or forensics. The link expires; access lasts until you
+            revoke it.
           </p>
         </div>
       </div>

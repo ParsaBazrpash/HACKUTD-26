@@ -8,6 +8,7 @@ import { authorizedChatChannels, canCompose, type ChatChannel } from "@/componen
 import { SafeText } from "@/components/incidents/safe-text";
 import { selectMessages } from "@/components/incidents/situation";
 import { VerdictNote } from "@/components/incidents/verdict-note";
+import { useLocalClock } from "@/components/local-time";
 import { useIncident } from "@/hooks/use-incident";
 import type { ChannelMessage } from "@/lib/client/types";
 import { formatLocalTimestamp } from "@/lib/time";
@@ -43,12 +44,8 @@ export function ChannelsBoard({ limit }: { limit?: number }) {
   const channels = authorizedChatChannels(state.me?.role, state.me?.state, state.channels);
   const [picked, setPicked] = useState<ChatChannel | null>(null);
   const [drawer, setDrawer] = useState<Drawer | null>(null);
-  const [clockReady, setClockReady] = useState(false);
+  const clockReady = useLocalClock();
   const scroller = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    setClockReady(true);
-  }, []);
 
   const active =
     channels.find((channel) => channel.kind === picked) ??

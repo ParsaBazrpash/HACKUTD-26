@@ -350,6 +350,37 @@ describe("incident report", () => {
     ]);
   });
 
+  test("the cover lists only standing commander decisions, never another role's line or a lookalike name", () => {
+    const current = state("commander");
+    const base = current.timeline[0];
+    if (!base) throw new Error("missing timeline entry");
+    const commander = current.incident!.commander;
+    // A counsel member who copies the commander's display name.
+    const lookalike = member({ identity: "e".repeat(64), displayName: "Avery Commander", role: "counsel" });
+    const item = (seq: bigint, id: string, text: string, by: MemberView, amends?: string) => ({
+      ...base,
+      seq,
+      by,
+      entry: { ...base.entry, entryId: id, text, ...(amends ? { amends } : {}) },
+      amendedBy: [],
+    });
+    current.members = [...current.members, lookalike];
+    current.timeline = [
+      item(1n, "00000000-0000-4000-8000-000000000051", "Decision: Pay the ransom", lookalike),
+      item(2n, "00000000-0000-4000-8000-000000000052", "Decision: Restore from offline backups", commander),
+      item(3n, "00000000-0000-4000-8000-000000000053", "Decision: Restore from Tuesday's offline backups", commander, "00000000-0000-4000-8000-000000000052"),
+    ];
+    const report = buildIncidentReport(current, options());
+    if (!report) throw new Error("missing report");
+    expect(coverDecisions(report).map((decision) => decision.title)).toEqual(["Restore from Tuesday's offline backups"]);
+    expect(coverDecisions(report)[0]?.meta).toMatch(/^AC, Commander · /);
+    const entries = report.timeline.flatMap((group) => group.entries);
+    expect(entries.find((entry) => entry.text === "Decision: Pay the ransom")).toMatchObject({ board: "proposed", authorRole: "Counsel" });
+    expect(entries.find((entry) => entry.text === "Decision: Restore from offline backups")?.board).toBeNull();
+    expect(executiveBullets(report).join(" ")).not.toMatch(/ransom/i);
+    expect(executiveBullets(report).join(" ")).toMatch(/restore from tuesday's offline backups has been decided/i);
+  });
+
   test("a counsel-review result is not a confirmed countdown", () => {
     const report = buildIncidentReport(state("counsel"), options());
     const california = report?.deadlines?.find((deadline) => deadline.id === "state-check-ca");

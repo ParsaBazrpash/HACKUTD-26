@@ -31,12 +31,19 @@ const ok = { ok: true, failures: [], warnings: [] };
 const member = { identity: 'a'.repeat(64), displayName: `Eve ${IMG}`, role: 'technical' as const };
 const at = new Date('2026-11-08T12:00:00Z');
 
+// Lucide icons are real svg elements. Strip those before the markup checks so an
+// injected svg, img, or script in user text still fails.
+function withoutAppIcons(html: string): string {
+  return html.replace(/<svg\b[^>]*\blucide\b[^>]*>[\s\S]*?<\/svg>/gi, '');
+}
+
 function expectInert(html: string) {
-  expect(html).not.toMatch(/<img/i);
-  expect(html).not.toMatch(/<script/i);
-  expect(html).not.toMatch(/<svg/i);
-  expect(html).not.toMatch(/href=["']?\s*(javascript|data|vbscript):/i);
   expect(html).not.toMatch(/<[a-z][^>]*\son\w+=/i);
+  const content = withoutAppIcons(html);
+  expect(content).not.toMatch(/<img/i);
+  expect(content).not.toMatch(/<script/i);
+  expect(content).not.toMatch(/<svg/i);
+  expect(content).not.toMatch(/href=["']?\s*(javascript|data|vbscript):/i);
   // The text is still shown, as escaped text.
   expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
   expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');

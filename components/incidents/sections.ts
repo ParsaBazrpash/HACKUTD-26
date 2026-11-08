@@ -3,6 +3,7 @@ export const INCIDENT_SECTIONS = [
   { slug: "timeline", label: "Timeline" },
   { slug: "systems", label: "Affected Systems" },
   { slug: "tasks", label: "Tasks" },
+  { slug: "board", label: "Status Board" },
   { slug: "channels", label: "Secure Channels" },
   { slug: "people", label: "People & Access" },
   { slug: "legal", label: "Legal Deadlines" },

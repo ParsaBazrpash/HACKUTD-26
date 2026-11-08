@@ -99,6 +99,19 @@ export function admitEnabled(
   return member.linkVerified === true;
 }
 
+/**
+ * Admit also needs the commander to say they compared the safety code with the
+ * person (by voice or in person). The link check proves the joiner holds the
+ * invite secret; only this step ties the name on screen to a real person.
+ */
+export function canAdmitNow(
+  me: { role: Role; state: MemberStateName } | null,
+  member: { state: MemberStateName; linkVerified?: boolean },
+  codeConfirmed: boolean,
+): boolean {
+  return codeConfirmed === true && admitEnabled(me, member);
+}
+
 export function linkVerifiedLabel(linkVerified: boolean | undefined): string {
   if (linkVerified === true) return "Link verified";
   if (linkVerified === false) return "Unverified: do not admit";

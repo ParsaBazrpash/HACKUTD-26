@@ -5,7 +5,7 @@ import { ROLE_LABELS } from "@/components/incidents/labels";
 import { getIncidentClient, isMockIncidentClient } from "@/lib/client";
 import { clientErrorMessage } from "@/lib/client/errors";
 import type { MemberView } from "@/lib/client/types";
-import { admitEnabled, linkVerifiedLabel } from "@/components/incidents/room-controls";
+import { canAdmitNow, linkVerifiedLabel } from "@/components/incidents/room-controls";
 
 const primaryButtonClass =
   "inline-flex min-h-11 items-center justify-center rounded-lg bg-signal px-4 py-2 text-sm font-medium text-signal-ink hover:bg-signal-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal";
@@ -16,12 +16,13 @@ export function AdmissionControls({ members, me }: { members: MemberView[]; me: 
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [admittedName, setAdmittedName] = useState<string | null>(null);
+  const [confirmed, setConfirmed] = useState<Record<string, boolean>>({});
   const commander = me.role === "commander" && me.state === "active";
   if (!commander) return null;
 
   async function admit(member: MemberView) {
-    if (!admitEnabled(me, member)) return;
     const id = member.memberId.toString();
+    if (!canAdmitNow(me, member, confirmed[id] === true)) return;
     setBusyId(id);
     setError(null);
     setAdmittedName(null);
@@ -56,7 +57,8 @@ export function AdmissionControls({ members, me }: { members: MemberView[]; me: 
         <ul className="mt-4 space-y-3">
           {pending.map((member) => {
             const id = member.memberId.toString();
-            const enabled = admitEnabled(me, member);
+            const confirmedCode = confirmed[id] === true;
+            const enabled = canAdmitNow(me, member, confirmedCode);
             return (
               <li key={id} className="rounded-xl border border-line bg-panel-raised px-4 py-3">
                 <p className="text-sm text-foreground">
@@ -85,6 +87,16 @@ export function AdmissionControls({ members, me }: { members: MemberView[]; me: 
                     Demo token matched. This is not a cryptographic link check.
                   </p>
                 ) : null}
+                <label className="mt-3 flex items-start gap-2 text-sm text-foreground" htmlFor={`confirm-${id}`}>
+                  <input
+                    id={`confirm-${id}`}
+                    type="checkbox"
+                    checked={confirmedCode}
+                    onChange={(event) => setConfirmed((prev) => ({ ...prev, [id]: event.target.checked }))}
+                    className="mt-1 h-4 w-4"
+                  />
+                  <span>I confirmed this safety code with {member.displayName} by voice or in person.</span>
+                </label>
                 <button
                   type="button"
                   disabled={!enabled || busyId === id}
@@ -94,7 +106,9 @@ export function AdmissionControls({ members, me }: { members: MemberView[]; me: 
                   {busyId === id ? "Admitting…" : "Admit"}
                 </button>
                 {enabled ? null : (
-                  <p className="mt-2 text-xs text-muted">Admit stays off until the link is verified.</p>
+                  <p className="mt-2 text-xs text-muted">
+                    Admit stays off until the link is verified and you confirm the safety code.
+                  </p>
                 )}
               </li>
             );

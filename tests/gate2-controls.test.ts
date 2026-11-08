@@ -8,6 +8,7 @@ import {
 } from "@/components/incidents/join-link";
 import {
   admitEnabled,
+  canAdmitNow,
   authorizedChatChannels,
   canCompose,
   DEFAULT_INVITE_TTL_MINUTES,
@@ -106,6 +107,18 @@ describe("invite and admission", () => {
     const waiting = counsel.getState().members.find((member) => member.state === "pending");
     expect(admitEnabled(counsel.getState().me, waiting!)).toBe(false);
     await expect(counsel.admitMember(waiting!.memberId)).rejects.toThrow(/commander/i);
+  });
+
+  test("Admit also waits for the commander to confirm the safety code", () => {
+    const commander = { role: "commander" as const, state: "active" as const };
+    const verified = { state: "pending" as const, linkVerified: true };
+    expect(canAdmitNow(commander, verified, false)).toBe(false);
+    expect(canAdmitNow(commander, verified, true)).toBe(true);
+    // The tick never overrides the link check or the role.
+    expect(canAdmitNow(commander, { state: "pending", linkVerified: false }, true)).toBe(false);
+    expect(canAdmitNow(commander, { state: "pending", linkVerified: undefined }, true)).toBe(false);
+    expect(canAdmitNow({ role: "counsel", state: "active" }, verified, true)).toBe(false);
+    expect(canAdmitNow(null, verified, true)).toBe(false);
   });
 
   test("keeps Admit off until the link check passes", () => {

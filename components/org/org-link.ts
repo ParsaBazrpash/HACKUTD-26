@@ -21,20 +21,23 @@ export const PHONE_HINT = "Use your personal phone. Company phones may be down d
 
 export const PHONE_PREFIX = "+1";
 
-/** Keeps only the 10 national digits. Pasting "+1 (555) 555-0123" or "15555550123" still works. */
+/** Digits only, with a pasted leading +1 dropped. Extra digits are kept (not cut) so toUsE164 refuses them. */
 export function usPhoneDigits(raw: string): string {
-  return stripCountryCode(raw).slice(0, 10);
+  return stripCountryCode(raw).slice(0, 15);
 }
+
+/** A US or Canadian number: area code and exchange both start with 2 to 9. */
+const NANP = /^[2-9][0-9]{2}[2-9][0-9]{6}$/;
 
 function stripCountryCode(raw: string): string {
   const digits = raw.replace(/\D/g, "");
   return digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
 }
 
-/** The 10 typed digits as E.164 (+1XXXXXXXXXX), or null when they are not exactly 10 digits. */
+/** The typed digits as E.164 (+1XXXXXXXXXX), or null unless they are a valid 10 digit US or Canadian number. */
 export function toUsE164(raw: string): string | null {
   const digits = stripCountryCode(raw);
-  if (digits.length !== 10) return null;
+  if (!NANP.test(digits)) return null;
   const e164 = `${PHONE_PREFIX}${digits}`;
   return looksLikePhone(e164) ? e164 : null;
 }

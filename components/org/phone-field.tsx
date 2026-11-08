@@ -29,8 +29,8 @@ export function PhoneField({
         required
         placeholder="5555550123"
         autoComplete="tel-national"
-        maxLength={20}
-        aria-label={`Phone number, ${PHONE_PREFIX} is added for you`}
+        maxLength={32}
+        aria-label="Phone number, +1 is added for you"
         onChange={(event) => onChange(usPhoneDigits(event.target.value))}
         className={`${fieldClass} min-w-0 flex-1`}
       />

@@ -43,8 +43,12 @@ test("the fixed +1 prefix turns exactly 10 typed digits into E.164", () => {
   }
 });
 
-test("the phone field keeps at most 10 digits and drops a pasted country code", () => {
-  expect(usPhoneDigits("55555501234567")).toBe("5555550123");
+test("the phone field drops a pasted +1 but never cuts a longer number into a different one", () => {
   expect(usPhoneDigits("+1 (555) 555-0123")).toBe("5555550123");
-  expect(usPhoneDigits("1234567890")).toBe("1234567890");
+  // What the form submits is toUsE164(usPhoneDigits(input)).
+  const submitted = (input: string) => toUsE164(usPhoneDigits(input));
+  expect(submitted("+1 (214) 555-0101")).toBe("+12145550101");
+  for (const bad of ["+44 20 7946 0958", "+52 55 1234 5678", "+1 (214) 555-0101 x23", "55555501234567", "1214555010", "0214555010", "2140550101"]) {
+    expect(submitted(bad), bad).toBeNull();
+  }
 });

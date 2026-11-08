@@ -187,7 +187,8 @@ describe("control wiring", () => {
     expect(access).toContain("<AdmissionControls");
     expect(channels).toContain("<MessageComposer");
     expect(channels).toContain("authorizedChatChannels");
-    expect(overview).toContain("<AccessControls");
-    expect(overview).toContain("<ChannelsBoard");
+    expect(overview).toContain("<MessageComposer");
+    expect(overview).toContain("authorizedChatChannels");
+    expect(admission).toContain("revokeMember(member.memberId, DECLINE_REASON)");
   });
 });

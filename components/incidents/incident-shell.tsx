@@ -7,13 +7,14 @@ import { PasskeyLockCard } from "@/components/security/passkey-lock-card";
 import { ROLE_LABELS } from "@/components/incidents/labels";
 import { SectionNav } from "@/components/incidents/section-nav";
 import { SafeText } from "@/components/incidents/safe-text";
-import { listIntegrityFindings, failureLabel } from "@/components/incidents/situation";
+import { listIntegrityFindings, failureLabel, formatSince } from "@/components/incidents/situation";
 import { StatusBar } from "@/components/incidents/status-bar";
+import { useBrowserNow } from "@/hooks/use-browser-now";
 import { useIncident } from "@/hooks/use-incident";
 import { getIncidentClient, isMockIncidentClient } from "@/lib/client";
 import { clientErrorMessage } from "@/lib/client/errors";
 import type { IncidentClient, IncidentState } from "@/lib/client/types";
-import { formatTimestamp } from "@/lib/time";
+import { formatLocalTimestamp } from "@/lib/time";
 
 function BackLink() {
   return (
@@ -134,26 +135,45 @@ function Room({
   incidentId: string;
   children: ReactNode;
 }) {
+  const now = useBrowserNow();
   const incident = state.incident;
   if (!incident) return <p className="text-sm text-muted">No incident is open in this tab.</p>;
   const findings = listIntegrityFindings(state.integrity);
+  const detected = incident.createdAt.getTime();
+  const elapsed = now === null || Number.isNaN(detected) ? null : now - detected;
+  const severity = state.status?.severity ?? "Open";
 
   return (
     <div className="min-w-0">
       <DemoBanner />
-      <p className="mt-6 font-mono text-[11px] tracking-[0.18em] text-muted">COMMAND CENTER</p>
-      <h1 className="mt-3 break-words text-3xl font-medium tracking-tight sm:text-4xl">
-        <SafeText text={incident.title || "Untitled incident"} />
-      </h1>
-      <p className="mt-2 text-sm text-muted">Opened {formatTimestamp(incident.createdAt)}</p>
+      <div className="mt-4 flex min-w-0 flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <p className="text-[11px] font-medium tracking-[0.16em] text-muted">INCIDENT</p>
+          <h1 className="mt-2 text-4xl font-semibold tracking-tight sm:text-5xl">{severity}</h1>
+          {incident.title ? (
+            <p className="mt-2 max-w-xl break-words text-sm text-foreground">
+              <SafeText text={incident.title} />
+            </p>
+          ) : null}
+          <p className="mt-1 text-sm text-muted">
+            {now === null || elapsed === null ? (
+              "Opened"
+            ) : (
+              <>
+                Opened {formatLocalTimestamp(incident.createdAt)}
+                <span aria-hidden="true"> · </span>
+                {formatSince(elapsed)}
+              </>
+            )}
+          </p>
+        </div>
+        <StatusBar state={state} />
+      </div>
       {state.status?.summary ? (
-        <p className="mt-4 max-w-3xl break-words text-sm leading-6 text-muted">
+        <p className="mt-3 line-clamp-2 max-w-3xl break-words text-sm leading-6 text-muted">
           <SafeText text={state.status.summary} />
         </p>
-      ) : (
-        <p className="mt-4 text-sm text-muted">No status has been recorded.</p>
-      )}
-      <StatusBar state={state} />
+      ) : null}
       {state.connection === "offline" ? (
         <p className="mt-4 text-sm text-muted">The connection dropped. Showing the last update held in this tab.</p>
       ) : null}
@@ -182,10 +202,7 @@ function Room({
         </ul>
       ) : null}
       <SectionNav incidentId={incidentId} />
-      <p className="no-print mt-3 text-xs leading-5 text-muted">
-        Actions follow your role. Every submit is checked again by the incident client.
-      </p>
-      <div className="mt-8 min-w-0">{children}</div>
+      <div className="mt-4 min-w-0">{children}</div>
     </div>
   );
 }

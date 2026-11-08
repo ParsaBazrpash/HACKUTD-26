@@ -1,21 +1,24 @@
 "use client";
 
 import { useState } from "react";
+import { Check, X } from "lucide-react";
 import { ROLE_LABELS } from "@/components/incidents/labels";
 import { getIncidentClient, isMockIncidentClient } from "@/lib/client";
 import { clientErrorMessage } from "@/lib/client/errors";
 import type { MemberView } from "@/lib/client/types";
 import { admitEnabled, linkVerifiedLabel } from "@/components/incidents/room-controls";
 
-const primaryButtonClass =
-  "inline-flex min-h-11 items-center justify-center rounded-lg bg-signal px-4 py-2 text-sm font-medium text-signal-ink hover:bg-signal-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal";
+const DECLINE_REASON = "Admission declined.";
+
+const iconButtonClass =
+  "grid size-9 place-items-center rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal disabled:cursor-not-allowed disabled:opacity-40";
 
 export function AdmissionControls({ members, me }: { members: MemberView[]; me: MemberView }) {
   const mock = isMockIncidentClient();
   const pending = members.filter((member) => member.state === "pending");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [admittedName, setAdmittedName] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const commander = me.role === "commander" && me.state === "active";
   if (!commander) return null;
 
@@ -24,10 +27,26 @@ export function AdmissionControls({ members, me }: { members: MemberView[]; me: 
     const id = member.memberId.toString();
     setBusyId(id);
     setError(null);
-    setAdmittedName(null);
+    setNotice(null);
     try {
       await getIncidentClient().admitMember(member.memberId);
-      setAdmittedName(member.displayName);
+      setNotice(`Admitted ${member.displayName}.`);
+    } catch (cause) {
+      setError(clientErrorMessage(cause));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function decline(member: MemberView) {
+    if (member.state !== "pending") return;
+    const id = member.memberId.toString();
+    setBusyId(id);
+    setError(null);
+    setNotice(null);
+    try {
+      await getIncidentClient().revokeMember(member.memberId, DECLINE_REASON);
+      setNotice(`Declined ${member.displayName}.`);
     } catch (cause) {
       setError(clientErrorMessage(cause));
     } finally {
@@ -40,9 +59,9 @@ export function AdmissionControls({ members, me }: { members: MemberView[]; me: 
       <h2 id="admission-heading" className="font-mono text-[11px] tracking-[0.18em] text-muted">
         WAITING FOR ADMISSION
       </h2>
-      {admittedName ? (
+      {notice ? (
         <p role="status" className="mt-3 text-sm text-verified">
-          Admitted {admittedName}.
+          {notice}
         </p>
       ) : null}
       {error ? (
@@ -59,10 +78,32 @@ export function AdmissionControls({ members, me }: { members: MemberView[]; me: 
             const enabled = admitEnabled(me, member);
             return (
               <li key={id} className="rounded-xl border border-line bg-panel-raised px-4 py-3">
-                <p className="text-sm text-foreground">
-                  {member.displayName}
-                  <span className="text-muted"> · {ROLE_LABELS[member.role]}</span>
-                </p>
+                <div className="flex items-start justify-between gap-3">
+                  <p className="min-w-0 break-words text-sm text-foreground">
+                    {member.displayName}
+                    <span className="text-muted"> · {ROLE_LABELS[member.role]}</span>
+                  </p>
+                  <div className="flex shrink-0 gap-2">
+                    <button
+                      type="button"
+                      disabled={!enabled || busyId === id}
+                      aria-label={`Admit ${member.displayName}`}
+                      onClick={() => void admit(member)}
+                      className={`${iconButtonClass} bg-signal text-signal-ink hover:bg-signal-hover`}
+                    >
+                      <Check aria-hidden="true" className="size-4" />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busyId === id}
+                      aria-label={`Reject ${member.displayName}`}
+                      onClick={() => void decline(member)}
+                      className={`${iconButtonClass} border border-line text-muted hover:border-alert hover:text-alert`}
+                    >
+                      <X aria-hidden="true" className="size-4" />
+                    </button>
+                  </div>
+                </div>
                 <p translate="no" className="mt-2 font-mono text-xs text-muted">
                   Safety code {member.safetyCode ?? "unavailable"}
                 </p>
@@ -85,16 +126,8 @@ export function AdmissionControls({ members, me }: { members: MemberView[]; me: 
                     Demo token matched. This is not a cryptographic link check.
                   </p>
                 ) : null}
-                <button
-                  type="button"
-                  disabled={!enabled || busyId === id}
-                  onClick={() => void admit(member)}
-                  className={`${primaryButtonClass} mt-3`}
-                >
-                  {busyId === id ? "Admitting…" : "Admit"}
-                </button>
                 {enabled ? null : (
-                  <p className="mt-2 text-xs text-muted">Admit stays off until the link is verified.</p>
+                  <p className="mt-2 text-xs text-muted">The check stays off until the link is verified.</p>
                 )}
               </li>
             );

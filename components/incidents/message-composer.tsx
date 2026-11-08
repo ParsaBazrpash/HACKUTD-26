@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { Send } from "lucide-react";
 import { CHANNEL_LABELS } from "@/components/incidents/labels";
 import { canCompose, draftChatBody, type ChatChannel } from "@/components/incidents/room-controls";
 import { useIncident } from "@/hooks/use-incident";
@@ -13,7 +14,7 @@ const fieldClass =
 const primaryButtonClass =
   "inline-flex min-h-11 items-center justify-center rounded-lg bg-signal px-4 py-2 text-sm font-medium text-signal-ink hover:bg-signal-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal";
 
-export function MessageComposer({ channel }: { channel: ChatChannel }) {
+export function MessageComposer({ channel, compact = false }: { channel: ChatChannel; compact?: boolean }) {
   const state = useIncident();
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -41,6 +42,37 @@ export function MessageComposer({ channel }: { channel: ChatChannel }) {
   }
 
   const label = CHANNEL_LABELS[channel];
+  if (compact) {
+    return (
+      <form onSubmit={send} className="mt-4" aria-label={`Message ${label}`}>
+        <label className="relative block text-sm" htmlFor={`message-${channel}`}>
+          <span className="sr-only">Message {label}</span>
+          <input
+            id={`message-${channel}`}
+            name={`message-${channel}`}
+            value={text}
+            maxLength={4000}
+            placeholder={`Write in ${label}...`}
+            onChange={(event) => setText(event.target.value)}
+            className="min-h-11 w-full rounded-lg border border-line bg-background py-2 pl-3 pr-12 text-sm text-foreground placeholder:text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+          />
+          <button
+            type="submit"
+            disabled={sending || text.trim().length === 0}
+            aria-label={sending ? "Sending" : "Send"}
+            className="absolute right-1.5 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-md text-signal hover:text-signal-hover disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+          >
+            <Send aria-hidden="true" className="size-4" />
+          </button>
+        </label>
+        {error ? (
+          <p role="alert" className="mt-2 text-sm text-alert">
+            {error}
+          </p>
+        ) : null}
+      </form>
+    );
+  }
   return (
     <form onSubmit={send} className="mt-3 grid gap-2" aria-label={`Message ${label}`}>
       <label className="grid gap-2 text-sm" htmlFor={`message-${channel}`}>

@@ -30,3 +30,22 @@ export function formatTimestamp(value: string | Date): string {
 
   return `${read("day")} ${read("month")} ${read("hour")}:${read("minute")} UTC`;
 }
+
+/** Clock time in the browser's timezone. Use this for when a person created the incident. */
+export function formatLocalTimestamp(value: string | Date): string {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return value instanceof Date ? value.toISOString() : value;
+
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+
+  const read = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+
+  return `${read("day")} ${read("month")} ${read("hour")}:${read("minute")}`;
+}

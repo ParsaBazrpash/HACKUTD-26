@@ -15,7 +15,7 @@ export default function IncidentLayout({
   params: Promise<{ incidentId: string }>;
 }) {
   return (
-    <Main>
+    <Main wide>
       <Suspense
         fallback={
           <div>

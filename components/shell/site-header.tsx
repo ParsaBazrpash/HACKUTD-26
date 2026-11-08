@@ -3,36 +3,44 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { isMockIncidentClient } from "@/lib/client";
+import { User } from "lucide-react";
 
-const links = [
-  { href: "/incidents", label: "Incidents" },
-  { href: "/join", label: "Join" },
-];
+function incidentIdFromPath(pathname: string | null): string | null {
+  if (!pathname) return null;
+  const match = /^\/incidents\/([^/]+)/.exec(pathname);
+  return match?.[1] ?? null;
+}
 
-function linkClass(active: boolean): string {
+function membersHref(pathname: string | null): string {
+  const incidentId = incidentIdFromPath(pathname);
+  return incidentId ? `/incidents/${incidentId}/people` : "/incidents";
+}
+
+function itemClass(active: boolean): string {
   return active
-    ? "rounded-lg px-3 py-1.5 font-medium text-signal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
-    : "rounded-lg px-3 py-1.5 text-muted hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal";
+    ? "inline-flex h-full items-center border-b-2 border-signal px-2 text-sm font-medium text-signal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal sm:px-3"
+    : "inline-flex h-full items-center border-b-2 border-transparent px-2 text-sm text-muted hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal sm:px-3";
 }
 
 function PrimaryNavLinks({ pathname }: { pathname: string | null }) {
+  const onPeople = pathname !== null && /\/people(?:\/|$)/.test(pathname);
+  const onIncidents = pathname !== null && pathname.startsWith("/incidents") && !onPeople;
+  const onJoin = pathname === "/join" || (pathname !== null && pathname.startsWith("/join/"));
   return (
-    <nav aria-label="Primary" className="flex shrink-0 items-center gap-1 text-sm">
-      {links.map((link) => {
-        const active =
-          pathname !== null && (pathname === link.href || pathname.startsWith(`${link.href}/`));
-        return (
-          <Link
-            key={link.href}
-            href={link.href}
-            aria-current={active ? "page" : undefined}
-            className={linkClass(active)}
-          >
-            {link.label}
-          </Link>
-        );
-      })}
+    <nav aria-label="Primary" className="-mb-px flex h-full min-w-0 items-stretch justify-center gap-1 overflow-x-auto sm:gap-2">
+      <Link href="/incidents" aria-current={onIncidents ? "page" : undefined} className={itemClass(onIncidents)}>
+        Incidents
+      </Link>
+      <Link
+        href={membersHref(pathname)}
+        aria-current={onPeople ? "page" : undefined}
+        className={itemClass(onPeople)}
+      >
+        Members
+      </Link>
+      <Link href="/join" aria-current={onJoin ? "page" : undefined} className={itemClass(onJoin)}>
+        Join
+      </Link>
     </nav>
   );
 }
@@ -42,33 +50,47 @@ function PrimaryNav() {
   return <PrimaryNavLinks pathname={pathname} />;
 }
 
+function AccountLink({ pathname }: { pathname: string | null }) {
+  return (
+    <Link
+      href={membersHref(pathname)}
+      aria-label="People and access"
+      className="grid size-9 place-items-center rounded-full border border-line text-muted hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+    >
+      <User aria-hidden="true" className="size-4" />
+    </Link>
+  );
+}
+
+function AccountSlot() {
+  const pathname = usePathname();
+  return <AccountLink pathname={pathname} />;
+}
+
 export function SiteHeader() {
   return (
     <header className="border-b border-line bg-background">
-      <div className="mx-auto flex w-full min-w-0 max-w-6xl items-center justify-between gap-3 px-5 py-4 sm:px-8">
+      <div className="mx-auto grid h-14 w-full min-w-0 max-w-[1440px] grid-cols-[auto_minmax(0,1fr)_auto] items-stretch gap-3 px-4 sm:px-8">
         <Link
           href="/"
-          className="flex min-w-0 items-center gap-3 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-signal"
+          className="flex min-w-0 items-center gap-2.5 self-center rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-signal"
         >
           <span
             aria-hidden="true"
-            className="grid size-9 shrink-0 place-items-center rounded-lg bg-signal font-mono text-sm font-semibold tracking-tight text-signal-ink"
+            className="grid size-8 shrink-0 place-items-center rounded-md bg-signal text-[11px] font-bold tracking-tight text-signal-ink"
           >
             HV
           </span>
-          <span className="min-w-0">
-            <span className="block text-sm font-semibold tracking-tight">HAVEN</span>
-            <span className="block truncate font-mono text-[10px] tracking-[0.18em] text-muted">
-              FIRST 72 HOURS
-              {isMockIncidentClient() ? " · DEMO DATA" : ""}
-            </span>
-          </span>
+          <span className="text-sm font-semibold tracking-tight">HAVEN</span>
         </Link>
-        {/* usePathname suspends when a dynamic segment is unknown at prerender.
-            The fallback keeps the same links so navigation stays usable. */}
         <Suspense fallback={<PrimaryNavLinks pathname={null} />}>
           <PrimaryNav />
         </Suspense>
+        <div className="flex items-center">
+          <Suspense fallback={<AccountLink pathname={null} />}>
+            <AccountSlot />
+          </Suspense>
+        </div>
       </div>
     </header>
   );

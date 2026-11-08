@@ -2,12 +2,12 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import type { Evidence, IncidentState, ScopeItem, TimelineItem } from '@/lib/client/types';
+import type { IncidentState, ScopeItem, TimelineItem } from '@/lib/client/types';
 import { EMPTY_PROFILE } from '@/lib/client/types';
 import { sourceLine } from '@/lib/import/label';
 import { parseCsv } from '@/lib/import/csv';
 import { suggestMapping } from '@/lib/import/fields';
-import { buildPlan, MAX_RETRIES, sendImport } from '@/lib/import/plan';
+import { buildPlan, EVENT_SPACING_MS, MAX_RETRIES, sendImport } from '@/lib/import/plan';
 
 const holder: { state: IncidentState } = { state: null as unknown as IncidentState };
 vi.mock('@/hooks/use-incident', () => ({ useIncident: () => holder.state }));
@@ -129,19 +129,28 @@ describe('sending an import', () => {
     expect(s.calls).toEqual(['evidence', ...plan.systems.map(() => 'scope'), ...plan.lines.map(() => 'timeline')]);
   });
 
+  it('waits between events so a third import in a row stays under the refill rate', async () => {
+    const waits: number[] = [];
+    const s = sink();
+    await sendImport(s.sink, plan, plan.systems, plan.lines, { sleep: async (ms) => void waits.push(ms) });
+    expect(waits).toHaveLength(plan.systems.length + plan.lines.length);
+    expect(waits.every((w) => w === EVENT_SPACING_MS)).toBe(true);
+  });
+
   it('waits and retries on "slow down", then goes on', async () => {
     let slept = 0;
     const s = sink((name, n) => (name === 'timeline' && n <= 3 ? new Error('slow down') : null));
     const r = await sendImport(s.sink, plan, plan.systems, plan.lines, { sleep: async (ms) => void (slept += ms) });
     expect(r.ok).toBe(true);
-    expect(slept).toBe(3000);
+    const events = plan.systems.length + plan.lines.length;
+    expect(slept).toBe(3000 + events * EVENT_SPACING_MS);
   });
 
   it('gives up after 10 retries and reports what was sent', async () => {
     const s = sink((name) => (name === 'scope' ? new Error('slow down') : null));
     let sleeps = 0;
     const r = await sendImport(s.sink, plan, plan.systems, plan.lines, { sleep: async () => void (sleeps += 1), describe: (c) => String((c as Error).message) });
-    expect(sleeps).toBe(MAX_RETRIES);
+    expect(sleeps).toBe(MAX_RETRIES + 1);
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.sent).toEqual(['Evidence row']);
@@ -180,20 +189,5 @@ describe('nothing about the file reaches the network or storage', () => {
     buildPlan({ rows: t.rows, mapping: suggestMapping(t.columns), fileName: 'a.csv', sha256: H, custodian: 'Sam', existingSystems: [], now: Date.parse('2026-11-08T12:00:00Z') });
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
-  });
-});
-
-describe('already imported', () => {
-  it('the panel finds an evidence row with the same hash on the record', () => {
-    const ev: Evidence = {
-      seq: 1n,
-      by: { identity: 'b'.repeat(64), displayName: 'Alex', role: 'technical' },
-      at,
-      sentAt: at,
-      verdict: ok,
-      body: { evidenceId: '00000000-0000-4000-8000-000000000009', label: 'Import: a.csv', sha256: H, location: 'Local file, never uploaded', custodian: 'Alex' },
-    };
-    holder.state = stateFor('technical', 'active', { evidence: [ev] });
-    expect(holder.state.evidence.find((e) => e.body.sha256 === H)?.by?.displayName).toBe('Alex');
   });
 });

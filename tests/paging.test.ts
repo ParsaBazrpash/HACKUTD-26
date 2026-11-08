@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   canPage,
+  identitiesInRoom,
   latestPages,
   notInIncident,
   pageChip,
@@ -71,6 +72,22 @@ describe("picker rules", () => {
     const roster = [member({ identity: "aa" }), member({ orgMemberId: 2n, identity: "bb" })];
     expect(notInIncident(roster, new Set(["aa"])).map((m) => m.identity)).toEqual(["bb"]);
   });
+  test("a new enrollment of someone whose old roster row was revoked stays on offer", () => {
+    const roster = [
+      member({ orgMemberId: 1n, identity: "aa", state: "revoked" }),
+      member({ orgMemberId: 2n, identity: "aa", state: "active" }),
+      member({ orgMemberId: 3n, identity: "bb" }),
+    ];
+    const inRoom = (rosterId: bigint | undefined, state: "active" | "revoked" = "active") =>
+      identitiesInRoom([{ identity: "aa", state, rosterId }], roster);
+    // Came in under the revoked row: the new enrollment may replace that access.
+    expect(inRoom(1n).has("aa")).toBe(false);
+    // Came in under the current row, by invite, or was removed from the room: nothing changes.
+    expect(inRoom(2n).has("aa")).toBe(true);
+    expect(inRoom(undefined).has("aa")).toBe(true);
+    expect(inRoom(1n, "revoked").has("aa")).toBe(false);
+    expect(notInIncident(roster, inRoom(1n)).map((m) => m.orgMemberId)).toEqual([1n, 2n, 3n]);
+  });
   test("reachability counts the latest page once", () => {
     const pages = [
       page("no_answer", { updatedAt: new Date(1) }),
@@ -103,6 +120,24 @@ describe("on the mock", () => {
     } finally {
       c.dispose();
       m.dispose();
+    }
+  });
+
+  test("someone removed from the room can be added again, as a new row", async () => {
+    const client = make();
+    try {
+      const s0 = client.getState();
+      const pick = s0.roster.find((m) => pickCheck(m).pickable && !s0.members.some((x) => x.identity === m.identity))!;
+      await client.addFromRoster([{ orgMemberId: pick.orgMemberId, role: "technical" }]);
+      const first = client.getState().members.find((m) => m.identity === pick.identity)!;
+      await client.revokeMember(first.memberId, "wrong room");
+      expect(client.getState().members.find((m) => m.memberId === first.memberId)?.state).toBe("revoked");
+      await client.addFromRoster([{ orgMemberId: pick.orgMemberId, role: "executive" }]);
+      const rows = client.getState().members.filter((m) => m.identity === pick.identity);
+      expect(rows.map((m) => m.state).sort()).toEqual(["active", "revoked"]);
+      expect(rows.find((m) => m.state === "active")?.role).toBe("executive");
+    } finally {
+      client.dispose();
     }
   });
 

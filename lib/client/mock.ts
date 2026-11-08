@@ -109,6 +109,17 @@ interface World {
   nextMemberId: bigint;
 }
 
+/** The row for an identity, preferring a live row over an older revoked one (a person can come back as a new row). */
+function rowFor(members: RosterEntry[], identity: string | undefined): RosterEntry | undefined {
+  let best: RosterEntry | undefined;
+  for (const m of members) {
+    if (m.identity !== identity) continue;
+    const rank = (x: RosterEntry) => (x.state === "active" ? 3 : x.state === "pending" ? 2 : 1);
+    if (!best || rank(m) > rank(best) || (rank(m) === rank(best) && m.memberId > best.memberId)) best = m;
+  }
+  return best;
+}
+
 function memberStateRank(state: RosterEntry["state"]): number {
   if (state === "revoked") return 2;
   if (state === "active") return 1;
@@ -495,11 +506,11 @@ class MockIncidentClient implements IncidentClient {
       now: () => this.now(),
       origin: () => this.origin(),
       isAdmin: () => {
-        const member = activeWorld()?.members.find((item) => item.identity === this.viewer);
+        const member = rowFor(activeWorld()?.members ?? [], this.viewer);
         return member?.role === "commander" && member.state === "active";
       },
       viewer: () => {
-        const member = activeWorld()?.members.find((item) => item.identity === this.viewer);
+        const member = rowFor(activeWorld()?.members ?? [], this.viewer);
         if (!member) throw new Error("You are not a member of this incident.");
         return { identity: member.identity, fingerprint: member.fingerprint };
       },
@@ -519,10 +530,17 @@ class MockIncidentClient implements IncidentClient {
   private admitPeople(people: OrgPerson[]): void {
     const world = this.requireCommander();
     const me = this.me(world);
-    const fresh = people.filter((p) => !world.members.some((m) => m.identity === p.identity));
+    // A revoked row does not block adding the person again: they come back as a new row.
+    const fresh = people.filter((p) => !world.members.some((m) => m.identity === p.identity && m.state !== "revoked"));
     if (world.members.length + fresh.length > MAX_MEMBERS) throw new Error("This incident cannot add that many members.");
     for (const person of fresh) {
-      if (world.members.some((m) => displayNameKey(m.displayName) === displayNameKey(person.displayName))) {
+      if (
+        world.members.some(
+          (m) =>
+            displayNameKey(m.displayName) === displayNameKey(person.displayName) &&
+            !(m.state === "revoked" && m.identity === person.identity),
+        )
+      ) {
         throw new Error("That display name is already in use in this incident.");
       }
     }
@@ -550,8 +568,8 @@ class MockIncidentClient implements IncidentClient {
 
   private revokePerson(identity: string): void {
     const world = this.currentId ? this.worlds.get(this.currentId) : undefined;
-    const me = world?.members.find((m) => m.identity === this.viewer);
-    const target = world?.members.find((m) => m.identity === identity);
+    const me = rowFor(world?.members ?? [], this.viewer);
+    const target = rowFor(world?.members ?? [], identity);
     if (!world || !me || !target || target.role === "commander" || target.state === "revoked") return;
     target.state = "revoked";
     target.revokedAt = new Date(this.now());
@@ -560,7 +578,7 @@ class MockIncidentClient implements IncidentClient {
 
   private announceAs(identity: string): void {
     const world = this.currentId ? this.worlds.get(this.currentId) : undefined;
-    const member = world?.members.find((m) => m.identity === identity);
+    const member = rowFor(world?.members ?? [], identity);
     if (!world || !member || member.state !== "active") return;
     if (!isKindAllowed("chat.post", "command", member.role)) return;
     this.push(world, "command", member, "chat.post", { messageId: crypto.randomUUID(), text: "I'm here.", mentions: [] });
@@ -830,7 +848,7 @@ class MockIncidentClient implements IncidentClient {
   }
 
   private me(world: World): RosterEntry {
-    const member = world.members.find((item) => item.identity === this.viewer);
+    const member = rowFor(world.members, this.viewer);
     if (!member) throw new Error("You are not a member of this incident.");
     return member;
   }
@@ -910,7 +928,7 @@ class MockIncidentClient implements IncidentClient {
       this.emit();
       return;
     }
-    const member = world.members.find((item) => item.identity === this.viewer);
+    const member = rowFor(world.members, this.viewer);
     if (!member) {
       this.state = freezeDeep(blank("error", at, "You are not a member of this incident."));
       this.emit();

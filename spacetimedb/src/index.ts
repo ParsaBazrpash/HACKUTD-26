@@ -337,6 +337,12 @@ function sigOk(pub: Uint8Array, msg: Uint8Array, sig: Uint8Array): boolean {
   }
 }
 
+function bytesEqualArr(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
 const bytesLen = (b: Uint8Array, n: number) => b instanceof Uint8Array && b.length === n;
 const validPub = (b: Uint8Array) => bytesLen(b, PUBKEY_LEN) && b[0] === 0x04;
 
@@ -592,7 +598,8 @@ export const redeem_invite = spacetimedb.reducer(
     const windowStart = now - BigInt(REDEEM_WINDOW_MIN) * MICROS_PER_MIN;
     let recent = 0;
     for (const a of ctx.db.join_attempt.identity.filter(ctx.sender)) {
-      if (micros(a.at) >= windowStart) recent++;
+      // Only failures count: a success needs a valid one-time code, so it cannot be a guess, and counting it would lock out a person who is legitimately coming back.
+      if (!a.ok && micros(a.at) >= windowStart) recent++;
     }
     if (recent >= REDEEM_ATTEMPTS) return;
 
@@ -609,11 +616,17 @@ export const redeem_invite = spacetimedb.reducer(
     }
     const members = membersOf(ctx, incidentId);
     const me = ctx.sender.toHexString();
-    if (members.some((m) => m.identity.toHexString() === me)) return failed();
+    // A live membership (pending or active) blocks. A revoked row stays in the log and does not stop a new request.
+    if (members.some((m) => m.identity.toHexString() === me && m.state !== 'revoked')) return failed();
+    // A revoked key stays revoked: the same person comes back only under fresh keys.
+    if (members.some((m) => bytesEqualArr(m.signPub, signPub) || bytesEqualArr(m.ecdhPub, ecdhPub))) return failed();
     if (members.length >= MAX_MEMBERS) return failed();
-    if (nameTaken(ctx, incidentId, name)) return failed();
+    if (nameTaken(ctx, incidentId, name, me)) return failed();
     if (!isInvitableRole(inv.role)) return failed();
 
+    // A returning person keeps counting from where the earlier enrollment stopped, so author counters keep rising across both.
+    let priorCounter = 0n;
+    for (const m of members) if (m.identity.toHexString() === me && m.lastCounter > priorCounter) priorCounter = m.lastCounter;
     ctx.db.invite.id.update({ ...inv, used: true, usedBy: ctx.sender, usedAt: ctx.timestamp });
     ctx.db.member.insert({
       id: 0n,
@@ -628,7 +641,7 @@ export const redeem_invite = spacetimedb.reducer(
       inviteCodeHash: hex,
       admitSig: new Uint8Array(0),
       revokeSig: new Uint8Array(0),
-      lastCounter: 0n,
+      lastCounter: priorCounter,
       joinedAt: ctx.timestamp,
       admittedAt: undefined,
       revokedAt: undefined,
@@ -1075,7 +1088,8 @@ export const enroll_member = spacetimedb.reducer(
     const windowStart = now - BigInt(REDEEM_WINDOW_MIN) * MICROS_PER_MIN;
     let recent = 0;
     for (const a of ctx.db.join_attempt.identity.filter(ctx.sender)) {
-      if (micros(a.at) >= windowStart) recent++;
+      // Only failures count: a success needs a valid one-time code, so it cannot be a guess, and counting it would lock out a person who is legitimately coming back.
+      if (!a.ok && micros(a.at) >= windowStart) recent++;
     }
     if (recent >= REDEEM_ATTEMPTS) return;
 
@@ -1093,6 +1107,8 @@ export const enroll_member = spacetimedb.reducer(
     const me = ctx.sender.toHexString();
     // A revoked row does not block a new enrollment. The old row stays revoked.
     if (members.some((m) => m.identity.toHexString() === me && m.state !== 'revoked')) return failed();
+    // A revoked key stays revoked: the same person comes back only under fresh keys.
+    if (members.some((m) => bytesEqualArr(m.signPub, signPub) || bytesEqualArr(m.ecdhPub, ecdhPub))) return failed();
     if (members.length >= MAX_ORG_MEMBERS) return failed();
     if (orgNameTaken(ctx, orgId, name)) return failed();
 

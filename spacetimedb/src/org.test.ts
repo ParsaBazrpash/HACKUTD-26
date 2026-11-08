@@ -408,6 +408,38 @@ describe('enroll_member', () => {
     expect([...o.h.db.org_member.iter()].some((m) => m.identity.toHexString() === hexOf(o.h, 'carol'))).toBe(false);
   });
 
+  it('a revoked person cannot enroll again with the old revoked keys', async () => {
+    const o = await Org.create();
+    const old = await o.enrollApproved('alice', 'Alice');
+    call(o.h, 'admin', mod.revoke_org_member, { orgId: o.orgId, orgMemberId: o.row('alice').id, reason: 'lost phone', revokeSig: await o.revokeSig('alice') });
+    const sealedContact = await sealContact(o.pagerPub, o.orgId, old.hex, '+15551230000');
+    const code = o.link();
+    call(o.h, 'alice', mod.enroll_member, {
+      orgId: o.orgId,
+      code,
+      displayName: 'Alice',
+      signPub: old.keys.signPub,
+      ecdhPub: old.keys.ecdhPub,
+      joinTag: new Uint8Array(32),
+      sealedContact,
+    });
+    const rows = [...o.h.db.org_member.iter()].filter((m) => m.identity.toHexString() === old.hex);
+    expect(rows.map((m) => m.state)).toEqual(['revoked']);
+    // The link was not burned, so a fresh enrollment with it still works.
+    await o.enroll('alice', 'Alice', '+15551230000', code);
+    expect([...o.h.db.org_member.iter()].filter((m) => m.identity.toHexString() === old.hex).map((m) => m.state).sort()).toEqual(['pending', 'revoked']);
+  });
+
+  it('successful enrollments do not use up the guess limit, so repeated test cycles keep working', async () => {
+    const o = await Org.create();
+    for (let i = 0; i < 7; i++) {
+      await o.enroll('alice', 'Alice');
+      call(o.h, 'admin', mod.revoke_org_member, { orgId: o.orgId, orgMemberId: o.row('alice').id, reason: 'test', revokeSig: await o.revokeSig('alice', 'test') });
+    }
+    await o.enrollApproved('alice', 'Alice');
+    expect(o.row('alice').state).toBe('active');
+  });
+
   it('a different person can enroll under a name that only a revoked row still holds', async () => {
     const o = await Org.create();
     await o.enrollApproved('alice', 'Alice');

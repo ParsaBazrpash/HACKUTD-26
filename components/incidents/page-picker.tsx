@@ -8,7 +8,7 @@ import {
   primaryButtonClass,
 } from "@/components/incidents/form-ui";
 import { ROLE_LABELS } from "@/components/incidents/labels";
-import { canPage, isPickRole, notInIncident, pickCheck, type PickRole } from "@/components/incidents/paging";
+import { canPage, identitiesInRoom, isPickRole, notInIncident, pickCheck, type PickRole } from "@/components/incidents/paging";
 import { useIncident } from "@/hooks/use-incident";
 import { getIncidentClient } from "@/lib/client";
 import { clientErrorMessage } from "@/lib/client/errors";
@@ -23,7 +23,7 @@ export function PagePicker() {
   const [notice, setNotice] = useState<string | null>(null);
   if (!canPage(state)) return null;
 
-  const inIncident = new Set(state.members.filter((m) => m.state !== "revoked").map((m) => m.identity));
+  const inIncident = identitiesInRoom(state.members, state.roster);
   const candidates = notInIncident(state.roster, inIncident);
 
   function toggle(id: bigint) {

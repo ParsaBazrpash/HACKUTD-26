@@ -198,6 +198,13 @@ interface OrgSnapshot {
 /** Marker the module stores in member.inviteCodeHash for people admitted through the roster. */
 const ROSTER_MARKER_PREFIX = 'roster:';
 
+/** The roster row a member was added under, from the marker the module stores, or undefined for an invite join. */
+function rosterIdOf(inviteCodeHash: string): bigint | undefined {
+  if (!inviteCodeHash.startsWith(ROSTER_MARKER_PREFIX)) return undefined;
+  const raw = inviteCodeHash.slice(ROSTER_MARKER_PREFIX.length);
+  return /^[0-9]{1,20}$/.test(raw) ? BigInt(raw) : undefined;
+}
+
 function membershipRank(state: string): number {
   if (state === 'active') return 3;
   if (state === 'pending') return 2;
@@ -530,6 +537,7 @@ export class RealIncidentClient implements IncidentClient {
       fingerprint: formatFingerprint(fingerprintBytes(m.signPub, m.ecdhPub)),
       verified: certified,
       ...(extra.linkVerified !== undefined ? { linkVerified: extra.linkVerified } : {}),
+      ...(rosterIdOf(m.inviteCodeHash) !== undefined ? { rosterId: rosterIdOf(m.inviteCodeHash)! } : {}),
       ...(showCode ? { safetyCode: safetyCode(incidentId, m.identityHex, m.signPub, m.ecdhPub) } : {}),
       joinedAt: micros(m.joinedAtMicros),
       ...(m.admittedAtMicros !== undefined ? { admittedAt: micros(m.admittedAtMicros) } : {}),
@@ -891,10 +899,15 @@ export class RealIncidentClient implements IncidentClient {
     const store = this.openStore(inv.incidentId);
     const before = this.backend.rows();
     // Already redeemed on this device: just open it. Never replace live keys.
-    if ((await store.getDeviceRecord()) && before.status.some((r) => r.incidentId === inv.incidentId)) {
+    // A revoked membership is not live. Its keys stay revoked, so a new invite starts over with fresh keys.
+    if (
+      (await store.getDeviceRecord()) &&
+      before.status.some((r) => r.incidentId === inv.incidentId && (r.state === 'pending' || r.state === 'active'))
+    ) {
       await this.activate(inv.incidentId, store);
       return;
     }
+    if (before.status.some((r) => r.incidentId === inv.incidentId && r.state === 'revoked')) await store.wipe();
     const keys = await this.newDeviceKeys(store);
     await store.setExpectedFingerprint(inv.commanderFingerprint);
     const joinTag = await computeJoinTag(inv.secret, {
@@ -918,10 +931,17 @@ export class RealIncidentClient implements IncidentClient {
       throw new ClientError('This invite link could not be used');
     }
     // The module records failures and returns normally, so look for the result.
-    const joined = await this.waitFor(() => this.backend.rows().status.some((r) => r.incidentId === inv.incidentId));
+    // An older revoked row does not count: wait for a new row that carries the keys just made.
+    const joined = await this.waitFor(() =>
+      this.backend
+        .rows()
+        .status.some((r) => r.incidentId === inv.incidentId && r.state !== 'revoked' && bytesEqual(r.signPub, keys.signPub)),
+    );
     if (!joined) {
       await store.wipe();
-      throw new ClientError('This invite link could not be used. It may be expired or already used, or the name may be taken.');
+      throw new ClientError(
+        'This invite link could not be used. It may be expired or already used, the name may be taken, or there were too many failed tries (wait 10 minutes).',
+      );
     }
     await this.activate(inv.incidentId, store);
   }
@@ -1570,7 +1590,7 @@ export class RealIncidentClient implements IncidentClient {
       );
       if (!joined) {
         await store.wipe();
-        throw new ClientError('This enrollment link could not be used. It may be expired or already used, or the name may be taken.');
+        throw new ClientError('This enrollment link could not be used. It may be expired or already used, the name may be taken, or there were too many failed tries (wait 10 minutes).');
       }
       await this.refresh();
       return { safetyCode: orgSafetyCode(frag.orgId, myHex, keys.signPub, keys.ecdhPub) };

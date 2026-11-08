@@ -500,6 +500,61 @@ describe('roster admission and paging', () => {
     expect(states).toEqual(['active', 'revoked']);
   });
 
+  it('the new enrollment may carry another role, and what the person wrote before still verifies', async () => {
+    const hub = new HarnessHub();
+    const pager = await newPager();
+    const { admin, jordan, incidentId } = await startIncident(hub, pager);
+    const oldId = rosterId(admin.client, 'Jordan');
+    await admin.client.addFromRoster([{ orgMemberId: oldId, role: 'counsel' }]);
+    await settle();
+    await jordan.client.openIncident(incidentId);
+    await settle();
+    await jordan.client.postMessage('privileged', { text: 'counsel note', mentions: [] });
+    await settle();
+    await admin.client.revokeOrgMember(oldId, 'lost phone');
+    await settle();
+    const { url } = await admin.client.createEnrollLink({ ttlHours: 1 });
+    await jordan.client.enroll({ fragment: fragmentOf(url), displayName: 'Jordan', phone: PHONES.Jordan });
+    await settle();
+    const pending = admin.client.getState().roster.find((r) => r.displayName === 'Jordan' && r.state === 'pending')!;
+    await admin.client.approveMember(pending.orgMemberId);
+    await settle();
+    await admin.client.addFromRoster([{ orgMemberId: pending.orgMemberId, role: 'technical' }]);
+    await settle();
+    await jordan.client.openIncident(incidentId);
+    await settle();
+    await jordan.client.postMessage('technical', { text: 'tech note', mentions: [] });
+    await settle();
+    expect(admin.client.getState().integrity).toMatchObject({ ok: true });
+    expect(jordan.client.getState().integrity).toMatchObject({ ok: true });
+    expect(admin.client.getState().channels.find((c) => c.kind === 'privileged')!.messages.map((m) => m.text)).toEqual(['counsel note']);
+    expect(admin.client.getState().channels.find((c) => c.kind === 'technical')!.messages.map((m) => m.text)).toEqual(['tech note']);
+  });
+
+  it('a person removed from the incident only can be added again under the same roster row', async () => {
+    const hub = new HarnessHub();
+    const pager = await newPager();
+    const { admin, jordan, incidentId } = await startIncident(hub, pager);
+    const id = rosterId(admin.client, 'Jordan');
+    await admin.client.addFromRoster([{ orgMemberId: id, role: 'counsel' }]);
+    await settle();
+    await jordan.client.openIncident(incidentId);
+    await settle();
+    const member = admin.client.getState().members.find((m) => m.displayName === 'Jordan' && m.state === 'active')!;
+    expect(member.rosterId).toBe(id);
+    await admin.client.revokeMember(member.memberId, 'wrong room');
+    await settle();
+    expect(jordan.client.getState().me).toMatchObject({ state: 'revoked' });
+    await admin.client.addFromRoster([{ orgMemberId: id, role: 'executive' }]);
+    await settle();
+    await jordan.client.openIncident(incidentId);
+    await settle();
+    expect(jordan.client.getState().me).toMatchObject({ state: 'active', role: 'executive' });
+    await jordan.client.postMessage('command', { text: 'back in', mentions: [] });
+    await settle();
+    expect(admin.client.getState().integrity).toMatchObject({ ok: true });
+  });
+
   it('refuses a person already in the incident, and a pick that is not on the roster', async () => {
     const hub = new HarnessHub();
     const pager = await newPager();

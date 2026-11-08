@@ -112,6 +112,8 @@ Message and record content (including attorney-client privileged communications)
 - 2026-11-07: HAVEN can be installed as a progressive web app. The service worker does not cache incident data. T37 is Done.
 - 2026-11-07: A revoked org member can enroll again with a fresh link, including the same name and phone. The old roster row stays revoked and cannot be added or paged. The new row is pending until the admin approves it and checks the new safety code. If that person is already in the open incident, adding the new row revokes the old incident access (the channels they could read get a new key) and admits the new keys. Earlier messages still verify under the old key.
 
+- 2026-11-08: Coming back after a revocation, for invite joins too. A revoked incident member can redeem a new invite and the commander admits them as a new row; a revoked key can never be reused (the module refuses the same signing or ECDH key again, in invites and in org enrollment), and a returning person's author counter continues from the old row so replay checks stay strict. A verifier judges each event by the key that signed it, including that key's role at the time, so a new enrollment with another role does not change the past. Only failed redeem or enroll attempts count toward the 5 per 10 minutes limit, because a success needs a valid one-time code.
+
 ## Downgrades taken
 
 None yet. If a fallback from `docs/PLAN.md` section 11 is used, record it here with the time and the affected rows.

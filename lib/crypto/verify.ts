@@ -276,6 +276,8 @@ export async function verifyIncident(input: VerifyInput): Promise<VerifyOutput> 
       // 3 and 4: some certified key for this identity must sign the event, still be allowed to write, and not be revoked yet.
       // A later enrollment does not erase the key that signed earlier events.
       const held = (roster.get(raw.author)?.keys ?? []).filter((k) => k.certified);
+      // The role of the key that signed this event: a later enrollment may carry another role without changing the past.
+      let signerRole: Role | undefined;
       if (held.length === 0) {
         fail(w, 'unknown_author');
       } else {
@@ -299,6 +301,7 @@ export async function verifyIncident(input: VerifyInput): Promise<VerifyOutput> 
           const key = await pubKey(k.signPub);
           const sigOk = key !== null && (await verifySig(key, sigInput, raw.signature));
           if (sigOk) matched = true;
+          if (sigOk && (signerRole === undefined || (!revoked && roleOk))) signerRole = k.role;
           if (revoked) sawRevoked = true;
           if (!roleOk) sawRole = true;
           if (sigOk && !revoked && roleOk) authorized = true;
@@ -340,8 +343,9 @@ export async function verifyIncident(input: VerifyInput): Promise<VerifyOutput> 
             const sent = new Date(parsed.payload.sentAt);
             w.sentAt = Number.isNaN(sent.getTime()) ? null : sent;
             const cm = roster.get(raw.author);
-            if (cm && cm.certified && !isKindAllowed(parsed.payload.kind, channel, cm.member.role)) {
-              fail(w, 'not_permitted', `${parsed.payload.kind} not allowed for ${cm.member.role} in #${channel}`);
+            const kindRole = signerRole ?? cm?.member.role;
+            if (cm && cm.certified && kindRole && !isKindAllowed(parsed.payload.kind, channel, kindRole)) {
+              fail(w, 'not_permitted', `${parsed.payload.kind} not allowed for ${kindRole} in #${channel}`);
             }
             if (w.sentAt && Math.abs(w.sentAt.getTime() - Number(raw.serverTsMicros / 1000n)) > CLOCK_DRIFT_MS) {
               w.warnings.add('clock_drift');

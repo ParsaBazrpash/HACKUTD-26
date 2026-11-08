@@ -8,7 +8,7 @@ import { CARD_FOOTER, CARD_HOW_TO, CARD_NO_FINGERPRINT, CARD_PURPOSE, CARD_REPLA
 const labelClass = "font-mono text-[11px] tracking-[0.18em] text-muted";
 
 /**
- * Wallet card. It holds the org name, the HAVEN address and the admin fingerprint,
+ * Pocket card. It holds the org name, the HAVEN address and the admin fingerprint,
  * all public. No code, key, token or enrollment link is ever put on it.
  */
 export function BreakGlassCard({
@@ -71,7 +71,7 @@ export function BreakGlassCard({
         </div>
         <div className="grid gap-1">
           <h2 id="break-glass-heading" className="text-lg font-medium">
-            {orgName?.trim() ? orgName : "Your HAVEN card"}
+            {orgName?.trim() ? <bdi>{orgName}</bdi> : "Your HAVEN card"}
           </h2>
           <p className="text-sm leading-6 text-muted print:text-black">{CARD_PURPOSE}</p>
         </div>

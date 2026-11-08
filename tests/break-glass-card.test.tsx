@@ -51,6 +51,7 @@ describe('BreakGlassCard markup', () => {
   it('escapes a hostile org name and holds only public facts', () => {
     const html = render({ orgName: HOSTILE, adminFingerprint: FP });
     expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+    expect(html).toMatch(/<bdi>&lt;img src=x/);
     expect(html).not.toContain('<img src=x');
     expect(html).not.toMatch(/<[^>]*\sonerror=/);
     expect(html).toContain('NOT A KEY');

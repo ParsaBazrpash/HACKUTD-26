@@ -43,7 +43,7 @@ export const CARD_HOW_TO = {
   handyTitle: "WHEN IT COMES IN HANDY",
   handy: [
     "Company email, chat or laptops are down, or may be in the attacker's hands, and you still need to reach the response team.",
-    "HAVEN calls or texts you, and you want to open it without trusting a link someone sent.",
+    "HAVEN calls you, and you want to open it without trusting a link someone sent.",
     "You want to check that the admin in HAVEN is really your admin.",
   ],
   whenTitle: "WHEN TO SAVE IT",
@@ -53,7 +53,7 @@ export const CARD_HOW_TO = {
     "Print it and keep it in your wallet, or save the image to Photos on your personal phone. Do not keep it only on a work laptop or in work email: those may be the systems under attack. If you lose it or it gets damaged, tell IT or your admin and save a new one. Nothing on it lets anyone in, so a lost card is not a break-in.",
   howTitle: "HOW TO USE IT",
   how: [
-    "You get a call or text from HAVEN, or hear about an incident. Do not use links from company email or chat.",
+    "You get a call from HAVEN, or hear about an incident. Do not use links from company email or chat.",
     "On your personal phone, scan the QR or type the address, in the browser you enrolled with. Check that the address bar matches the card exactly.",
     "Open Org in HAVEN and check that the admin fingerprint matches this card. If it does not, stop and call your admin on a number you already know.",
     "HAVEN never asks for a code and never asks you to enroll again out of the blue. If a page does, it is not HAVEN. Only trust a card you saved yourself.",

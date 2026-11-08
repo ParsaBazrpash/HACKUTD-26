@@ -1,5 +1,7 @@
 "use client";
 
+import { ImHereButton, PagingStatus } from "@/components/incidents/paging-status";
+import { PagePicker } from "@/components/incidents/page-picker";
 import { AccessControls } from "@/components/incidents/access-controls";
 import { memberStateLabel, ROLE_LABELS } from "@/components/incidents/labels";
 import { linkVerifiedLabel } from "@/components/incidents/room-controls";
@@ -21,6 +23,13 @@ export function PeopleBoard() {
           Roles come from the invite and the commander&apos;s admission.
         </p>
       </div>
+      <ImHereButton />
+      {commander ? (
+        <>
+          <PagePicker />
+          <PagingStatus />
+        </>
+      ) : null}
       <ul className="divide-y divide-line border-y border-line">
         {state.members.map((member) => (
           <li key={member.identity} className="min-w-0 py-4">

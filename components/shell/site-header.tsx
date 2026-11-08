@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { User } from "lucide-react";
+import { Menu, User, X } from "lucide-react";
 import { InstallAppControl } from "@/components/pwa/install-app";
 
 function incidentIdFromPath(pathname: string | null): string | null {
@@ -47,41 +47,68 @@ const subscribeNever = (): (() => void) => () => {};
 
 function itemClass(active: boolean): string {
   return active
-    ? "inline-flex h-full items-center border-b-2 border-signal px-2 text-sm font-medium text-signal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal sm:px-3"
-    : "inline-flex h-full items-center border-b-2 border-transparent px-2 text-sm text-muted hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal sm:px-3";
+    ? "text-[15px] font-medium text-signal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-signal"
+    : "text-[15px] text-white transition-colors hover:text-white/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-signal";
 }
 
-function PrimaryNavLinks({ pathname }: { pathname: string | null }) {
+function HavenMark() {
+  return (
+    <span className="flex flex-col items-center leading-none">
+      <svg aria-hidden="true" viewBox="0 0 36 14" className="h-2.5 w-9 text-signal">
+        <path
+          d="M2 12 18 2l16 10"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2.6"
+        />
+      </svg>
+      <span className="mt-1.5 text-base font-semibold tracking-[0.18em] text-white">HAVEN</span>
+    </span>
+  );
+}
+
+function PrimaryLinks({
+  pathname,
+  onNavigate,
+  stacked = false,
+}: {
+  pathname: string | null;
+  onNavigate?: () => void;
+  stacked?: boolean;
+}) {
   const membersHref = useMembersHref(pathname);
   const onPeople = pathname !== null && /\/people(?:\/|$)/.test(pathname);
   const onIncidents = pathname !== null && pathname.startsWith("/incidents") && !onPeople;
   const onJoin = pathname === "/join" || (pathname !== null && pathname.startsWith("/join/"));
   const onOrg = pathname === "/org" || (pathname !== null && pathname.startsWith("/org/"));
+  const links = [
+    { href: "/incidents", label: "Incidents", active: onIncidents },
+    { href: membersHref, label: "Members", active: onPeople },
+    { href: "/org", label: "Org", active: onOrg },
+    { href: "/join", label: "Join", active: onJoin },
+  ];
   return (
-    <nav aria-label="Primary" className="-mb-px flex h-full min-w-0 items-stretch justify-start gap-1 overflow-x-auto sm:justify-center sm:gap-2">
-      <Link href="/incidents" aria-current={onIncidents ? "page" : undefined} className={itemClass(onIncidents)}>
-        Incidents
-      </Link>
-      <Link
-        href={membersHref}
-        aria-current={onPeople ? "page" : undefined}
-        className={itemClass(onPeople)}
-      >
-        Members
-      </Link>
-      <Link href="/org" aria-current={onOrg ? "page" : undefined} className={itemClass(onOrg)}>
-        Org
-      </Link>
-      <Link href="/join" aria-current={onJoin ? "page" : undefined} className={itemClass(onJoin)}>
-        Join
-      </Link>
-    </nav>
+    <>
+      {links.map((link) => (
+        <Link
+          key={link.label}
+          href={link.href}
+          aria-current={link.active ? "page" : undefined}
+          className={stacked ? `${itemClass(link.active)} py-2` : itemClass(link.active)}
+          onClick={onNavigate}
+        >
+          {link.label}
+        </Link>
+      ))}
+    </>
   );
 }
 
-function PrimaryNav() {
+function PrimaryNav({ onNavigate, stacked = false }: { onNavigate?: () => void; stacked?: boolean }) {
   const pathname = usePathname();
-  return <PrimaryNavLinks pathname={pathname} />;
+  return <PrimaryLinks pathname={pathname} onNavigate={onNavigate} stacked={stacked} />;
 }
 
 function AccountLink({ pathname }: { pathname: string | null }) {
@@ -90,7 +117,7 @@ function AccountLink({ pathname }: { pathname: string | null }) {
     <Link
       href={membersHref}
       aria-label="People and access"
-      className="grid size-9 place-items-center rounded-full border border-line text-muted hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+      className="grid size-9 place-items-center rounded-full border border-white/15 text-white/70 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
     >
       <User aria-hidden="true" className="size-4" />
     </Link>
@@ -102,30 +129,58 @@ function AccountSlot() {
   return <AccountLink pathname={pathname} />;
 }
 
+const getStartedClass =
+  "inline-flex h-10 shrink-0 items-center justify-center rounded-full border border-signal px-5 text-sm font-medium text-signal transition-colors hover:bg-signal/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal";
+
 export function SiteHeader() {
   return (
-    <header className="border-b border-line bg-background">
-      <div className="mx-auto grid h-14 w-full min-w-0 max-w-[1440px] grid-cols-[auto_minmax(0,1fr)_auto] items-stretch gap-3 px-4 sm:px-8">
+    <header className="relative z-30">
+      <div className="mx-auto flex h-20 w-full max-w-[1440px] items-center gap-3 px-5 sm:px-10 lg:px-14">
         <Link
           href="/"
-          className="flex min-w-0 items-center gap-2.5 self-center rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-signal"
+          className="shrink-0 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-signal"
         >
-          <span
-            aria-hidden="true"
-            className="grid size-8 shrink-0 place-items-center rounded-md bg-signal text-[11px] font-bold tracking-tight text-signal-ink"
-          >
-            HV
-          </span>
-          <span className="text-sm font-semibold tracking-tight">HAVEN</span>
+          <HavenMark />
         </Link>
-        <Suspense fallback={<PrimaryNavLinks pathname={null} />}>
-          <PrimaryNav />
-        </Suspense>
-        <div className="flex shrink-0 items-center gap-2">
-          <InstallAppControl />
-          <Suspense fallback={<AccountLink pathname={null} />}>
-            <AccountSlot />
+        <nav aria-label="Primary" className="ml-auto hidden items-center gap-9 lg:flex">
+          <Suspense fallback={<PrimaryLinks pathname={null} />}>
+            <PrimaryNav />
           </Suspense>
+        </nav>
+        <div className="ml-auto hidden lg:ml-0 lg:block">
+          <InstallAppControl />
+        </div>
+        <div className="ml-auto flex items-center gap-2 sm:gap-3 lg:ml-0">
+          <div className="hidden sm:block">
+            <Suspense fallback={<AccountLink pathname={null} />}>
+              <AccountSlot />
+            </Suspense>
+          </div>
+          <Link href="/incidents" className={getStartedClass}>
+            Get Started
+          </Link>
+          <details className="group relative lg:hidden">
+            <summary className="grid size-10 cursor-pointer list-none place-items-center rounded-full text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal [&::-webkit-details-marker]:hidden">
+              <Menu aria-hidden="true" className="size-5 group-open:hidden" />
+              <X aria-hidden="true" className="hidden size-5 group-open:block" />
+              <span className="sr-only">Menu</span>
+            </summary>
+            <div className="absolute right-0 top-full z-40 mt-2 w-[min(18rem,calc(100vw-2.5rem))] rounded-2xl border border-white/10 bg-black p-4 shadow-2xl">
+              <nav aria-label="Primary" className="flex flex-col">
+                <Suspense fallback={<PrimaryLinks pathname={null} stacked />}>
+                  <PrimaryNav stacked />
+                </Suspense>
+              </nav>
+              <div className="mt-3 flex items-center gap-3 border-t border-white/10 pt-3 sm:hidden">
+                <Suspense fallback={<AccountLink pathname={null} />}>
+                  <AccountSlot />
+                </Suspense>
+              </div>
+              <div className="mt-3 border-t border-white/10 pt-3">
+                <InstallAppControl />
+              </div>
+            </div>
+          </details>
         </div>
       </div>
     </header>

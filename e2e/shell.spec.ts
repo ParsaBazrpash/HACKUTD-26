@@ -9,9 +9,9 @@ async function noHorizontalOverflow(page: import("@playwright/test").Page): Prom
 
 test("shell routes render the clinic incident", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("held in this browser");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("ransomware response");
 
-  await page.getByRole("link", { name: "Open incidents" }).click();
+  await page.getByRole("main").getByRole("link", { name: "Get Started" }).click();
   await expect(page).toHaveURL("/incidents");
   await expect(page.getByRole("button", { name: "Create incident" })).toBeVisible();
   await expect(page.getByText("Demo data").first()).toBeVisible();

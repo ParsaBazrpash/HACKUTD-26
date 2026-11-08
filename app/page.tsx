@@ -4,7 +4,7 @@ import { HomeView } from "@/components/landing/home-view";
 export const metadata: Metadata = {
   title: { absolute: "HAVEN" },
   description:
-    "HAVEN is a sealed incident-response war room for the first 72 hours after a ransomware attack.",
+    "Coordinate, communicate, and make critical decisions in a secure, tamper-evident workspace.",
 };
 
 export default function Page() {

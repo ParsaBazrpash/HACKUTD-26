@@ -1,6 +1,8 @@
 // Reading an import file in the browser (plan.md rules 1 to 3). The file is never uploaded:
 // only its bytes are hashed and decoded here.
 
+import type { Row } from '@/lib/import/csv';
+
 export const MAX_FILE_BYTES = 2 * 1024 * 1024;
 
 export type ImportFormat = 'csv' | 'json' | 'ndjson';
@@ -62,7 +64,9 @@ export function sniffBinaryType(bytes: Uint8Array): string | null {
   return null;
 }
 
-const CONTROL_LIMIT = 0.01; // more than 1% control characters is binary junk, not text
+// More than 1 in 10 characters being controls is binary junk, not text. A few stray ones (a Ctrl-Z at the end,
+// colour codes in a log message) are only reported: cleaning removes them from anything imported.
+const CONTROL_LIMIT = 0.1;
 
 export interface TextScan {
   /** Why the text is refused, or null. */
@@ -71,31 +75,71 @@ export interface TextScan {
   warnings: string[];
 }
 
-/**
- * Looks for hidden and binary content in decoded text. Bidi overrides and isolates (Trojan Source tricks)
- * and mostly-control-character content are refused. Zero-width and stray control characters are reported
- * and then removed by the cleaning step.
- */
-export function scanText(text: string): TextScan {
-  let controls = 0;
-  let overrides = 0;
-  let hidden = 0;
+interface Counts {
+  chars: number;
+  controls: number;
+  overrides: number;
+  hidden: number;
+}
+
+function count(text: string, c: Counts): void {
+  c.chars += text.length;
   for (let i = 0; i < text.length; i += 1) {
-    const c = text.charCodeAt(i);
-    if ((c < 0x20 && c !== 0x09 && c !== 0x0a && c !== 0x0d) || (c >= 0x7f && c <= 0x9f)) controls += 1;
-    else if ((c >= 0x202a && c <= 0x202e) || (c >= 0x2066 && c <= 0x2069)) overrides += 1;
-    else if (c === 0x200b || c === 0x200c || c === 0x200d || c === 0x2060 || c === 0xfeff || c === 0x061c) hidden += 1;
+    const ch = text.charCodeAt(i);
+    if ((ch < 0x20 && ch !== 0x09 && ch !== 0x0a && ch !== 0x0d) || (ch >= 0x7f && ch <= 0x9f)) c.controls += 1;
+    else if ((ch >= 0x202a && ch <= 0x202e) || (ch >= 0x2066 && ch <= 0x2069)) c.overrides += 1;
+    else if (ch === 0x200b || ch === 0x200c || ch === 0x200d || ch === 0x2060 || ch === 0xfeff || ch === 0x061c) c.hidden += 1;
+    else if (ch === 0xdb40) {
+      // Unicode tag characters (U+E0001, U+E0020 to U+E007F) are invisible and can hide text meant for an AI reader.
+      const lo = text.charCodeAt(i + 1);
+      if (lo === 0xdc01 || (lo >= 0xdc20 && lo <= 0xdc7f)) {
+        c.hidden += 1;
+        i += 1;
+      }
+    }
   }
-  if (overrides > 0) {
-    return { refuse: 'The file contains right-to-left override or isolate characters, which can make text read differently from what it is. It was not imported.', warnings: [] };
-  }
-  if (text.length > 0 && controls / text.length > CONTROL_LIMIT) {
+}
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+function verdict(c: Counts): TextScan {
+  if (c.chars > 0 && c.controls / c.chars > CONTROL_LIMIT) {
     return { refuse: 'The file is mostly control characters, so it is not a text export. It was not imported.', warnings: [] };
   }
   const warnings: string[] = [];
-  if (hidden > 0) warnings.push(`${hidden} hidden zero-width ${hidden === 1 ? 'character was' : 'characters were'} removed.`);
-  if (controls > 0) warnings.push(`${controls} control ${controls === 1 ? 'character was' : 'characters were'} removed.`);
+  if (c.overrides > 0) {
+    warnings.push(
+      `${plural(c.overrides, 'right-to-left override or isolate character was', 'right-to-left override or isolate characters were')} removed, so text shows in its real order. A file name that hides its real extension this way is a known malware trick.`,
+    );
+  }
+  if (c.hidden > 0) warnings.push(`${plural(c.hidden, 'hidden zero-width character was', 'hidden zero-width characters were')} removed.`);
+  if (c.controls > 0) warnings.push(`${plural(c.controls, 'control character was', 'control characters were')} removed.`);
   return { refuse: null, warnings };
+}
+
+/**
+ * Looks for hidden and binary content in decoded text. Text that is mostly control characters is refused.
+ * Bidi overrides and isolates (Trojan Source tricks), zero-width, tag and stray control characters are reported;
+ * cleaning removes them from every string that is imported, so a hidden file extension shows in its real order.
+ * They are not refused: an EDR export of a right-to-left override attack must still import with its exact bytes.
+ */
+export function scanText(text: string): TextScan {
+  const c: Counts = { chars: 0, controls: 0, overrides: 0, hidden: 0 };
+  count(text, c);
+  return verdict(c);
+}
+
+/**
+ * The same check on what the parser produced. For CSV every cell is a slice of the file text, so the check on the
+ * text already covered it. In JSON and NDJSON an escape such as \u202e, \u200b or \u0007 only becomes a character
+ * once parsed, so the column names and values are checked here instead.
+ */
+export function scanParsed(format: ImportFormat, textWarnings: readonly string[], columns: readonly string[], rows: readonly Row[]): TextScan {
+  if (format === 'csv') return { refuse: null, warnings: [...textWarnings] };
+  const c: Counts = { chars: 0, controls: 0, overrides: 0, hidden: 0 };
+  for (const col of columns) count(col, c);
+  for (const row of rows) for (const value of row.values()) count(value, c);
+  return verdict(c);
 }
 
 /** Fatal UTF-8; UTF-16 only when its byte order mark is present; BOM removed; binary refused. */
@@ -111,7 +155,8 @@ export function decodeBytes(bytes: Uint8Array): DecodeResult {
   } else if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
     start = 3;
   }
-  const sniffed = sniffBinaryType(bytes);
+  // Checked after a UTF-8 byte order mark too, so a BOM in front does not hide the signature.
+  const sniffed = label === 'utf-8' ? sniffBinaryType(bytes.subarray(start)) : null;
   if (sniffed !== null) {
     return {
       ok: false,

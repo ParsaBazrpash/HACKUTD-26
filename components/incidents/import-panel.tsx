@@ -16,7 +16,7 @@ import { parseJson, parseNdjson } from "@/lib/import/json";
 import { buildPlan, sendImport, type ImportPlan } from "@/lib/import/plan";
 import { isPlatformId, missingFields, PLATFORM_IDS, PLATFORMS, suggestForPlatform, type PlatformId } from "@/lib/import/platforms";
 import type { ImportedSource } from "@/lib/import/label";
-import { readImportFile, type ImportFormat } from "@/lib/import/read";
+import { readImportFile, scanParsed, type ImportFormat } from "@/lib/import/read";
 
 const FIELD_LABEL: Record<FieldKey, string> = {
   time: "Time column",
@@ -113,12 +113,18 @@ function ImportPanelInner() {
         setError(table.error);
         return;
       }
+      // JSON escapes (\u202e, \u200b, \u0007) only become characters once parsed, so the parsed strings are checked too.
+      const scan = scanParsed(read.format, read.warnings, table.columns, table.rows);
+      if (scan.refuse) {
+        setError(scan.refuse);
+        return;
+      }
       setLoaded({
         fileName: cleanFileName(file.name),
         size: read.size,
         sha256: read.sha256,
         format: read.format,
-        warnings: read.warnings,
+        warnings: scan.warnings,
         columns: table.columns,
         rows: table.rows,
         existing: state.scope.map((item) => item.latest.system),

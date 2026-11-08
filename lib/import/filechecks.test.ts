@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { cleanHost, neutralizeFormula, startsLikeFormula } from '@/lib/import/clean';
 import { parseCsv, MAX_CELL, MAX_COLUMNS, MAX_ROWS } from '@/lib/import/csv';
+import { parseJson, parseNdjson } from '@/lib/import/json';
 import { suggestMapping } from '@/lib/import/fields';
 import { buildPlan } from '@/lib/import/plan';
-import { MAX_FILE_BYTES, readImportFile, scanText, sniffBinaryType } from '@/lib/import/read';
+import { MAX_FILE_BYTES, readImportFile, scanParsed, scanText, sniffBinaryType } from '@/lib/import/read';
 
 const enc = (s: string) => new TextEncoder().encode(s);
 const file = (bytes: Uint8Array) => ({ size: bytes.length, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length) as ArrayBuffer });
@@ -46,29 +47,55 @@ describe('1. the first bytes decide the file type, not the name', () => {
     // ...but the same letters followed by binary bytes are refused.
     expect((await readImportFile(file(new Uint8Array([0x4d, 0x5a, 0x00, 0x01, 0x02])))).ok).toBe(false);
   });
+
+  it('a UTF-8 byte order mark in front does not hide the signature', async () => {
+    // An all-text PDF would otherwise decode as valid UTF-8 and be read as CSV.
+    const pdf = new Uint8Array([0xef, 0xbb, 0xbf, ...enc('%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\n%%EOF\n')]);
+    const r = await readImportFile(file(pdf));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/a PDF/);
+    // A real CSV with a BOM still imports.
+    expect((await readImportFile(file(new Uint8Array([0xef, 0xbb, 0xbf, ...enc('Timestamp,DeviceName\n1,2\n')])))).ok).toBe(true);
+  });
 });
 
 describe('2. hidden and binary characters', () => {
-  it('refuses right-to-left overrides and isolates anywhere in the file', async () => {
-    for (const ch of ['‮', '‪', '⁦', '⁩']) {
+  // Every hidden character in this file is written as an escape, so a reader of the test sees exactly what it checks.
+  const OVERRIDES = ['\u202E', '\u202A', '\u2066', '\u2069'];
+
+  it('removes right-to-left overrides and isolates anywhere in the file and says so', async () => {
+    for (const ch of OVERRIDES) {
       const r = await readImportFile(file(enc(`Timestamp,DeviceName,AlertTitle\n2026-11-08T08:13:05Z,PC-1,invoice ${ch}gpj.exe\n`)));
-      expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.error).toMatch(/override/);
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.warnings[0]).toMatch(/^1 right-to-left override or isolate character was removed, so text shows in its real order/);
     }
   });
 
-  it('reports zero-width characters and stray controls, which are removed later', async () => {
-    const csv = 'Timestamp,DeviceName,AlertTitle\n2026-11-08T08:13:05Z,PC-1,ab​c‍\u0007d\n' + '2026-11-08T08:13:06Z,PC-2,fine title here and some more text to dilute\n'.repeat(60);
+  it('an EDR export of a right-to-left override attack still imports, with the real file name order', async () => {
+    const csv = 'Timestamp,DeviceName,AlertTitle,FileName\n2026-11-08T08:13:05Z,NURSE-WS-12,Masquerading: invoice\u202Efdp.exe,invoice\u202Efdp.exe\n';
+    const r = await readImportFile(file(enc(csv)));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.warnings).toHaveLength(1);
+    const t = parseCsv(r.text);
+    if (!t.ok) throw new Error(t.error);
+    const plan = buildPlan({ rows: t.rows, mapping: suggestMapping(t.columns), fileName: 'alerts.csv', sha256: 'a'.repeat(64), custodian: 'Sam', existingSystems: [], now: Date.parse('2026-11-08T14:30:00Z') });
+    expect(plan.lines[0].body.text).toContain('Masquerading: invoicefdp.exe on NURSE-WS-12');
+    for (const ch of OVERRIDES) expect(plan.lines[0].body.text).not.toContain(ch);
+  });
+
+  it('reports zero-width characters, tag characters and stray controls, which are removed later', async () => {
+    const csv = 'Timestamp,DeviceName,AlertTitle\n2026-11-08T08:13:05Z,PC-1,ab\u200Bc\u200D\u0007d\u{E0041}\n' + '2026-11-08T08:13:06Z,PC-2,fine title here and some more text to dilute\n'.repeat(60);
     const r = await readImportFile(file(enc(csv)));
     expect(r.ok).toBe(true);
     if (r.ok) {
-      expect(r.warnings).toEqual(['2 hidden zero-width characters were removed.', '1 control character was removed.']);
+      expect(r.warnings).toEqual(['3 hidden zero-width characters were removed.', '1 control character was removed.']);
     }
   });
 
   it('keeps ordinary right-to-left marks, tabs and line breaks', () => {
-    expect(scanText('a\tb\r\nc‎d‏').refuse).toBeNull();
-    expect(scanText('a\tb\r\nc‎d‏').warnings).toEqual([]);
+    expect(scanText('a\tb\r\nc\u200Ed\u200F').refuse).toBeNull();
+    expect(scanText('a\tb\r\nc\u200Ed\u200F').warnings).toEqual([]);
   });
 
   it('refuses a file that is mostly control characters', async () => {
@@ -77,6 +104,40 @@ describe('2. hidden and binary characters', () => {
     const r = await readImportFile(file(junk));
     expect(r.ok).toBe(false);
     expect(scanText('\u0001\u0002\u0003 plain').refuse).not.toBeNull();
+  });
+
+  it('keeps a real export with a few stray controls: a Ctrl-Z at the end, colour codes in a log message', async () => {
+    const tiny = 'Timestamp,DeviceName,AlertTitle\n2026-11-08T08:13:05Z,PC-1,Ransomware\n\u001a';
+    const colours =
+      'date,host,service,status,message\n' +
+      Array.from({ length: 10 }, (_, i) => `2026-11-08T08:1${i}:05.000Z,web-01,ehr-api,error,"\u001b[31mERROR\u001b[0m db timeout after 3000ms"`).join('\n');
+    for (const text of [tiny, colours]) {
+      const r = await readImportFile(file(enc(text)));
+      expect(r.ok, text).toBe(true);
+      if (r.ok) expect(r.warnings.at(-1)).toMatch(/control characters? (was|were) removed/);
+    }
+  });
+
+  it('checks JSON escapes after parsing: \\u202e, \\u200b and \\u0007 are reported like raw characters', async () => {
+    const json = '[{"Timestamp":"2026-11-08T08:13:05Z","DeviceName":"PC-1","Title":"invoice \\u202Egpj.exe \\u200B\\u0007 and more text to dilute the control"}]';
+    const r = await readImportFile(file(enc(json)));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    // The raw text holds only ASCII, so the text check alone finds nothing...
+    expect(r.warnings).toEqual([]);
+    const t = parseJson(r.text);
+    if (!t.ok) throw new Error(t.error);
+    // ...and the check on what was parsed finds all three.
+    const scan = scanParsed(r.format, r.warnings, t.columns, t.rows);
+    expect(scan.refuse).toBeNull();
+    expect(scan.warnings).toHaveLength(3);
+    expect(scan.warnings[0]).toMatch(/^1 right-to-left override/);
+    // NDJSON too, and a file of escaped control characters is refused like a raw one.
+    const nd = parseNdjson('{"a":"\\u0001\\u0002\\u0003\\u0004"}\n{"a":"x"}\n');
+    if (!nd.ok) throw new Error(nd.error);
+    expect(scanParsed('ndjson', [], nd.columns, nd.rows).refuse).not.toBeNull();
+    // CSV cells are slices of the text, so the text check stands for them.
+    expect(scanParsed('csv', ['w'], ['a'], [new Map([['a', '\u202E']])])).toEqual({ refuse: null, warnings: ['w'] });
   });
 
   it('still refuses NUL bytes and invalid UTF-8', async () => {

@@ -736,7 +736,7 @@ export const revoke_member = spacetimedb.reducer(
     const target = ctx.db.member.id.find(memberId);
     if (!target || target.incidentId !== incidentId || !isRole(target.role)) throw invalid();
     if (target.role === 'commander') throw invalid();
-    if (!sigOk(inc.commanderSignPub, revokeStatement(incidentId, target.identity.toHexString()), revokeSig)) throw invalid();
+    if (!sigOk(inc.commanderSignPub, revokeStatement(incidentId, target.identity.toHexString(), target.signPub, target.ecdhPub), revokeSig)) throw invalid();
     if (target.state !== 'pending' && target.state !== 'active') throw invalid();
 
     const channels = channelsOf(ctx, incidentId);
@@ -1205,6 +1205,8 @@ export const add_from_roster = spacetimedb.reducer(
       const prior = members.filter((m) => m.identity.toHexString() === tHex);
       // A live incident membership still blocks. A revoked one stays in the log and a new row may be admitted.
       if (prior.some((m) => m.state !== 'revoked')) throw invalid();
+      // A revoked key stays revoked: no row of this incident, in any state, may already carry these keys.
+      if (members.some((m) => bytesEqualArr(m.signPub, target.signPub) || bytesEqualArr(m.ecdhPub, target.ecdhPub))) throw invalid();
       if (members.length >= MAX_MEMBERS) throw invalid();
       if (nameTaken(ctx, incidentId, target.displayName, tHex)) throw invalid();
       let priorCounter = 0n;

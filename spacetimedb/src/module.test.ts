@@ -164,7 +164,7 @@ class World {
         rotations.push({ kind, newEpoch, envelopes: envs, raw });
       }
     }
-    const revokeSig = await sign(this.cmd.keys.signPriv, revokeStatement(this.incidentId, p.hex));
+    const revokeSig = await sign(this.cmd.keys.signPriv, revokeStatement(this.incidentId, p.hex, row.signPub, row.ecdhPub));
     call(this.h, 'commander', mod.revoke_member, {
       incidentId: this.incidentId,
       memberId: row.id,
@@ -702,7 +702,7 @@ describe('revoke_member (T13)', () => {
     await w.joinAndAdmit('sam', 'technical');
     const sam = w.memberRow('sam');
     const samP = w.people.get('sam')!;
-    const revokeSig = await sign(w.cmd.keys.signPriv, revokeStatement(w.incidentId, samP.hex));
+    const revokeSig = await sign(w.cmd.keys.signPriv, revokeStatement(w.incidentId, samP.hex, samP.keys.signPub, samP.keys.ecdhPub));
     const base = { incidentId: w.incidentId, memberId: sam.id, revokeSig };
     expectThrows(() => call(w.h, 'dana', mod.revoke_member, { ...base, rotations: [] }), 'not authorized');
     expectThrows(() => call(w.h, 'sam', mod.revoke_member, { ...base, rotations: [] }), 'not authorized');
@@ -710,8 +710,8 @@ describe('revoke_member (T13)', () => {
     expectThrows(() => call(w.h, 'commander', mod.revoke_member, { ...base, rotations: [] })); // active target needs rotations
     expectThrows(() => call(w.h, 'commander', mod.revoke_member, { ...base, revokeSig: new Uint8Array(5), rotations: [] }));
     // A signature for a different member, or by another key, is refused even with valid rotations.
-    const forDana = await sign(w.cmd.keys.signPriv, revokeStatement(w.incidentId, w.people.get('dana')!.hex));
-    const byOther = await sign(samP.keys.signPriv, revokeStatement(w.incidentId, samP.hex));
+    const forDana = await sign(w.cmd.keys.signPriv, revokeStatement(w.incidentId, w.people.get('dana')!.hex, w.people.get('dana')!.keys.signPub, w.people.get('dana')!.keys.ecdhPub));
+    const byOther = await sign(samP.keys.signPriv, revokeStatement(w.incidentId, samP.hex, samP.keys.signPub, samP.keys.ecdhPub));
     for (const bad of [forDana, byOther, new Uint8Array(64)]) {
       expectThrows(() => call(w.h, 'commander', mod.revoke_member, { ...base, revokeSig: bad, rotations: [] }));
     }

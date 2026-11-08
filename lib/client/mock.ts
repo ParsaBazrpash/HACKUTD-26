@@ -531,6 +531,11 @@ class MockIncidentClient implements IncidentClient {
     const world = this.requireCommander();
     const me = this.me(world);
     // A revoked row does not block adding the person again: they come back as a new row.
+    for (const person of people) {
+      if (world.members.some((m) => m.state === "revoked" && (m.identity === person.identity || m.fingerprint === person.fingerprint))) {
+        throw new Error(`${person.displayName} was removed from this incident under these keys and cannot be added again. They must enroll again with a fresh link.`);
+      }
+    }
     const fresh = people.filter((p) => !world.members.some((m) => m.identity === p.identity && m.state !== "revoked"));
     if (world.members.length + fresh.length > MAX_MEMBERS) throw new Error("This incident cannot add that many members.");
     for (const person of fresh) {

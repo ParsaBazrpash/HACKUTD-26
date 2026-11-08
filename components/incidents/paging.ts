@@ -14,9 +14,13 @@ export function canPage(state: Pick<IncidentState, "me" | "org">): boolean {
 export type PickCheck = { pickable: true } | { pickable: false; reason: string };
 
 /** Roster members who may be added to this incident, or the short reason they may not. */
-export function pickCheck(member: RosterMember): PickCheck {
+export function pickCheck(member: RosterMember, room: Pick<MemberView, "fingerprint" | "state">[] = []): PickCheck {
   if (member.state === "pending") return { pickable: false, reason: "Waiting for approval" };
   if (member.state === "revoked") return { pickable: false, reason: "Revoked" };
+  // Same keys as a row already removed from this room: a revoked key stays revoked.
+  if (room.some((m) => m.state === "revoked" && m.fingerprint === member.fingerprint)) {
+    return { pickable: false, reason: "Removed from this room. They must enroll again with a fresh link." };
+  }
   if (member.keyChanged) return { pickable: false, reason: "Key changed, confirm with them first" };
   return { pickable: true };
 }

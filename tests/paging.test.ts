@@ -123,7 +123,7 @@ describe("on the mock", () => {
     }
   });
 
-  test("someone removed from the room can be added again, as a new row", async () => {
+  test("someone removed from the room cannot be added again under the same keys", async () => {
     const client = make();
     try {
       const s0 = client.getState();
@@ -131,11 +131,9 @@ describe("on the mock", () => {
       await client.addFromRoster([{ orgMemberId: pick.orgMemberId, role: "technical" }]);
       const first = client.getState().members.find((m) => m.identity === pick.identity)!;
       await client.revokeMember(first.memberId, "wrong room");
-      expect(client.getState().members.find((m) => m.memberId === first.memberId)?.state).toBe("revoked");
-      await client.addFromRoster([{ orgMemberId: pick.orgMemberId, role: "executive" }]);
-      const rows = client.getState().members.filter((m) => m.identity === pick.identity);
-      expect(rows.map((m) => m.state).sort()).toEqual(["active", "revoked"]);
-      expect(rows.find((m) => m.state === "active")?.role).toBe("executive");
+      const s1 = client.getState();
+      expect(pickCheck(pick, s1.members)).toMatchObject({ pickable: false });
+      await expect(client.addFromRoster([{ orgMemberId: pick.orgMemberId, role: "executive" }])).rejects.toThrow(/fresh link/);
     } finally {
       client.dispose();
     }

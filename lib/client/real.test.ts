@@ -8,7 +8,6 @@ import { HarnessHub } from '@/tests/support/harness-backend';
 import { IncidentStore, useStoreForTests as makeTestStore } from '@/lib/crypto/store';
 import { b64urlEncode } from '@/lib/crypto/b64url';
 import { parseInviteFragment } from '@/lib/crypto/invite';
-import { generateDeviceKeys } from '@/lib/crypto/keys';
 import { RealIncidentClient } from './real';
 
 let n = 0;
@@ -295,6 +294,7 @@ describe('revoke', () => {
     await dana.client.postMessage('privileged', { text: 'dana before', mentions: [] });
     await settle();
     const oldRow = cmd.client.getState().members.find((m) => m.displayName === 'Dana')!;
+    const savedKeys = await new IncidentStore(incidentId, dana.db).getDeviceKeys();
     await cmd.client.revokeMember(oldRow.memberId, 'testing a mistake');
     await settle();
     expect(dana.client.getState().me).toMatchObject({ state: 'revoked' });
@@ -302,7 +302,7 @@ describe('revoke', () => {
     await settle();
 
     // A leftover key record on the device (the wipe may not have run) must not turn the new link into "open the old room".
-    await new IncidentStore(incidentId, dana.db).setDeviceKeys(await generateDeviceKeys());
+    await new IncidentStore(incidentId, dana.db).setDeviceKeys(savedKeys!);
 
     // The commander makes a fresh invite and the same person redeems it from the same browser.
     const { url } = await cmd.client.createInvite({ role: 'technical' });
@@ -359,6 +359,46 @@ describe('revoke', () => {
     const me = dana.client.getState().members.find((m) => m.displayName === 'Casey')!;
     await expect(dana.client.revokeMember(me.memberId, 'coup')).rejects.toThrow();
     await expect(dana.client.admitMember(me.memberId)).rejects.toThrow();
+  });
+});
+
+describe('a server that lies about revocation', () => {
+  it('a "revoked" state without the commander signature wipes nothing', async () => {
+    const hub = new HarnessHub();
+    const { cmd, incidentId } = await startIncident(hub);
+    const dana = await joinAndAdmit(hub, cmd, 'counsel', 'Dana');
+    const row = [...hub.h.db.member.iter()].find((m) => m.incidentId === incidentId && m.displayName === 'Dana')!;
+    (hub.h.db.member.id as any).update({ ...row, state: 'revoked', revokeSig: new Uint8Array(0) });
+    hub.notify();
+    await settle();
+    expect(dana.client.getState().me).toBeNull();
+    expect(dana.client.getState().error).toMatch(/could not be verified/);
+    const store = new IncidentStore(incidentId, dana.db);
+    expect(await store.getDeviceKeys()).toBeDefined();
+    expect(await store.getCommander()).toBeDefined();
+    // A new invite does not make the device throw its keys away either.
+    const { url } = await cmd.client.createInvite({ role: 'technical' });
+    await expect(dana.client.redeemInvite({ fragment: fragmentOf(url), displayName: 'Dana' })).rejects.toThrow(/could not be verified/);
+    expect(await store.getDeviceKeys()).toBeDefined();
+  });
+
+  it('a revoked row flipped back to active gets no new key and is reported', async () => {
+    const hub = new HarnessHub();
+    const { cmd, incidentId } = await startIncident(hub);
+    await joinAndAdmit(hub, cmd, 'counsel', 'Dana');
+    await joinAndAdmit(hub, cmd, 'counsel', 'Erin');
+    const dana = cmd.client.getState().members.find((m) => m.displayName === 'Dana')!;
+    await cmd.client.revokeMember(dana.memberId, 'left');
+    await settle();
+    const row = [...hub.h.db.member.iter()].find((m) => m.incidentId === incidentId && m.displayName === 'Dana')!;
+    (hub.h.db.member.id as any).update({ ...row, state: 'active', revokeSig: new Uint8Array(0), revokedAt: undefined });
+    hub.notify();
+    await settle();
+    expect(cmd.client.getState().integrity.ok).toBe(false);
+    const erin = cmd.client.getState().members.find((m) => m.displayName === 'Erin')!;
+    const before = [...hub.h.db.key_envelope.iter()].length;
+    await expect(cmd.client.revokeMember(erin.memberId, 'left')).rejects.toThrow();
+    expect([...hub.h.db.key_envelope.iter()].length).toBe(before);
   });
 });
 

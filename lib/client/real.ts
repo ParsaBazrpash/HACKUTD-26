@@ -75,7 +75,7 @@ import {
   verifyRevocation,
   verifyEnrollment,
 } from '@/lib/crypto/org';
-import { sign } from '@/lib/crypto/sign';
+import { sign, verify as verifySignature } from '@/lib/crypto/sign';
 import { defaultKeyStore, IncidentStore, type OrgPin, OrgStore, orgIdsOnDevice, type PinnedCommander } from '@/lib/crypto/store';
 import {
   generateLockedDeviceKeys,
@@ -198,6 +198,15 @@ interface OrgSnapshot {
 /** Marker the module stores in member.inviteCodeHash for people admitted through the roster. */
 const ROSTER_MARKER_PREFIX = 'roster:';
 
+/** Entries the revoked-key lists hold for one row. */
+function revokedKeyEntries(r: { signPub: Uint8Array; ecdhPub: Uint8Array }): string[] {
+  return [`s:${bytesToHex(r.signPub)}`, `e:${bytesToHex(r.ecdhPub)}`];
+}
+
+function carriesRevokedKey(revoked: Set<string>, r: { signPub: Uint8Array; ecdhPub: Uint8Array }): boolean {
+  return revokedKeyEntries(r).some((e) => revoked.has(e));
+}
+
 /** The roster row a member was added under, from the marker the module stores, or undefined for an invite join. */
 function rosterIdOf(inviteCodeHash: string): bigint | undefined {
   if (!inviteCodeHash.startsWith(ROSTER_MARKER_PREFIX)) return undefined;
@@ -285,6 +294,10 @@ export class RealIncidentClient implements IncidentClient {
   /** Identities that authored a verified event in the open incident, for PageView.joined. */
   private verifiedAuthors = new Set<string>();
   private orgWiped = new Set<string>();
+  /** Per roster row of the open incident: its own admission certificate verified. Rebuilt on every refresh. */
+  private rowCertified = new Map<bigint, boolean>();
+  /** Revoked key entries remembered for the open incident (see revokedKeyEntries). */
+  private revokedKeys = new Set<string>();
   private readonly now: () => number;
   private readonly waitMs: number;
 
@@ -404,6 +417,8 @@ export class RealIncidentClient implements IncidentClient {
     this.failedEnvelopes.clear();
     this.certified = new Map();
     this.wiped = false;
+    this.rowCertified = new Map();
+    this.revokedKeys = new Set();
     void this.opts.lastIncident?.set(incidentId).catch(() => undefined);
     await this.refresh();
   }
@@ -545,6 +560,19 @@ export class RealIncidentClient implements IncidentClient {
     };
   }
 
+  /** True when this device's own revoked row carries the pinned commander's signature over exactly these keys. */
+  private async ownRevocationVerified(mine: MemberRow, store: IncidentStore): Promise<boolean> {
+    const pinned = await store.getCommander();
+    if (!pinned || mine.revokeSig.length !== 64) return false;
+    const rec = await store.getDeviceRecord();
+    if (rec && (!bytesEqual(rec.signPub, mine.signPub) || !bytesEqual(rec.ecdhPub, mine.ecdhPub))) return false;
+    return verifySignature(
+      pinned.signPub,
+      revokeStatement(store.incidentId, mine.identityHex, mine.signPub, mine.ecdhPub),
+      mine.revokeSig,
+    );
+  }
+
   private async compute(): Promise<IncidentState> {
     // The org part runs first: a roster-added member pins the commander from the verified, cached roster.
     const orgPart = await this.computeOrg();
@@ -570,13 +598,22 @@ export class RealIncidentClient implements IncidentClient {
     }
     const meHex = mine.identityHex;
 
-    // Revoked: wipe everything local and show only the lock state.
+    // Revoked: only a revocation the pinned commander signed for this device's own keys wipes anything.
+    // A server that merely says "revoked" cannot destroy keys, so those stay and the screen says why.
     if (mine.state === 'revoked') {
+      if (!(await this.ownRevocationVerified(mine, store))) {
+        return emptyState(
+          connection,
+          at,
+          'The server says you were removed from this incident, but that could not be verified, so nothing on this device was changed.',
+        );
+      }
       if (!this.wiped) {
         this.wiped = true;
         this.keys.clear();
         this.device = null;
-        await store.wipe();
+        await store.addRevokedKeys(revokedKeyEntries(mine));
+        await store.wipeKeys();
       }
       const base = emptyState(connection, at);
       return { ...base, me: this.memberView(mine, id, false, { meHex, iAmCommander: false }) };
@@ -711,6 +748,24 @@ export class RealIncidentClient implements IncidentClient {
     for (const [kind, head] of Object.entries(out.newHeads)) {
       if (head && isChannel(kind)) await store.advanceHead(kind, head);
     }
+    // Remember every key whose commander-signed revocation verified, row by row, and note which rows carry their own valid certificate.
+    // A live row that carries a remembered revoked key is a roster failure, whatever the server says about it.
+    const rowCert = new Map<bigint, boolean>();
+    const verifiedRevoked: string[] = [];
+    for (const m of memberRows) {
+      const held = out.roster.get(m.identityHex)?.keys.find((h) => h.memberId === m.memberId);
+      rowCert.set(m.memberId, held?.certified === true);
+      if (m.state === 'revoked' && held?.revokedAtMicros !== undefined) verifiedRevoked.push(...revokedKeyEntries(m));
+    }
+    await store.addRevokedKeys(verifiedRevoked);
+    const knownRevoked = await store.getRevokedKeys();
+    for (const m of memberRows) {
+      if (m.state !== 'revoked' && carriesRevokedKey(knownRevoked, m)) {
+        extraFailures.push({ identity: m.identityHex, reason: 'a live roster row carries a key that was revoked' });
+      }
+    }
+    this.rowCertified = rowCert;
+    this.revokedKeys = knownRevoked;
     const report = out.report;
     if (extraFailures.length) {
       report.rosterFailures.push(...extraFailures);
@@ -907,7 +962,15 @@ export class RealIncidentClient implements IncidentClient {
       await this.activate(inv.incidentId, store);
       return;
     }
-    if (before.status.some((r) => r.incidentId === inv.incidentId && r.state === 'revoked')) await store.wipe();
+    // New keys replace the old revoked ones. That only happens when the old revocation is verified, so a false "revoked" cannot make this device throw its keys away.
+    const revokedRows = before.status.filter((r) => r.incidentId === inv.incidentId && r.state === 'revoked');
+    for (const r of revokedRows) {
+      if (!(await this.ownRevocationVerified(r, store))) {
+        throw new ClientError('The server says you were removed from this incident, but that could not be verified. Nothing on this device was changed.');
+      }
+      await store.addRevokedKeys(revokedKeyEntries(r));
+    }
+    if (revokedRows.length > 0) await store.wipeKeys();
     const keys = await this.newDeviceKeys(store);
     await store.setExpectedFingerprint(inv.commanderFingerprint);
     const joinTag = await computeJoinTag(inv.secret, {
@@ -1016,6 +1079,14 @@ export class RealIncidentClient implements IncidentClient {
         envelopes: { recipientHex: string; wrapped: Uint8Array; iv: Uint8Array }[];
       }[] = [];
       if (target.state === 'active') {
+        // Two active rows for one person is never legitimate: refuse rather than guess which one to give the new key.
+        const activeCount = new Map<string, number>();
+        for (const m of c.rows.members) {
+          if (m.incidentId === c.id && m.state === 'active') activeCount.set(m.identityHex, (activeCount.get(m.identityHex) ?? 0) + 1);
+        }
+        if ([...activeCount.values()].some((n) => n > 1)) {
+          throw new ClientError('Cannot rotate keys: one person has two active rows');
+        }
         for (const kind of readableChannels(target.role)) {
           const ch = c.rows.channels.find((x) => x.incidentId === c.id && x.kind === kind);
           if (!ch) throw new ClientError('Channel state is missing');
@@ -1025,9 +1096,12 @@ export class RealIncidentClient implements IncidentClient {
           for (const m of c.rows.members) {
             if (m.incidentId !== c.id || m.state !== 'active' || m.memberId === target.memberId || !isRole(m.role)) continue;
             if (!readableChannels(m.role).includes(kind)) continue;
-            // Never hand a key to someone whose certificate does not verify.
-            if (!this.certified.get(m.identityHex)) {
+            // Never hand a key to a row whose own certificate does not verify, or that carries a revoked key.
+            if (!this.rowCertified.get(m.memberId)) {
               throw new ClientError('Cannot rotate keys: a member has no valid admission certificate');
+            }
+            if (carriesRevokedKey(this.revokedKeys, m)) {
+              throw new ClientError('Cannot rotate keys: a member row carries a key that was revoked');
             }
             const w = await wrapChannelKey(
               c.device.ecdhPriv,
@@ -1040,7 +1114,7 @@ export class RealIncidentClient implements IncidentClient {
           rotations.push({ kind, newEpoch, raw, envelopes: envs });
         }
       }
-      const revokeSig = await sign(c.device.signPriv, revokeStatement(c.id, target.identityHex));
+      const revokeSig = await sign(c.device.signPriv, revokeStatement(c.id, target.identityHex, target.signPub, target.ecdhPub));
       try {
         await this.backend.revokeMember({
           incidentId: c.id,
@@ -1315,6 +1389,18 @@ export class RealIncidentClient implements IncidentClient {
         const newlyRevoked: string[] = [];
         const fresh: Record<string, { identityHex: string; signPub: Uint8Array; ecdhPub: Uint8Array; sealedContactHash: Uint8Array }> = {};
         const members = new Map<string, RosterEntry>();
+        // First pass: which rows carry an admin-signed revocation, and every key that is revoked because of one.
+        // The keys are remembered, so a row copied under a new id or state cannot bring them back.
+        const revokedKeyList = await store.getRevokedKeys();
+        const signedRevokedIds = new Set<string>();
+        for (const r of rows.roster) {
+          if (r.orgId !== o.id) continue;
+          const id = r.orgMemberId.toString();
+          const signed =
+            r.state === 'revoked' && (await verifyRevocation(pin.adminSignPub!, this.revocationFields(o.id, r), r.revokeSig));
+          if (signed) signedRevokedIds.add(id);
+          if (signed || revokedBefore.has(id)) for (const e of revokedKeyEntries(r)) revokedKeyList.add(e);
+        }
         for (const r of rows.roster) {
           if (r.orgId !== o.id) continue;
           const id = r.orgMemberId.toString();
@@ -1335,14 +1421,15 @@ export class RealIncidentClient implements IncidentClient {
           // An active row without a valid certificate is treated like a changed key: that person cannot be added.
           if (r.state === 'active' && !certified) keyChanged = true;
           // A revocation counts only with the admin's signature; once seen it is remembered for good.
-          const signedRevoked =
-            r.state === 'revoked' &&
-            (await verifyRevocation(pin.adminSignPub!, this.revocationFields(o.id, r), r.revokeSig));
+          const signedRevoked = signedRevokedIds.has(id);
           if (signedRevoked && !revokedBefore.has(id)) newlyRevoked.push(id);
-          members.set(id, { row: r, certified, keyChanged, revoked: signedRevoked || revokedBefore.has(id) });
+          // A row carrying a revoked key counts as revoked whatever its id or state.
+          const keysRevoked = carriesRevokedKey(revokedKeyList, r);
+          members.set(id, { row: r, certified, keyChanged, revoked: signedRevoked || revokedBefore.has(id) || keysRevoked });
         }
         await store.addToRoster(fresh);
         await store.addRevoked(newlyRevoked);
+        await store.addRevokedKeys(revokedKeyList);
         // A newer active enrollment wins. A row this device has already accepted as revoked never becomes live again.
         const mine = [...members.values()].find((m) => m.row.identityHex === myHex && m.row.state === 'active' && !m.revoked);
         if (!mine) continue;
@@ -1433,6 +1520,10 @@ export class RealIncidentClient implements IncidentClient {
       .roster.find((r) => r.orgId === snap.orgId && r.orgMemberId === orgMemberId);
     if ((await this.orgStore(snap.orgId).getRevoked()).has(orgMemberId.toString())) {
       throw new ClientError(`${row?.displayName ?? 'That person'} was revoked by the admin and cannot be added.`);
+    }
+    // A revoked key stays revoked, whatever id or state a row carrying it shows.
+    if (row && carriesRevokedKey(await this.orgStore(snap.orgId).getRevokedKeys(), row)) {
+      throw new ClientError(`${row.displayName} carries keys the admin revoked and cannot be added.`);
     }
     if (!row || row.state !== 'active') throw new ClientError('That person is not an active member of the roster');
     if (row.enrollSig.length !== 64 || !(await verifyEnrollment(snap.adminSignPub, this.enrollmentFields(snap.orgId, row), row.enrollSig))) {
@@ -1692,6 +1783,18 @@ export class RealIncidentClient implements IncidentClient {
             throw new ClientError(`${row.displayName} is already in this incident`);
           }
           replacements.push(live.memberId);
+        }
+        // A revoked key stays revoked: no row of this incident may already carry these keys.
+        const clash = c.rows.members.find(
+          (m) =>
+            m.incidentId === c.id &&
+            m.memberId !== live?.memberId &&
+            (bytesEqual(m.signPub, row.signPub) || bytesEqual(m.ecdhPub, row.ecdhPub)),
+        );
+        if (clash) {
+          throw new ClientError(
+            `${row.displayName} was removed from this incident under these keys and cannot be added again. They must enroll again with a fresh link.`,
+          );
         }
         targets.push({ row, role: p.role });
       }

@@ -84,8 +84,11 @@ export interface VerifyInput {
 }
 
 /** One certified key an identity has held. A re-enrollment adds another. Old events keep verifying under the old key. */
-interface HeldKey {
+export interface HeldKey {
+  /** The roster row these keys belong to. */
+  memberId: bigint;
   signPub: Uint8Array;
+  ecdhPub: Uint8Array;
   role: Role;
   certified: boolean;
   /** Set when this row is revoked and the revocation signature verifies. */
@@ -160,13 +163,15 @@ export async function verifyRoster(
       const ok =
         commanderKey !== null &&
         m.revokeSig.length === 64 &&
-        (await verifySig(commanderKey, revokeStatement(incidentId, m.identityHex), m.revokeSig));
+        (await verifySig(commanderKey, revokeStatement(incidentId, m.identityHex, m.signPub, m.ecdhPub), m.revokeSig));
       if (!ok) failures.push({ identity: m.identityHex, reason: 'invalid revocation signature' });
       else if (m.revokedAtMicros === undefined) failures.push({ identity: m.identityHex, reason: 'revocation has no time' });
       else revokedAtMicros = m.revokedAtMicros;
     }
     const held: HeldKey = {
+      memberId: m.memberId,
       signPub: m.signPub,
+      ecdhPub: m.ecdhPub,
       role: m.role,
       certified,
       ...(revokedAtMicros !== undefined ? { revokedAtMicros } : {}),

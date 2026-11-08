@@ -37,7 +37,7 @@ export function PagePicker() {
 
   async function addAndPage() {
     const ids = candidates
-      .filter((member) => picked.has(member.orgMemberId) && pickCheck(member).pickable)
+      .filter((member) => picked.has(member.orgMemberId) && pickCheck(member, state.members).pickable)
       .map((member) => member.orgMemberId);
     if (ids.length === 0) return;
     setBusy(true);
@@ -62,7 +62,7 @@ export function PagePicker() {
     }
   }
 
-  const selected = candidates.filter((m) => picked.has(m.orgMemberId) && pickCheck(m).pickable).length;
+  const selected = candidates.filter((m) => picked.has(m.orgMemberId) && pickCheck(m, state.members).pickable).length;
 
   return (
     <section className="rounded-2xl border border-line bg-panel px-5 py-4" aria-labelledby="page-picker-heading">
@@ -78,7 +78,7 @@ export function PagePicker() {
         <ul className="mt-3 grid gap-3" aria-label="Roster members not in this room">
           {candidates.map((member) => {
             const id = member.orgMemberId.toString();
-            const check = pickCheck(member);
+            const check = pickCheck(member, state.members);
             return (
               <li key={id} className="grid min-w-0 gap-2 rounded-xl border border-line px-4 py-3">
                 <div className="flex items-start gap-3">

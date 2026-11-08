@@ -254,7 +254,7 @@ class Room {
         .filter((m) => readableChannels(m.role as Role).includes(kind))
         .map((m) => ({ recipient: m.identity, wrapped: new Uint8Array(48), iv: new Uint8Array(12) })),
     }));
-    const revokeSig = await sign(o.admin.keys.signPriv, revokeStatement(this.incidentId, p.hex));
+    const revokeSig = await sign(o.admin.keys.signPriv, revokeStatement(this.incidentId, p.hex, row.signPub, row.ecdhPub));
     call(this.h, 'admin', mod.revoke_member, { incidentId: this.incidentId, memberId: row.id, revokeSig, rotations });
   }
 
@@ -702,6 +702,18 @@ describe('add_from_roster', () => {
     room.page([rosterRow.id]);
     expect([...room.h.db.page.iter()].some((p) => p.orgMemberId === rosterRow.id)).toBe(true);
     bad(() => room.page([oldOrgId]));
+  });
+
+  it('never brings revoked incident keys back: the same roster row cannot be added again after removal', async () => {
+    const room = await Room.create();
+    const o = room.org;
+    await o.enrollApproved('alice', 'Alice');
+    await room.add('alice');
+    await room.revokeFromIncident('alice');
+    // Same roster row, same keys: refused, and nothing was inserted.
+    const before = [...room.h.db.member.iter()].length;
+    await expect(room.add('alice')).rejects.toThrow();
+    expect([...room.h.db.member.iter()].length).toBe(before);
   });
 
   it('refuses a forged or mismatched admission signature', async () => {

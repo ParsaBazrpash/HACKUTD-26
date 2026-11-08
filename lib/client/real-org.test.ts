@@ -531,7 +531,7 @@ describe('roster admission and paging', () => {
     expect(admin.client.getState().channels.find((c) => c.kind === 'technical')!.messages.map((m) => m.text)).toEqual(['tech note']);
   });
 
-  it('a person removed from the incident only can be added again under the same roster row', async () => {
+  it('a person removed from the incident cannot be added again under the same keys', async () => {
     const hub = new HarnessHub();
     const pager = await newPager();
     const { admin, jordan, incidentId } = await startIncident(hub, pager);
@@ -545,14 +545,40 @@ describe('roster admission and paging', () => {
     await admin.client.revokeMember(member.memberId, 'wrong room');
     await settle();
     expect(jordan.client.getState().me).toMatchObject({ state: 'revoked' });
-    await admin.client.addFromRoster([{ orgMemberId: id, role: 'executive' }]);
+    await expect(admin.client.addFromRoster([{ orgMemberId: id, role: 'executive' }])).rejects.toThrow(/fresh link/);
+    // Coming back takes a fresh org enrollment, which carries new keys.
+    await admin.client.revokeOrgMember(id, 'start over');
+    await settle();
+    const { url } = await admin.client.createEnrollLink({ ttlHours: 1 });
+    await jordan.client.enroll({ fragment: fragmentOf(url), displayName: 'Jordan', phone: PHONES.Jordan });
+    await settle();
+    const pending = admin.client.getState().roster.find((r) => r.displayName === 'Jordan' && r.state === 'pending')!;
+    await admin.client.approveMember(pending.orgMemberId);
+    await settle();
+    await admin.client.addFromRoster([{ orgMemberId: pending.orgMemberId, role: 'executive' }]);
     await settle();
     await jordan.client.openIncident(incidentId);
     await settle();
     expect(jordan.client.getState().me).toMatchObject({ state: 'active', role: 'executive' });
-    await jordan.client.postMessage('command', { text: 'back in', mentions: [] });
-    await settle();
     expect(admin.client.getState().integrity).toMatchObject({ ok: true });
+  });
+
+  it('a revoked org person copied under a new row id is still revoked and cannot be added', async () => {
+    const hub = new HarnessHub();
+    const pager = await newPager();
+    const { admin, incidentId } = await startIncident(hub, pager);
+    const oldId = rosterId(admin.client, 'Jordan');
+    await admin.client.revokeOrgMember(oldId, 'lost phone');
+    await settle();
+    const original = [...hub.h.db.org_member.iter()].find((m) => m.id === oldId)!;
+    (hub.h.db.org_member as any).insert({ ...original, id: 0n, state: 'active', revokeSig: new Uint8Array(0), revokedAt: undefined });
+    hub.notify();
+    await settle();
+    const copy = [...hub.h.db.org_member.iter()].find((m) => m.id !== oldId && m.displayName === 'Jordan' && m.state === 'active')!;
+    expect(admin.client.getState().roster.find((r) => r.orgMemberId === copy.id)!.state).toBe('revoked');
+    await expect(admin.client.addFromRoster([{ orgMemberId: copy.id, role: 'technical' }])).rejects.toThrow();
+    expect(admin.client.getState().members.some((m) => m.displayName === 'Jordan')).toBe(false);
+    expect(incidentId).toBeDefined();
   });
 
   it('refuses a person already in the incident, and a pick that is not on the roster', async () => {

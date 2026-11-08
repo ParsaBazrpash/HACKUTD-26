@@ -15,6 +15,7 @@ import {
   verifyRevocation,
   type EnrollmentFields,
 } from './org';
+import { contactAad, contactSalt } from '@/lib/protocol/org';
 import { SEALED_CONTACT_MAX, SEALED_CONTACT_MIN } from '@/spacetimedb/src/shared/org';
 
 const orgId = '11111111-1111-4111-8111-111111111111';
@@ -169,11 +170,37 @@ describe('sealed contact', () => {
   });
 
   it('refuses to open a validly sealed blob whose plaintext is not E.164', async () => {
-    // Seal with the real function, then check that a crafted plaintext cannot pass: use a valid number but
-    // verify openContact returns only E.164 strings.
+    // Same ECDH, HKDF and AES-GCM steps as sealContact, but the plaintext skips the E.164 check.
     const p = await pagerKeys();
-    const a = await sealContact(p.pub, orgId, idA, '+442071234567');
-    expect(await openContact(p.priv, orgId, idA, a)).toBe('+442071234567');
+    async function sealRaw(plaintext: string): Promise<Uint8Array> {
+      const eph = (await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveBits'])) as CryptoKeyPair;
+      const ephPub = new Uint8Array(await crypto.subtle.exportKey('raw', eph.publicKey));
+      const peer = await crypto.subtle.importKey('raw', p.pub as BufferSource, { name: 'ECDH', namedCurve: 'P-256' }, false, []);
+      const shared = await crypto.subtle.deriveBits({ name: 'ECDH', public: peer }, eph.privateKey, 256);
+      const ikm = await crypto.subtle.importKey('raw', shared, 'HKDF', false, ['deriveKey']);
+      const key = await crypto.subtle.deriveKey(
+        { name: 'HKDF', hash: 'SHA-256', salt: contactSalt(orgId) as BufferSource, info: contactAad(orgId, idA) as BufferSource },
+        ikm,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['encrypt'],
+      );
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const ct = new Uint8Array(
+        await crypto.subtle.encrypt(
+          { name: 'AES-GCM', iv, additionalData: contactAad(orgId, idA) as BufferSource },
+          key,
+          new TextEncoder().encode(plaintext),
+        ),
+      );
+      return Uint8Array.from([...ephPub, ...iv, ...ct]);
+    }
+    // Control: the helper produces a blob openContact accepts when the plaintext is valid.
+    expect(await openContact(p.priv, orgId, idA, await sealRaw('+442071234567'))).toBe('+442071234567');
+    // Lengths stay inside the accepted range so only the plaintext check can reject these.
+    for (const bad of ['5551234567890', '+1 555 123 45', 'abcdefghijkl', '+0555123456789']) {
+      expect(await openContact(p.priv, orgId, idA, await sealRaw(bad)), bad).toBeNull();
+    }
   });
 });
 

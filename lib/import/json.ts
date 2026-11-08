@@ -65,7 +65,7 @@ function unwrap(parsed: unknown): unknown[] | null {
 }
 
 function finish(items: unknown[]): TableResult {
-  if (items.length > MAX_ROWS) return { ok: false, error: 'Too many rows (limit 5,000). Export a shorter time range.' };
+  if (items.length > MAX_ROWS) return { ok: false, limit: true, error: 'Too many rows (limit 5,000). Export a shorter time range.' };
   const rows: Row[] = [];
   const columns: string[] = [];
   const seen = new Set<string>();
@@ -78,12 +78,12 @@ function finish(items: unknown[]): TableResult {
         if (!seen.has(key)) {
           seen.add(key);
           columns.push(key);
-          if (columns.length > MAX_COLUMNS) return { ok: false, error: 'Too many columns (limit 200).' };
+          if (columns.length > MAX_COLUMNS) return { ok: false, limit: true, error: 'Too many columns (limit 200).' };
         }
       }
     }
   } catch (e) {
-    if (e instanceof CapError) return { ok: false, error: e.message };
+    if (e instanceof CapError) return { ok: false, limit: true, error: e.message };
     return { ok: false, error: 'The file could not be read.' };
   }
   if (rows.length === 0) return { ok: false, error: 'No records were found in the file.' };
@@ -118,7 +118,7 @@ export function parseNdjson(text: string): TableResult {
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i].trim();
     if (line.length === 0) continue;
-    if (items.length >= MAX_ROWS + 1) return { ok: false, error: 'Too many rows (limit 5,000). Export a shorter time range.' };
+    if (items.length >= MAX_ROWS + 1) return { ok: false, limit: true, error: 'Too many rows (limit 5,000). Export a shorter time range.' };
     const parsed = tryParse(line);
     if (!parsed.ok) return { ok: false, error: `Line ${i + 1} is not valid JSON, or it is nested too deeply.` };
     const v = parsed.value;

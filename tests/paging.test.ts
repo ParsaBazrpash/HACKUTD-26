@@ -53,10 +53,10 @@ describe("page chips are honest", () => {
     expect(pageChip(page("acknowledged")).label).not.toBe("Joined");
     expect(pageChip(page("acknowledged", { joined: true })).label).toBe("Joined");
   });
-  test("retry only for no answer, busy and failed", () => {
+  test("retry for requested (stuck), no answer, busy and failed", () => {
     const retryable = (["requested", "calling", "ringing", "acknowledged", "no_answer", "busy", "failed"] as PageStatus[])
       .filter((s) => pageChip(page(s)).retry);
-    expect(retryable).toEqual(["no_answer", "busy", "failed"]);
+    expect(retryable).toEqual(["requested", "no_answer", "busy", "failed"]);
     expect(pageChip(page("no_answer", { joined: true })).retry).toBe(false);
   });
 });

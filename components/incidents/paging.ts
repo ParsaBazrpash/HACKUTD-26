@@ -58,7 +58,12 @@ export function pageChip(page: PageView): PageChip {
   }
   switch (page.status) {
     case "requested":
-      return { label: "Requested", hint: null, tone: "neutral", retry: false };
+      return {
+        label: "Requested",
+        hint: "Waiting for the paging service. If it stays here, use Retry call.",
+        tone: "neutral",
+        retry: true,
+      };
     case "calling":
       return { label: "Calling", hint: null, tone: "progress", retry: false };
     case "ringing":

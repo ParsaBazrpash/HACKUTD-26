@@ -2,11 +2,13 @@
 
 import { Clock, User } from "lucide-react";
 import { ROLE_LABELS, phaseLabel } from "@/components/incidents/labels";
+import { ImportedChip } from "@/components/incidents/import-panel";
 import { SafeText } from "@/components/incidents/safe-text";
 import { VerdictNote } from "@/components/incidents/verdict-note";
 import { useIncident } from "@/hooks/use-incident";
 import { LocalTime } from "@/components/local-time";
 import type { TimelineItem } from "@/lib/client/types";
+import { importedSource } from "@/lib/import/label";
 
 const PHASE_TONE: Record<string, { dot: string; badge: string }> = {
   preparation: { dot: "bg-muted", badge: "bg-panel-raised text-foreground" },
@@ -44,6 +46,7 @@ export function TimelineList({ items, detailed }: { items: readonly TimelineItem
           {recent.map((item, index) => {
             const target = item.entry.amends ? byId.get(item.entry.amends) : undefined;
             const tone = phaseTone(item.entry.phase);
+            const imported = importedSource(item.entry.text);
             const role = item.by ? ROLE_LABELS[item.by.role] : "Unknown";
             return (
               <li key={`${item.entry.entryId}-${item.seq.toString()}`} className="relative grid grid-cols-[1rem_minmax(0,1fr)] gap-3 pb-3 last:pb-0">
@@ -63,13 +66,14 @@ export function TimelineList({ items, detailed }: { items: readonly TimelineItem
                     <span className="rounded-md border border-line bg-background px-1.5 py-0.5 font-mono text-[11px] text-muted">
                       {item.entry.csf}
                     </span>
+                    {imported ? <ImportedChip source={imported} /> : null}
                     <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-muted">
                       <User className="size-3.5" aria-hidden="true" />
                       {role}
                     </span>
                   </div>
-                  <p className="mt-2 break-words text-sm leading-6 text-foreground/85">
-                    <SafeText text={item.entry.text} />
+                  <p className="mt-2 whitespace-pre-line break-words text-sm leading-6 text-foreground/85">
+                    {imported ? item.entry.text : <SafeText text={item.entry.text} />}
                   </p>
                   {detailed ? (
                     <p className="mt-2 break-words text-xs text-muted">

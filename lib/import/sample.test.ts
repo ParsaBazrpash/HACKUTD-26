@@ -33,7 +33,7 @@ describe('the Lakeside EDR sample file', () => {
       sha256: 'd'.repeat(64),
       custodian: 'Sam',
       existingSystems: ['FS-CLINIC-01 file server', 'EHR-APP-01'],
-      now: Date.parse('2026-11-08T06:00:00Z'),
+      now: Date.parse('2026-11-08T14:30:00Z'),
     });
     expect(p.skipped).toEqual([]);
     const hosts = p.systems.map((s) => s.host);

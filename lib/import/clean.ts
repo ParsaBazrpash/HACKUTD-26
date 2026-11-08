@@ -41,7 +41,7 @@ export function cleanText(raw: string, max: number): string {
   let lastSpace = false;
   for (const ch of spaced) {
     const cp = ch.codePointAt(0) as number;
-    if (isStripped(cp)) continue;
+    if (isStripped(cp) || /\p{Cf}/u.test(ch)) continue;
     const space = cp === 0x20 || cp === 0xa0 || (cp >= 0x2000 && cp <= 0x200a) || cp === 0x3000;
     if (space) {
       if (lastSpace) continue;
@@ -55,21 +55,17 @@ export function cleanText(raw: string, max: number): string {
   return capCodePoints(out.trim(), max);
 }
 
-const HOST_OK = /^[\p{L}\p{N} ._\-\\()]{1,120}$/u;
+// ASCII only: real EDR and SIEM host names are DNS or NetBIOS names, and any other letter
+// (Cherokee, Cyrillic, Greek and so on) can imitate a system that is already on the record.
+// NFKC (in cleanText) still turns full-width letters into ASCII first.
+const HOST_OK = /^[A-Za-z0-9 ._\-\\()]{1,120}$/;
 
 export type HostResult = { ok: true; host: string } | { ok: false; reason: string };
-
-/** Mixed Latin plus Cyrillic or Greek letters are look-alike tricks. */
-function mixedScripts(s: string): boolean {
-  const latin = /\p{Script=Latin}/u.test(s);
-  const other = /[\p{Script=Cyrillic}\p{Script=Greek}]/u.test(s);
-  return latin && other;
-}
 
 export function cleanHost(raw: string): HostResult {
   if (raw.length > 400) return { ok: false, reason: 'unsafe host name' };
   const host = cleanText(raw, 120);
-  if (!HOST_OK.test(host) || mixedScripts(host)) return { ok: false, reason: 'unsafe host name' };
+  if (!HOST_OK.test(host)) return { ok: false, reason: 'unsafe host name' };
   return { ok: true, host };
 }
 
@@ -108,6 +104,8 @@ export function cleanFileName(raw: string): string {
   const base = cleanText(raw, 100);
   let out = '';
   for (const ch of base) out += /[\p{L}\p{N} ._\-()]/u.test(ch) ? ch : '_';
+  // The Source line allows 100 UTF-16 units, so cap by units, not code points.
+  while (out.length > 100) out = Array.from(out).slice(0, -1).join('');
   return out.replace(/^\.+/, '').trim() || 'import';
 }
 

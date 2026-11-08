@@ -283,11 +283,11 @@ describe("mock org: refusals", () => {
       await expect(client.enroll({ fragment, displayName: "Jules Park", phone: "not a phone" })).rejects.toThrow("international format");
       await expect(client.enroll({ fragment, displayName: "CASEY BROOKS", phone: PHONE })).rejects.toThrow("already in use");
       await expect(client.enroll({ fragment, displayName: "", phone: PHONE })).rejects.toThrow("display name");
-      expect(client.getState().roster).toHaveLength(9);
+      expect(client.getState().roster).toHaveLength(11);
 
       vi.setSystemTime(Date.now() + 2 * 3_600_000);
       await expect(client.enroll({ fragment, displayName: "Jules Park", phone: PHONE })).rejects.toThrow("expired");
-      expect(client.getState().roster).toHaveLength(9);
+      expect(client.getState().roster).toHaveLength(11);
     } finally {
       client.dispose();
     }

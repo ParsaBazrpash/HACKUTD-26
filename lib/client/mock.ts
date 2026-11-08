@@ -22,6 +22,7 @@ import {
   type LedgerWorld,
 } from "@/lib/client/demo-ledger";
 import { foldEvents } from "@/lib/client/fold";
+import { demoFingerprint, demoSafety } from "@/lib/scenario/demo-codes";
 import {
   EMPTY_PROFILE,
   type IncidentClient,
@@ -130,15 +131,6 @@ const PLACEHOLDER_HEAD = "0".repeat(64);
 
 function demoIdentity(n: number): string {
   return n.toString(16).padStart(64, "0");
-}
-
-function demoFingerprint(n: number): string {
-  return `de30 0000 de30 0000 de30 0000 de30 ${n.toString(16).padStart(4, "0")}`;
-}
-
-function demoSafety(n: number): string {
-  const digits = n.toString().padStart(12, "0");
-  return `${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6, 9)} ${digits.slice(9, 12)}`;
 }
 
 function freezeDeep<T>(value: T): T {

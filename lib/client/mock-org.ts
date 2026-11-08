@@ -9,12 +9,11 @@
 
 import {
   createOrgFixture,
-  demoOrgFingerprint,
-  demoOrgSafety,
   ORG_DEMO_LABEL,
   type OrgMemberSeed,
   type PhoneBehavior,
 } from "@/lib/scenario/org";
+import { demoFingerprint, demoSafety } from "@/lib/scenario/demo-codes";
 import type { OrgView, PageStatus, PageView, RosterMember } from "@/lib/client/types";
 import {
   ENROLL_LINK_CODE_LEN,
@@ -181,7 +180,7 @@ export class MockOrg {
       displayName,
       state: "active",
       fingerprint: me.fingerprint,
-      safetyCode: demoOrgSafety(1),
+      safetyCode: demoSafety(1),
       enrolledAt: at,
       approvedAt: at,
       keyChanged: false,
@@ -241,8 +240,8 @@ export class MockOrg {
       identity: serial.toString(16).padStart(64, "0"),
       displayName,
       state: "pending",
-      fingerprint: demoOrgFingerprint(serial),
-      safetyCode: demoOrgSafety(serial),
+      fingerprint: demoFingerprint(serial),
+      safetyCode: demoSafety(serial),
       enrolledAt: new Date(now),
       approvedAt: null,
       keyChanged: false,

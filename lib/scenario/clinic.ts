@@ -6,6 +6,7 @@
 import { PAYLOAD_VERSION, PayloadSchema, type PayloadKind, type PayloadOf } from "@/lib/protocol/events";
 import type { MemberStateName, Role } from "@/spacetimedb/src/shared/policy";
 import type { MemberRef, VerifiedEvent } from "@/lib/client/types";
+import { demoFingerprint, demoSafety } from "@/lib/scenario/demo-codes";
 
 export const CLINIC_INCIDENT_ID = "00000000-0000-4000-8000-0000000000c1";
 export const CLINIC_TITLE = "Ransomware at Lakeside Family Clinic";
@@ -22,16 +23,6 @@ function demoIdentity(n: number): string {
   return n.toString(16).padStart(64, "0");
 }
 
-function demoFingerprint(n: number): string {
-  const tail = n.toString(16).padStart(4, "0");
-  return `de30 0000 de30 0000 de30 0000 de30 ${tail}`;
-}
-
-function demoSafety(n: number): string {
-  const digits = n.toString().padStart(12, "0");
-  return `${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6, 9)} ${digits.slice(9, 12)}`;
-}
-
 export interface ClinicMemberSeed {
   memberId: bigint;
   identity: string;
@@ -39,7 +30,7 @@ export interface ClinicMemberSeed {
   role: Role;
   state: MemberStateName;
   fingerprint: string;
-  /** Demo stand-in. Not derived from a key. */
+  /** Stand-in derived from a fixed label, not from a key. */
   safetyCode: string;
   joinedAt: Date;
   admittedAt?: Date;
@@ -171,26 +162,30 @@ export function createClinicFixture(): ClinicFixture {
     });
   }
 
+  // All times are UTC. Central time is six hours earlier in November.
   const t = {
-    detect: "2026-11-07T08:13:00.000Z",
+    detect: "2026-11-07T08:13:00.000Z", // 02:13 CT
     admitCounsel: "2026-11-07T08:14:00.000Z",
     admitTechnical: "2026-11-07T08:15:00.000Z",
     admitExecutive: "2026-11-07T08:16:00.000Z",
-    declare: "2026-11-07T08:21:00.000Z",
-    extensions: "2026-11-07T08:34:00.000Z",
-    desks: "2026-11-07T08:48:00.000Z",
-    vpnOff: "2026-11-07T09:05:00.000Z",
-    hr: "2026-11-07T09:22:00.000Z",
-    ehr: "2026-11-07T09:40:00.000Z",
-    backup: "2026-11-07T09:55:00.000Z",
-    vpnOn: "2026-11-07T10:20:00.000Z",
-    profile: "2026-11-07T10:32:00.000Z",
-    discovery: "2026-11-07T10:33:00.000Z",
-    insurer: "2026-11-07T10:35:00.000Z",
-    deadline: "2026-11-07T10:42:00.000Z",
-    mail: "2026-11-07T10:48:00.000Z",
-    brief: "2026-11-07T11:05:00.000Z",
-    status: "2026-11-07T11:10:00.000Z",
+    declare: "2026-11-07T08:33:00.000Z", // 02:33 CT
+    extensions: "2026-11-07T08:48:00.000Z", // 02:48 CT
+    desks: "2026-11-07T08:50:00.000Z", // 02:50 CT
+    vpnOff: "2026-11-07T08:54:00.000Z", // 02:54 CT
+    profile: "2026-11-07T09:02:00.000Z",
+    discovery: "2026-11-07T09:05:00.000Z",
+    pm: "2026-11-07T09:22:00.000Z", // 03:22 CT
+    egress: "2026-11-07T09:28:00.000Z", // 03:28 CT
+    backup: "2026-11-07T09:33:00.000Z", // 03:33 CT
+    note: "2026-11-07T09:38:00.000Z",
+    insurer: "2026-11-07T09:55:00.000Z",
+    deadline: "2026-11-07T10:20:00.000Z",
+    hr: "2026-11-07T10:53:00.000Z", // 04:53 CT
+    ehr: "2026-11-07T10:58:00.000Z",
+    mail: "2026-11-07T11:43:00.000Z", // 05:43 CT
+    vpnOn: "2026-11-07T12:13:00.000Z", // 06:13 CT
+    brief: "2026-11-07T12:35:00.000Z",
+    status: "2026-11-07T12:43:00.000Z", // 06:43 CT
   };
 
   append("record", commander, t.detect, "incident.title", { title: CLINIC_TITLE });
@@ -217,7 +212,7 @@ export function createClinicFixture(): ClinicFixture {
   append("record", commander, t.declare, "status.set", {
     severity: "SEV1",
     phase: "detection_analysis",
-    summary: "Ransom note found on the clinic file server at 02:13 CT. 300 staff are moving to paper downtime.",
+    summary: "File server encrypted at Plano at 02:13 CT. Scope still unknown. Both sites are moving to paper downtime.",
   });
 
   const timeline: PayloadOf<"timeline.add">["body"][] = [
@@ -226,84 +221,84 @@ export function createClinicFixture(): ClinicFixture {
       occurredAt: t.detect,
       phase: "detection_analysis",
       csf: "DE.AE",
-      text: "File server FS-CLINIC-01 raised a mass-rename alert at 02:13 CT. A note named RESTORE-FILES.txt is on the share. Lakeside Family Clinic has about 300 staff across two sites.",
+      text: "Alert on FS-CLINIC-01: mass file renames at 02:13 CT. RESTORE-FILES.txt is on the shared drive at both sites.",
     },
     {
       entryId: uid(0x202),
       occurredAt: t.declare,
       phase: "detection_analysis",
       csf: "RS.MA",
-      text: "Commander declares SEV1. Shared drives are off limits. Front desk and nursing start paper downtime. No ransom will be paid from this room.",
+      text: "Commander declares SEV1. Shared drives are off limits. Front desk and nursing start paper downtime at Plano and McKinney. No ransom decision is made from this room.",
     },
     {
       entryId: uid(0x203),
       occurredAt: t.extensions,
       phase: "detection_analysis",
       csf: "RS.AN",
-      text: "Technical confirms .locked suffixes on FS-CLINIC-01 and copies the ransom note aside before any restore. The note demands payment and does not name a family we can verify.",
+      text: "IT confirms .locked suffixes on FS-CLINIC-01 and copies the ransom note aside before any restore. HV-01 and VOIP-PBX-01 are also encrypted.",
     },
     {
       entryId: uid(0x204),
       occurredAt: t.desks,
       phase: "containment",
       csf: "RS.CO",
-      text: "Nursing stations and the front desk are disconnected from the file share. Clinics stay open on downtime forms. Patients already in the building are being seen.",
+      text: "Nursing stations and the front desk are disconnected from the file share. Both sites stay open on downtime forms. Patients already in the building are being seen.",
     },
     {
       entryId: uid(0x205),
       occurredAt: t.vpnOff,
       phase: "containment",
       csf: "RS.MI",
-      text: "VPN appliance FW-VPN-01 is isolated after outbound traffic to an unfamiliar host. Remote access for clinical staff is down on purpose.",
+      text: "FW-VPN-01 isolated from the network after outbound traffic to an unfamiliar host. Remote access for staff is down on purpose.",
     },
     {
       entryId: uid(0x206),
-      occurredAt: t.hr,
+      occurredAt: t.pm,
       phase: "containment",
       csf: "RS.AN",
-      text: "HR database logs show a 12,400-row export before encryption. The rows include SSNs: 9,800 Texas residents and 2,600 California residents.",
+      text: "PM-SQL-01 holds 41,200 active patient records, all Texas residents. SSNs are on file for 12,400 of them. Firewall logs show the data left the network.",
     },
     {
       entryId: uid(0x207),
-      occurredAt: t.ehr,
+      occurredAt: t.egress,
       phase: "containment",
       csf: "RS.AN",
-      text: "EHR application server shows chart access from the compromised VPN admin account. Whether PHI was copied is not confirmed.",
+      text: "About 18.6 GB went out to a cloud storage host between 03:40 and 04:55 CT the night before encryption. The managed service provider admin VPN account (Drew Kim's credentials) was the entry point.",
     },
     {
       entryId: uid(0x208),
       occurredAt: t.backup,
       phase: "containment",
       csf: "RS.MI",
-      text: "Backup appliance taken offline. The Friday 18:40 CT job is still intact. It stays offline until eradication is confirmed.",
+      text: "BACKUP-VEEAM taken offline. The Friday 18:40 CT job is intact. It stays offline until eradication is confirmed.",
     },
     {
       entryId: uid(0x209),
-      occurredAt: t.vpnOn,
-      phase: "eradication",
-      csf: "RS.MI",
-      text: "VPN appliance rebuilt from the vendor image. The compromised admin account is disabled. Remote access stays closed.",
+      occurredAt: t.ehr,
+      phase: "containment",
+      csf: "RS.AN",
+      text: "EHR-APP-01 shows 37 charts opened by the compromised account. Whether the content was copied is not confirmed. HR-SQL-01 shows data for 342 current and former staff in the same window.",
     },
     {
       entryId: uid(0x20a),
-      occurredAt: t.insurer,
-      phase: "recovery",
-      csf: "RS.CO",
-      text: "Counsel is drafting the cyber-insurer notice. No public statement. Privileged analysis stays in the privileged channel.",
+      occurredAt: t.mail,
+      phase: "eradication",
+      csf: "RS.MI",
+      text: "A forwarding rule on the administrator mailbox in M365-LAKESIDE was created by the MSP admin account. Rule removed, sessions revoked, clinic email treated as compromised.",
     },
     {
       entryId: uid(0x20b),
-      occurredAt: t.mail,
-      phase: "recovery",
-      csf: "RC.RP",
-      text: "Microsoft 365 sessions for clinical staff are revoked. The clinic tenant shows suspected mailbox rules. Mail is not the system of record for this room.",
+      occurredAt: t.vpnOn,
+      phase: "eradication",
+      csf: "RS.MI",
+      text: "FW-VPN-01 rebuilt from the vendor image. The MSP admin account is disabled and privileged credentials are being rotated. Remote access stays closed.",
     },
     {
       entryId: uid(0x20c),
       occurredAt: t.brief,
-      phase: "post_incident",
+      phase: "recovery",
       csf: "RC.CO",
-      text: "Medical director briefed. Both clinics remain open on downtime forms. No ransom has been paid. Individual notice is not cleared.",
+      text: "Medical director briefed. Both sites remain open on downtime forms. Outside counsel has notified the cyber insurer. No ransom payment. Notice decisions are with counsel.",
     },
   ];
   const timelineAuthors = [
@@ -316,7 +311,7 @@ export function createClinicFixture(): ClinicFixture {
     technical,
     technical,
     technical,
-    counsel,
+    technical,
     technical,
     commander,
   ];
@@ -327,9 +322,9 @@ export function createClinicFixture(): ClinicFixture {
 
   append("record", commander, t.status, "status.set", {
     severity: "SEV1",
-    phase: "recovery",
+    phase: "eradication",
     summary:
-      "Lakeside Family Clinic, 300 staff. File server encrypted, HR database exfiltrated (12,400 SSNs), EHR PHI suspected. VPN rebuilt. No ransom paid. Clinics are on paper downtime.",
+      "Lakeside Family Clinic, Plano and McKinney. File server, hypervisor and phones encrypted. 41,200 patient records and 342 staff records exfiltrated. FW-VPN-01 rebuilt, backups offline and intact. No ransom paid. Both sites on paper downtime.",
   });
 
   append("record", technical, t.extensions, "scope.set", {
@@ -338,30 +333,18 @@ export function createClinicFixture(): ClinicFixture {
     assetType: "server",
     status: "encrypted",
     dataTypes: ["employee_hr", "other_pii"],
-    notes: "Clinic file server. Mass renames to .locked and a RESTORE-FILES.txt note. Shared documents and HR files were on this volume.",
+    notes: "Clinic file server. Mass renames to .locked and a RESTORE-FILES.txt note at both sites. Shared documents were on this volume.",
     affected: [],
   });
-  append("record", technical, t.hr, "scope.set", {
-    itemId: uid(0x302),
-    system: "HR-SQL-01",
+  append("record", technical, t.pm, "scope.set", {
+    itemId: uid(0x307),
+    system: "PM-SQL-01",
     assetType: "database",
     status: "exfiltrated",
-    dataTypes: ["ssn"],
-    recordCount: 12_400,
-    affected: [
-      { state: "TX", count: 9_800 },
-      { state: "CA", count: 2_600 },
-    ],
-    notes: "HR database. Export of 12,400 rows completed before the volume was encrypted. Counts are from the job log, not a new query.",
-  });
-  append("record", technical, t.ehr, "scope.set", {
-    itemId: uid(0x303),
-    system: "EHR-APP-01",
-    assetType: "server",
-    status: "suspected",
-    dataTypes: ["phi"],
-    affected: [],
-    notes: "EHR application server. Chart access from the compromised VPN account is suspected. Acquisition of PHI is not confirmed.",
+    dataTypes: ["phi", "ssn"],
+    recordCount: 41_200,
+    affected: [{ state: "TX", count: 41_200 }],
+    notes: "Practice database. 41,200 active patients, all Texas residents. SSNs are on file for 12,400 of them. Egress to a cloud storage host confirmed in the firewall logs.",
   });
   append("record", technical, t.backup, "scope.set", {
     itemId: uid(0x304),
@@ -370,7 +353,27 @@ export function createClinicFixture(): ClinicFixture {
     status: "contained",
     dataTypes: ["phi", "employee_hr"],
     affected: [],
-    notes: "Backup appliance. Taken offline. The Friday 18:40 CT job is still intact and is not being mounted.",
+    notes: "Backup appliance. Offline. The Friday 18:40 CT job is intact and is not being mounted.",
+  });
+  append("record", technical, t.hr, "scope.set", {
+    itemId: uid(0x302),
+    system: "HR-SQL-01",
+    assetType: "database",
+    status: "exfiltrated",
+    dataTypes: ["ssn", "employee_hr", "financial_account"],
+    recordCount: 342,
+    affected: [{ state: "TX", count: 342 }],
+    notes: "HR database. 342 current and former staff, all in Texas. SSNs and bank account details are on file.",
+  });
+  append("record", technical, t.ehr, "scope.set", {
+    itemId: uid(0x303),
+    system: "EHR-APP-01",
+    assetType: "server",
+    status: "suspected",
+    dataTypes: ["phi"],
+    recordCount: 37,
+    affected: [{ state: "TX", count: 37 }],
+    notes: "EHR application server. 37 charts were opened by the compromised account. Whether the content was acquired is not confirmed.",
   });
   append("record", technical, t.mail, "scope.set", {
     itemId: uid(0x305),
@@ -379,7 +382,7 @@ export function createClinicFixture(): ClinicFixture {
     status: "suspected",
     dataTypes: ["phi", "credentials"],
     affected: [],
-    notes: "Clinic email tenant. Sessions revoked. Suspected mailbox rules. Not confirmed as a copy of the record.",
+    notes: "Clinic email tenant. Forwarding rule on the administrator mailbox created by the MSP admin account. Sessions revoked. Mail contents copied is not confirmed.",
   });
   append("record", technical, t.vpnOn, "scope.set", {
     itemId: uid(0x306),
@@ -388,7 +391,7 @@ export function createClinicFixture(): ClinicFixture {
     status: "eradicated",
     dataTypes: ["credentials"],
     affected: [],
-    notes: "VPN appliance. Isolated, then rebuilt from the vendor image. The compromised admin account is disabled.",
+    notes: "VPN appliance. Isolated at 02:54 CT, then rebuilt from the vendor image. The MSP admin account is disabled.",
   });
 
   append("record", technical, t.extensions, "task.set", {
@@ -398,9 +401,9 @@ export function createClinicFixture(): ClinicFixture {
     dueAt: "2026-11-07T18:00:00.000Z",
     status: "in_progress",
   });
-  append("record", technical, t.hr, "task.set", {
+  append("record", technical, t.pm, "task.set", {
     taskId: uid(0x402),
-    title: "Confirm the HR export row counts from the job log",
+    title: "Confirm the PM-SQL-01 patient count and the SSN subset",
     assignee: technical.identity,
     dueAt: "2026-11-07T20:00:00.000Z",
     status: "open",
@@ -414,20 +417,20 @@ export function createClinicFixture(): ClinicFixture {
   });
   append("record", commander, t.desks, "task.set", {
     taskId: uid(0x404),
-    title: "Staff both clinics on paper downtime through the weekend",
+    title: "Paper downtime staffing through Monday",
     assignee: executive.identity,
     dueAt: "2026-11-09T18:00:00.000Z",
     status: "in_progress",
   });
   append("record", technical, t.backup, "task.set", {
     taskId: uid(0x405),
-    title: "Restore the file server only after eradication is confirmed",
+    title: "Restore the file server after eradication",
     assignee: technical.identity,
     status: "blocked",
   });
   append("record", counsel, t.insurer, "task.set", {
     taskId: uid(0x406),
-    title: "Send the cyber insurer notice and keep the analysis privileged",
+    title: "Confirm cyber insurer notice and keep the analysis privileged",
     assignee: counsel.identity,
     status: "open",
   });
@@ -443,62 +446,69 @@ export function createClinicFixture(): ClinicFixture {
   append("record", counsel, t.discovery, "legal.discovery", {
     determinedAt: t.detect,
     basis:
-      "Counsel records awareness at 02:13 CT, when the ransom note and the HR export logs were both in hand.",
+      "Counsel records awareness at 02:13 CT, when the ransom note was found on FS-CLINIC-01. Data theft was confirmed later the same morning.",
   });
-  append("record", technical, t.extensions, "evidence.add", {
+  append("record", technical, t.note, "evidence.add", {
     evidenceId: uid(0x501),
-    label: "Ransom note RESTORE-FILES.txt",
-    sha256: "0".repeat(64),
-    location: "Demo placeholder. This digest was not computed from the file.",
+    label: "Ransom note, RESTORE-FILES.txt",
+    sha256: "3af692ab8be71ed65622724b1691fb5dba67069c42f714a7554ac472003f9985",
+    location: "Image of FS-CLINIC-01, evidence store 1",
     custodian: "Sam Okonkwo",
   });
-  append("record", technical, t.hr, "evidence.add", {
+  append("record", technical, t.egress, "evidence.add", {
     evidenceId: uid(0x502),
-    label: "HR export job log",
-    sha256: "0".repeat(63) + "1",
-    location: "Demo placeholder. This digest was not computed from the log.",
+    label: "Firewall egress log export",
+    sha256: "2d29038892b7518d23f012c53eaec1e45726f1f828092ceb522ce35a8b0a1edf",
+    location: "Forensics firm transfer folder",
+    custodian: "Sam Okonkwo",
+  });
+  append("record", technical, t.mail, "evidence.add", {
+    evidenceId: uid(0x503),
+    label: "Mailbox forwarding rule export",
+    sha256: "4947e8ed6fb3f45749b174bbb686a0e9555cdb9fa5cea7bd9479f5386178c902",
+    location: "Forensics firm transfer folder",
     custodian: "Sam Okonkwo",
   });
   append("record", counsel, t.deadline, "deadline.update", {
-    ruleId: "hipaa-404",
+    ruleId: "tx-521-ag",
     status: "in_progress",
     owner: counsel.identity,
-    note: "Individual notice analysis is underway. Counsel has not cleared a public statement.",
+    note: "Texas AG notice (30 days, 250 or more Texans) is being drafted. HHS and individual notice (60 days) follow. Privately held, so no SEC filing.",
   });
 
   append("command", commander, t.declare, "chat.post", {
     messageId: uid(0x601),
-    text: "SEV1. Lakeside Family Clinic, 300 staff. File server encrypted at 02:13. Paper downtime is in effect. No ransom payment.",
+    text: "SEV1. File server encrypted at Plano at 02:13. Both sites are on paper downtime. No ransom decision from this room.",
     mentions: [],
   });
   append("command", technical, t.vpnOff, "chat.post", {
     messageId: uid(0x602),
-    text: "VPN is isolated. I am imaging the file server before any restore.",
+    text: "FW-VPN-01 is isolated. I am imaging FS-CLINIC-01 before any restore.",
     mentions: [],
   });
   append("command", executive, t.brief, "chat.post", {
     messageId: uid(0x603),
-    text: "Clinics stay open on downtime forms. I need a patient-facing holding statement from counsel before noon.",
+    text: "Both sites stay open on downtime forms. I need a patient holding statement from counsel before the front desk opens.",
     mentions: [],
   });
   append("privileged", counsel, t.discovery, "chat.post", {
     messageId: uid(0x604),
-    text: "Attorney-client privileged. Do not forward. The HR export is 9,800 Texas residents and 2,600 California. I am treating 02:13 CT as awareness. SEC does not apply. We have not decided on individual notice.",
+    text: "Attorney-client privileged. Do not forward. I am treating 02:13 CT as awareness. Privately held, so SEC does not apply. Texas AG notice is 30 days and HHS plus individual notice is 60 days. Forensics will be engaged through this office.",
     mentions: [],
   });
   append("privileged", commander, t.insurer, "chat.post", {
     messageId: uid(0x605),
-    text: "Understood. No public statement until you clear it. The insurer notice stays in draft here.",
+    text: "Understood. No public statement until you clear it. Insurer notice goes through you.",
     mentions: [],
   });
   append("technical", technical, t.extensions, "chat.post", {
     messageId: uid(0x606),
-    text: "Ransom note name is RESTORE-FILES.txt. Extensions are .locked. The Friday 18:40 backup job looks intact and is offline.",
+    text: "Note is RESTORE-FILES.txt and the extension is .locked. The Friday 18:40 backup job looks intact and is offline.",
     mentions: [],
   });
   append("technical", technical, t.ehr, "chat.post", {
     messageId: uid(0x607),
-    text: "EHR app server shows chart access from the compromised VPN account. I cannot yet say records were copied.",
+    text: "EHR-APP-01 shows 37 charts opened by the compromised account. I cannot yet say any were copied.",
     mentions: [],
   });
 

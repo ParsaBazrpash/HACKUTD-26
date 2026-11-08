@@ -72,7 +72,7 @@ export class TestIncident {
   async revoke(m: TestMember, atMicros: bigint): Promise<void> {
     m.row.state = 'revoked';
     m.row.revokedAtMicros = atMicros;
-    m.row.revokeSig = await sign(this.commander.keys.signPriv, revokeStatement(this.incidentId, m.identityHex));
+    m.row.revokeSig = await sign(this.commander.keys.signPriv, revokeStatement(this.incidentId, m.identityHex, m.keys.signPub, m.keys.ecdhPub));
   }
 
   /** Appends a correctly formed event, as the module would. */

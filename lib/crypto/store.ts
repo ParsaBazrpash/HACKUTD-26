@@ -157,6 +157,31 @@ export class IncidentStore {
     if (n > (await this.getCounter())) await set(k(this.incidentId, 'counter'), n, this.store);
   }
 
+  // --- verified revoked keys (signing and ECDH public keys of rows whose commander-signed revocation was verified)
+  /** Entries look like `s:<hex of signPub>` and `e:<hex of ecdhPub>`. Never removed, so a replayed row cannot bring a key back. */
+  async getRevokedKeys(): Promise<Set<string>> {
+    return new Set((await get<string[]>(k(this.incidentId, 'revoked-keys'), this.store)) ?? []);
+  }
+  async addRevokedKeys(entries: Iterable<string>): Promise<void> {
+    const cur = await this.getRevokedKeys();
+    const before = cur.size;
+    for (const e of entries) cur.add(e);
+    if (cur.size !== before) await set(k(this.incidentId, 'revoked-keys'), [...cur], this.store);
+  }
+
+  /**
+   * Removes the device keys and the channel keys only. The pinned commander, pinned heads, author counter and
+   * revoked keys stay, so a device that starts over keeps its rollback protection.
+   */
+  async wipeKeys(): Promise<void> {
+    const prefix = `${this.incidentId}/`;
+    for (const key of await idbKeys(this.store)) {
+      if (typeof key !== 'string' || !key.startsWith(prefix)) continue;
+      const part = key.slice(prefix.length);
+      if (part === 'device' || part.startsWith('ck/')) await del(key, this.store);
+    }
+  }
+
   /**
    * Removes everything stored for this incident, including device keys. Used
    * when this device is revoked. Pinned heads are kept only if `keepHeads`.
@@ -261,6 +286,17 @@ export class OrgStore {
     const before = cur.size;
     for (const id of ids) cur.add(id);
     if (cur.size !== before) await set(ok(this.orgId, 'revoked'), [...cur], this.store);
+  }
+
+  /** `s:<hex signPub>` and `e:<hex ecdhPub>` of rows whose admin-signed revocation this device verified. Never removed. */
+  async getRevokedKeys(): Promise<Set<string>> {
+    return new Set((await get<string[]>(ok(this.orgId, 'revoked-keys'), this.store)) ?? []);
+  }
+  async addRevokedKeys(entries: Iterable<string>): Promise<void> {
+    const cur = await this.getRevokedKeys();
+    const before = cur.size;
+    for (const e of entries) cur.add(e);
+    if (cur.size !== before) await set(ok(this.orgId, 'revoked-keys'), [...cur], this.store);
   }
 
   // --- enrollment link secrets (admin), by codeHash hex

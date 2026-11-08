@@ -100,7 +100,7 @@ describe('statement builders: domain separation and binding', () => {
       inviteInput(id, new Uint8Array(16)),
       joinInput(id, who, 'Dana', pub(1), pub(2)),
       admitStatement(id, who, 'counsel', 'Dana', pub(1), pub(2)),
-      revokeStatement(id, who),
+      revokeStatement(id, who, pub(1), pub(2)),
       checkpointStatement(id, 'record', 3, new Uint8Array(32)),
       fingerprintInput(pub(1), pub(2)),
       safetyInput(id, who, pub(1), pub(2)),

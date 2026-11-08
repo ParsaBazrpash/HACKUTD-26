@@ -8,7 +8,7 @@ import {
   primaryButtonClass,
 } from "@/components/incidents/form-ui";
 import { ROLE_LABELS } from "@/components/incidents/labels";
-import { canPage, isPickRole, notInIncident, pickCheck, type PickRole } from "@/components/incidents/paging";
+import { canPage, identitiesInRoom, isPickRole, notInIncident, pickCheck, type PickRole } from "@/components/incidents/paging";
 import { useIncident } from "@/hooks/use-incident";
 import { getIncidentClient } from "@/lib/client";
 import { clientErrorMessage } from "@/lib/client/errors";
@@ -23,7 +23,7 @@ export function PagePicker() {
   const [notice, setNotice] = useState<string | null>(null);
   if (!canPage(state)) return null;
 
-  const inIncident = new Set(state.members.filter((m) => m.state !== "revoked").map((m) => m.identity));
+  const inIncident = identitiesInRoom(state.members, state.roster);
   const candidates = notInIncident(state.roster, inIncident);
 
   function toggle(id: bigint) {
@@ -37,7 +37,7 @@ export function PagePicker() {
 
   async function addAndPage() {
     const ids = candidates
-      .filter((member) => picked.has(member.orgMemberId) && pickCheck(member).pickable)
+      .filter((member) => picked.has(member.orgMemberId) && pickCheck(member, state.members).pickable)
       .map((member) => member.orgMemberId);
     if (ids.length === 0) return;
     setBusy(true);
@@ -62,7 +62,7 @@ export function PagePicker() {
     }
   }
 
-  const selected = candidates.filter((m) => picked.has(m.orgMemberId) && pickCheck(m).pickable).length;
+  const selected = candidates.filter((m) => picked.has(m.orgMemberId) && pickCheck(m, state.members).pickable).length;
 
   return (
     <section className="rounded-2xl border border-line bg-panel px-5 py-4" aria-labelledby="page-picker-heading">
@@ -78,7 +78,7 @@ export function PagePicker() {
         <ul className="mt-3 grid gap-3" aria-label="Roster members not in this room">
           {candidates.map((member) => {
             const id = member.orgMemberId.toString();
-            const check = pickCheck(member);
+            const check = pickCheck(member, state.members);
             return (
               <li key={id} className="grid min-w-0 gap-2 rounded-xl border border-line px-4 py-3">
                 <div className="flex items-start gap-3">

@@ -216,9 +216,17 @@ export function admitStatement(
   return enc(DOMAIN.admit, incidentId, memberIdentityHex, role, displayName, signPub, ecdhPub);
 }
 
-/** Statement the commander signs to revoke a member (PLAN 4.5). */
-export function revokeStatement(incidentId: string, memberIdentityHex: string): Uint8Array {
-  return enc(DOMAIN.revoke, incidentId, memberIdentityHex);
+/**
+ * Statement the commander signs to revoke a member (PLAN 4.5). It names the keys, like the admission
+ * certificate, so a revocation of one enrollment cannot be copied onto a later enrollment of the same person.
+ */
+export function revokeStatement(
+  incidentId: string,
+  memberIdentityHex: string,
+  signPub: Uint8Array,
+  ecdhPub: Uint8Array,
+): Uint8Array {
+  return enc(DOMAIN.revoke, incidentId, memberIdentityHex, signPub, ecdhPub);
 }
 
 /** Statement the commander signs for a checkpoint (PLAN 4.10). */

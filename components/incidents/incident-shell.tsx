@@ -71,6 +71,9 @@ export function IncidentShell({ incidentId, children }: { incidentId: string; ch
         <DemoBanner />
         <p className="mt-6 font-mono text-[11px] tracking-[0.18em] text-alert">ACCESS</p>
         <h1 className="mt-3 text-3xl font-medium tracking-tight">Your access to this incident was revoked.</h1>
+        <p className="mt-3 max-w-xl text-sm leading-6 text-muted">
+          Those keys stay revoked. To come back, ask the commander for a new invite link and open it here. You join again under new keys and the commander approves you as a new member.
+        </p>
         <BackLink />
       </div>
     );

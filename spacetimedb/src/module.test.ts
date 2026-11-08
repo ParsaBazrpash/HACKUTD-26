@@ -113,9 +113,16 @@ class World {
     return p;
   }
 
+  /** The person's newest row, preferring a live one over an older revoked row. */
   memberRow(name: string) {
     const hex = this.people.get(name)?.hex ?? identityHex(this.h, name);
-    return [...this.h.db.member.iter()].find((m) => m.incidentId === this.incidentId && m.identity.toHexString() === hex)!;
+    const rows = [...this.h.db.member.iter()].filter((m) => m.incidentId === this.incidentId && m.identity.toHexString() === hex);
+    return rows.find((m) => m.state !== 'revoked') ?? rows[rows.length - 1]!;
+  }
+
+  allRows(name: string) {
+    const hex = this.people.get(name)?.hex ?? identityHex(this.h, name);
+    return [...this.h.db.member.iter()].filter((m) => m.incidentId === this.incidentId && m.identity.toHexString() === hex);
   }
 
   async admit(name: string, displayName = name) {
@@ -157,7 +164,7 @@ class World {
         rotations.push({ kind, newEpoch, envelopes: envs, raw });
       }
     }
-    const revokeSig = await sign(this.cmd.keys.signPriv, revokeStatement(this.incidentId, p.hex));
+    const revokeSig = await sign(this.cmd.keys.signPriv, revokeStatement(this.incidentId, p.hex, row.signPub, row.ecdhPub));
     call(this.h, 'commander', mod.revoke_member, {
       incidentId: this.incidentId,
       memberId: row.id,
@@ -394,6 +401,66 @@ describe('redeem_invite (T16, T17)', () => {
     call(w.h, 'commander', mod.create_invite, { incidentId: w.incidentId, codeHash: inv3.codeHash, role: 'technical', ttlMinutes: 15 });
     call(w.h, 'casey2', mod.redeem_invite, (await redeemArgs(w, inv3, 'casey')).args); // clashes with the commander's name
     expect(attempts(w, 'casey2').map((a) => a.ok)).toEqual([false]);
+  });
+
+  it('a revoked invitee redeems a new invite under fresh keys, and the old row stays revoked', async () => {
+    const w = await World.create();
+    await w.joinAndAdmit('dana', 'counsel');
+    const first = w.memberRow('dana');
+    await w.revoke('dana');
+    expect(w.allRows('dana').map((m) => m.state)).toEqual(['revoked']);
+    await w.join('dana', 'technical', 'Dana'); // same identity, same name, new keys
+    expect(w.allRows('dana').map((m) => m.state).sort()).toEqual(['pending', 'revoked']);
+    expect(w.allRows('dana').find((m) => m.state === 'revoked')!.id).toBe(first.id);
+    await w.admit('dana', 'Dana');
+    const live = w.memberRow('dana');
+    expect(live.state).toBe('active');
+    expect(live.id).not.toBe(first.id);
+    expect(live.role).toBe('technical');
+    // The new keys can write; the old revoked row is untouched.
+    await w.append('dana', 'technical');
+    expect(w.allRows('dana').find((m) => m.id === first.id)!.state).toBe('revoked');
+  });
+
+  it('refuses the old revoked keys on a new invite, and a live membership still blocks', async () => {
+    const w = await World.create();
+    const old = await w.joinAndAdmit('dana', 'counsel');
+    await w.revoke('dana');
+    const inv = newInvite(w.incidentId);
+    call(w.h, 'commander', mod.create_invite, { incidentId: w.incidentId, codeHash: inv.codeHash, role: 'counsel', ttlMinutes: 15 });
+    const joinTag = new Uint8Array(32);
+    const before = w.allRows('dana').length;
+    call(w.h, 'dana', mod.redeem_invite, { incidentId: w.incidentId, code: inv.code, displayName: 'Dana', signPub: old.keys.signPub, ecdhPub: old.keys.ecdhPub, joinTag });
+    expect(w.allRows('dana').length).toBe(before); // same signing key: refused, nothing created
+    expect([...w.h.db.invite.iter()].find((i) => i.codeHash === bytesToHex(inv.codeHash))!.used).toBe(false);
+    // Fresh keys work once; then the pending row blocks a second request.
+    await w.join('dana', 'counsel', 'Dana');
+    const again = newInvite(w.incidentId);
+    call(w.h, 'commander', mod.create_invite, { incidentId: w.incidentId, codeHash: again.codeHash, role: 'counsel', ttlMinutes: 15 });
+    const k2 = await generateDeviceKeys();
+    call(w.h, 'dana', mod.redeem_invite, { incidentId: w.incidentId, code: again.code, displayName: 'Dana', signPub: k2.signPub, ecdhPub: k2.ecdhPub, joinTag });
+    expect(w.allRows('dana').length).toBe(before + 1);
+  });
+
+  it('only the same person gets a revoked incident name back, nobody else can take it', async () => {
+    const w = await World.create();
+    await w.joinAndAdmit('dana', 'counsel');
+    await w.revoke('dana');
+    await w.join('eve', 'counsel', 'dana');
+    expect(w.allRows('eve').length).toBe(0); // the log keeps that name for the person who held it
+    await w.join('dana', 'counsel', 'dana');
+    expect(w.memberRow('dana').state).toBe('pending');
+  });
+
+  it('successful joins do not use up the guess limit, so repeated test cycles keep working', async () => {
+    const w = await World.create();
+    for (let i = 0; i < 7; i++) {
+      await w.join('dana', 'counsel', 'Dana');
+      await w.revoke('dana'); // revokes the pending row
+    }
+    expect(w.allRows('dana').filter((m) => m.state === 'revoked').length).toBe(7);
+    await w.join('dana', 'counsel', 'Dana');
+    expect(w.memberRow('dana').state).toBe('pending');
   });
 
   it('malformed arguments are rejected outright', async () => {
@@ -635,7 +702,7 @@ describe('revoke_member (T13)', () => {
     await w.joinAndAdmit('sam', 'technical');
     const sam = w.memberRow('sam');
     const samP = w.people.get('sam')!;
-    const revokeSig = await sign(w.cmd.keys.signPriv, revokeStatement(w.incidentId, samP.hex));
+    const revokeSig = await sign(w.cmd.keys.signPriv, revokeStatement(w.incidentId, samP.hex, samP.keys.signPub, samP.keys.ecdhPub));
     const base = { incidentId: w.incidentId, memberId: sam.id, revokeSig };
     expectThrows(() => call(w.h, 'dana', mod.revoke_member, { ...base, rotations: [] }), 'not authorized');
     expectThrows(() => call(w.h, 'sam', mod.revoke_member, { ...base, rotations: [] }), 'not authorized');
@@ -643,8 +710,8 @@ describe('revoke_member (T13)', () => {
     expectThrows(() => call(w.h, 'commander', mod.revoke_member, { ...base, rotations: [] })); // active target needs rotations
     expectThrows(() => call(w.h, 'commander', mod.revoke_member, { ...base, revokeSig: new Uint8Array(5), rotations: [] }));
     // A signature for a different member, or by another key, is refused even with valid rotations.
-    const forDana = await sign(w.cmd.keys.signPriv, revokeStatement(w.incidentId, w.people.get('dana')!.hex));
-    const byOther = await sign(samP.keys.signPriv, revokeStatement(w.incidentId, samP.hex));
+    const forDana = await sign(w.cmd.keys.signPriv, revokeStatement(w.incidentId, w.people.get('dana')!.hex, w.people.get('dana')!.keys.signPub, w.people.get('dana')!.keys.ecdhPub));
+    const byOther = await sign(samP.keys.signPriv, revokeStatement(w.incidentId, samP.hex, samP.keys.signPub, samP.keys.ecdhPub));
     for (const bad of [forDana, byOther, new Uint8Array(64)]) {
       expectThrows(() => call(w.h, 'commander', mod.revoke_member, { ...base, revokeSig: bad, rotations: [] }));
     }

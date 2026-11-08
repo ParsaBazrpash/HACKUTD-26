@@ -287,6 +287,70 @@ describe('revoke', () => {
     expect(cmd.client.getState().integrity.ok).toBe(true);
   });
 
+  it('a revoked person comes back through a new invite under fresh keys, in both directions', async () => {
+    const hub = new HarnessHub();
+    const { cmd, incidentId } = await startIncident(hub);
+    const dana = await joinAndAdmit(hub, cmd, 'counsel', 'Dana');
+    await dana.client.postMessage('privileged', { text: 'dana before', mentions: [] });
+    await settle();
+    const oldRow = cmd.client.getState().members.find((m) => m.displayName === 'Dana')!;
+    const savedKeys = await new IncidentStore(incidentId, dana.db).getDeviceKeys();
+    await cmd.client.revokeMember(oldRow.memberId, 'testing a mistake');
+    await settle();
+    expect(dana.client.getState().me).toMatchObject({ state: 'revoked' });
+    await cmd.client.postMessage('privileged', { text: 'while out', mentions: [] });
+    await settle();
+
+    // A leftover key record on the device (the wipe may not have run) must not turn the new link into "open the old room".
+    await new IncidentStore(incidentId, dana.db).setDeviceKeys(savedKeys!);
+
+    // The commander makes a fresh invite and the same person redeems it from the same browser.
+    const { url } = await cmd.client.createInvite({ role: 'technical' });
+    await dana.client.redeemInvite({ fragment: fragmentOf(url), displayName: 'Dana' });
+    await settle();
+    expect(dana.client.getState().me).toMatchObject({ state: 'pending', role: 'technical', displayName: 'Dana' });
+    const rows = cmd.client.getState().members.filter((m) => m.displayName === 'Dana');
+    expect(rows.map((m) => m.state).sort()).toEqual(['pending', 'revoked']);
+    const fresh = rows.find((m) => m.state === 'pending')!;
+    expect(fresh.memberId).not.toBe(oldRow.memberId);
+    expect(fresh.fingerprint).not.toBe(oldRow.fingerprint);
+    expect(fresh.linkVerified).toBe(true);
+
+    await cmd.client.admitMember(fresh.memberId);
+    await settle();
+    expect(dana.client.getState().me).toMatchObject({ state: 'active', role: 'technical', verified: true });
+    await dana.client.postMessage('technical', { text: 'dana back', mentions: [] });
+    await cmd.client.postMessage('technical', { text: 'welcome back', mentions: [] });
+    await settle();
+    expect(texts(dana, 'technical')).toEqual(['dana back', 'welcome back']);
+    expect(texts(cmd, 'technical')).toEqual(['dana back', 'welcome back']);
+    // Earlier history still verifies, and the old row is still revoked.
+    expect(cmd.client.getState().integrity.ok).toBe(true);
+    expect(dana.client.getState().integrity.ok).toBe(true);
+    expect(texts(cmd, 'privileged')).toContain('dana before');
+    expect(cmd.client.getState().members.filter((m) => m.displayName === 'Dana').map((m) => m.state).sort()).toEqual(['active', 'revoked']);
+    // The revoked person was not given the technical-only room's private history through the old keys: privileged stays closed.
+    expect(texts(dana, 'privileged')).toEqual([]);
+  });
+
+  it('a pending joiner who was revoked can redeem a new invite too', async () => {
+    const hub = new HarnessHub();
+    const { cmd } = await startIncident(hub);
+    const tom = await joinAs(hub, cmd, 'technical', 'Tom');
+    const first = cmd.client.getState().members.find((m) => m.displayName === 'Tom')!;
+    await cmd.client.revokeMember(first.memberId, 'wrong person');
+    await settle();
+    expect(tom.client.getState().me).toMatchObject({ state: 'revoked' });
+    const { url } = await cmd.client.createInvite({ role: 'technical' });
+    await tom.client.redeemInvite({ fragment: fragmentOf(url), displayName: 'Tom' });
+    await settle();
+    expect(tom.client.getState().me).toMatchObject({ state: 'pending', displayName: 'Tom' });
+    const fresh = cmd.client.getState().members.find((m) => m.displayName === 'Tom' && m.state === 'pending')!;
+    await cmd.client.admitMember(fresh.memberId);
+    await settle();
+    expect(tom.client.getState().me).toMatchObject({ state: 'active' });
+  });
+
   it('only the commander can invite, admit or revoke', async () => {
     const hub = new HarnessHub();
     const { cmd } = await startIncident(hub);
@@ -295,6 +359,92 @@ describe('revoke', () => {
     const me = dana.client.getState().members.find((m) => m.displayName === 'Casey')!;
     await expect(dana.client.revokeMember(me.memberId, 'coup')).rejects.toThrow();
     await expect(dana.client.admitMember(me.memberId)).rejects.toThrow();
+  });
+});
+
+describe('a server that lies about revocation', () => {
+  it('a "revoked" state without the commander signature wipes nothing', async () => {
+    const hub = new HarnessHub();
+    const { cmd, incidentId } = await startIncident(hub);
+    const dana = await joinAndAdmit(hub, cmd, 'counsel', 'Dana');
+    const row = [...hub.h.db.member.iter()].find((m) => m.incidentId === incidentId && m.displayName === 'Dana')!;
+    (hub.h.db.member.id as any).update({ ...row, state: 'revoked', revokeSig: new Uint8Array(0) });
+    hub.notify();
+    await settle();
+    expect(dana.client.getState().me).toBeNull();
+    expect(dana.client.getState().error).toMatch(/could not be verified/);
+    const store = new IncidentStore(incidentId, dana.db);
+    expect(await store.getDeviceKeys()).toBeDefined();
+    expect(await store.getCommander()).toBeDefined();
+    // A new invite does not make the device throw its keys away either.
+    const { url } = await cmd.client.createInvite({ role: 'technical' });
+    await expect(dana.client.redeemInvite({ fragment: fragmentOf(url), displayName: 'Dana' })).rejects.toThrow(/could not be verified/);
+    expect(await store.getDeviceKeys()).toBeDefined();
+  });
+
+  it('a revoked row flipped back to active gets no new key and is reported', async () => {
+    const hub = new HarnessHub();
+    const { cmd, incidentId } = await startIncident(hub);
+    await joinAndAdmit(hub, cmd, 'counsel', 'Dana');
+    await joinAndAdmit(hub, cmd, 'counsel', 'Erin');
+    const dana = cmd.client.getState().members.find((m) => m.displayName === 'Dana')!;
+    await cmd.client.revokeMember(dana.memberId, 'left');
+    await settle();
+    const row = [...hub.h.db.member.iter()].find((m) => m.incidentId === incidentId && m.displayName === 'Dana')!;
+    (hub.h.db.member.id as any).update({ ...row, state: 'active', revokeSig: new Uint8Array(0), revokedAt: undefined });
+    hub.notify();
+    await settle();
+    expect(cmd.client.getState().integrity.ok).toBe(false);
+    const erin = cmd.client.getState().members.find((m) => m.displayName === 'Erin')!;
+    const before = [...hub.h.db.key_envelope.iter()].length;
+    await expect(cmd.client.revokeMember(erin.memberId, 'left')).rejects.toThrow();
+    expect([...hub.h.db.key_envelope.iter()].length).toBe(before);
+  });
+});
+
+describe('revoked keys the commander remembers', () => {
+  it('admit refuses the old keys even when the server hides the old revoked row', async () => {
+    const hub = new HarnessHub();
+    const { cmd, incidentId } = await startIncident(hub);
+    await joinAndAdmit(hub, cmd, 'counsel', 'Dana');
+    const dana = cmd.client.getState().members.find((m) => m.displayName === 'Dana')!;
+    await cmd.client.revokeMember(dana.memberId, 'left');
+    await settle();
+    const old = [...hub.h.db.member.iter()].find((m) => m.incidentId === incidentId && m.displayName === 'Dana')!;
+    // The operator drops the revoked row and re-inserts the same keys as a new pending row, joinTag included.
+    (hub.h.db.member.id as any).delete(old.id);
+    (hub.h.db.member as any).insert({ ...old, id: 0n, state: 'pending', admitSig: new Uint8Array(0), revokeSig: new Uint8Array(0), revokedAt: undefined, admittedAt: undefined });
+    hub.notify();
+    await settle();
+    const pending = cmd.client.getState().members.find((m) => m.displayName === 'Dana' && m.state === 'pending')!;
+    const before = [...hub.h.db.key_envelope.iter()].length;
+    await expect(cmd.client.admitMember(pending.memberId)).rejects.toThrow(/revoked/);
+    expect([...hub.h.db.key_envelope.iter()].length).toBe(before);
+  });
+
+  it('a person revoked twice with the tab closed can still come back', async () => {
+    const hub = new HarnessHub();
+    const { cmd, incidentId } = await startIncident(hub);
+    const dana = await joinAndAdmit(hub, cmd, 'counsel', 'Dana');
+    const first = cmd.client.getState().members.find((m) => m.displayName === 'Dana')!;
+    await cmd.client.revokeMember(first.memberId, 'one');
+    await settle();
+    const { url } = await cmd.client.createInvite({ role: 'counsel' });
+    await dana.client.redeemInvite({ fragment: fragmentOf(url), displayName: 'Dana' });
+    await settle();
+    const second = cmd.client.getState().members.find((m) => m.displayName === 'Dana' && m.state === 'pending')!;
+    await cmd.client.admitMember(second.memberId);
+    await settle();
+    const store = new IncidentStore(incidentId, dana.db);
+    const saved = await store.getDeviceKeys();
+    await cmd.client.revokeMember(second.memberId, 'two');
+    await settle();
+    // The wipe never ran on this device: put the second keys back as they would be with the tab closed.
+    await store.setDeviceKeys(saved!);
+    const again = await cmd.client.createInvite({ role: 'counsel' });
+    await dana.client.redeemInvite({ fragment: fragmentOf(again.url), displayName: 'Dana' });
+    await settle();
+    expect(dana.client.getState().me).toMatchObject({ state: 'pending', displayName: 'Dana' });
   });
 });
 

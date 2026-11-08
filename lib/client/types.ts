@@ -51,6 +51,8 @@ export interface MemberView extends MemberRef {
   fingerprint: string;
   /** True when the member's admitSig verifies under the pinned commander key. */
   verified: boolean;
+  /** Set when the member was added from the org roster: the roster row (org member id) they were added under. */
+  rosterId?: bigint;
   /** Commander view of a pending member: the joinTag matched the invite secret. */
   linkVerified?: boolean;
   /** "123 456 789 012". Shown to me, and to the commander for pending members. */

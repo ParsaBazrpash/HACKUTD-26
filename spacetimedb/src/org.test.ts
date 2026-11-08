@@ -254,7 +254,7 @@ class Room {
         .filter((m) => readableChannels(m.role as Role).includes(kind))
         .map((m) => ({ recipient: m.identity, wrapped: new Uint8Array(48), iv: new Uint8Array(12) })),
     }));
-    const revokeSig = await sign(o.admin.keys.signPriv, revokeStatement(this.incidentId, p.hex));
+    const revokeSig = await sign(o.admin.keys.signPriv, revokeStatement(this.incidentId, p.hex, row.signPub, row.ecdhPub));
     call(this.h, 'admin', mod.revoke_member, { incidentId: this.incidentId, memberId: row.id, revokeSig, rotations });
   }
 
@@ -406,6 +406,38 @@ describe('enroll_member', () => {
     // While the new row is active the name is taken again.
     await o.enroll('carol', 'Alice', '+15551230008');
     expect([...o.h.db.org_member.iter()].some((m) => m.identity.toHexString() === hexOf(o.h, 'carol'))).toBe(false);
+  });
+
+  it('a revoked person cannot enroll again with the old revoked keys', async () => {
+    const o = await Org.create();
+    const old = await o.enrollApproved('alice', 'Alice');
+    call(o.h, 'admin', mod.revoke_org_member, { orgId: o.orgId, orgMemberId: o.row('alice').id, reason: 'lost phone', revokeSig: await o.revokeSig('alice') });
+    const sealedContact = await sealContact(o.pagerPub, o.orgId, old.hex, '+15551230000');
+    const code = o.link();
+    call(o.h, 'alice', mod.enroll_member, {
+      orgId: o.orgId,
+      code,
+      displayName: 'Alice',
+      signPub: old.keys.signPub,
+      ecdhPub: old.keys.ecdhPub,
+      joinTag: new Uint8Array(32),
+      sealedContact,
+    });
+    const rows = [...o.h.db.org_member.iter()].filter((m) => m.identity.toHexString() === old.hex);
+    expect(rows.map((m) => m.state)).toEqual(['revoked']);
+    // The link was not burned, so a fresh enrollment with it still works.
+    await o.enroll('alice', 'Alice', '+15551230000', code);
+    expect([...o.h.db.org_member.iter()].filter((m) => m.identity.toHexString() === old.hex).map((m) => m.state).sort()).toEqual(['pending', 'revoked']);
+  });
+
+  it('successful enrollments do not use up the guess limit, so repeated test cycles keep working', async () => {
+    const o = await Org.create();
+    for (let i = 0; i < 7; i++) {
+      await o.enroll('alice', 'Alice');
+      call(o.h, 'admin', mod.revoke_org_member, { orgId: o.orgId, orgMemberId: o.row('alice').id, reason: 'test', revokeSig: await o.revokeSig('alice', 'test') });
+    }
+    await o.enrollApproved('alice', 'Alice');
+    expect(o.row('alice').state).toBe('active');
   });
 
   it('a different person can enroll under a name that only a revoked row still holds', async () => {
@@ -670,6 +702,18 @@ describe('add_from_roster', () => {
     room.page([rosterRow.id]);
     expect([...room.h.db.page.iter()].some((p) => p.orgMemberId === rosterRow.id)).toBe(true);
     bad(() => room.page([oldOrgId]));
+  });
+
+  it('never brings revoked incident keys back: the same roster row cannot be added again after removal', async () => {
+    const room = await Room.create();
+    const o = room.org;
+    await o.enrollApproved('alice', 'Alice');
+    await room.add('alice');
+    await room.revokeFromIncident('alice');
+    // Same roster row, same keys: refused, and nothing was inserted.
+    const before = [...room.h.db.member.iter()].length;
+    await expect(room.add('alice')).rejects.toThrow();
+    expect([...room.h.db.member.iter()].length).toBe(before);
   });
 
   it('refuses a forged or mismatched admission signature', async () => {

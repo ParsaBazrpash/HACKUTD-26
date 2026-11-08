@@ -418,6 +418,60 @@ describe('verifyIncident: roster and authorization', () => {
     expect(r.roster.get(tech.identityHex)!.member.state).toBe('active');
   });
 
+  it('an old revocation signature copied onto a later enrollment of the same person is refused', async () => {
+    const t = await TestIncident.create();
+    const tech = await t.addMember('technical', 'Sam Tech');
+    await t.revoke(tech, 1_800_000_000_000_500n);
+    const oldSig = tech.row.revokeSig;
+    const keys = await generateDeviceKeys();
+    const admitSig = await sign(
+      t.commander.keys.signPriv,
+      admitStatement(t.incidentId, tech.identityHex, 'technical', 'Sam Tech', keys.signPub, keys.ecdhPub),
+    );
+    const second: RosterMember = {
+      memberId: 99n,
+      identityHex: tech.identityHex,
+      role: 'technical',
+      state: 'revoked',
+      displayName: 'Sam Tech',
+      signPub: keys.signPub,
+      ecdhPub: keys.ecdhPub,
+      admitSig,
+      revokeSig: oldSig, // valid for the first enrollment's keys, not for these
+      revokedAtMicros: 1_800_000_000_000_900n,
+    };
+    const input = t.input('commander');
+    input.members.push(second);
+    const r = await verifyIncident(input);
+    expect(r.report.rosterFailures.some((f) => f.reason.includes('invalid revocation signature'))).toBe(true);
+  });
+
+  it('a return under another role keeps what the old key wrote valid', async () => {
+    const t = await TestIncident.create();
+    const counsel = await t.addMember('counsel', 'Dana Counsel');
+    const before = await t.append(counsel, 'privileged', chat('privileged note'));
+    await t.revoke(counsel, before.serverTsMicros + 1n);
+    const keys = await generateDeviceKeys();
+    const admitSig = await sign(
+      t.commander.keys.signPriv,
+      admitStatement(t.incidentId, counsel.identityHex, 'technical', 'Dana Counsel', keys.signPub, keys.ecdhPub),
+    );
+    const input = t.input('commander');
+    input.members.push({
+      memberId: 99n,
+      identityHex: counsel.identityHex,
+      role: 'technical',
+      state: 'active',
+      displayName: 'Dana Counsel',
+      signPub: keys.signPub,
+      ecdhPub: keys.ecdhPub,
+      admitSig,
+      revokeSig: new Uint8Array(0),
+    });
+    const r = await verifyIncident(input);
+    expect(r.events.find((e) => e.eventId === before.clientEventId)!.verdict.ok).toBe(true);
+  });
+
   it('events after revocation are invalid, earlier ones stay valid (T13)', async () => {
     const { t, tech } = await baseline();
     const before = t.events.record.find((e) => e.author === tech.identityHex)!;

@@ -1,4 +1,4 @@
-import type { IncidentState, PageView, RosterMember } from "@/lib/client/types";
+import type { IncidentState, MemberView, PageView, RosterMember } from "@/lib/client/types";
 
 export type PickRole = "counsel" | "technical" | "executive";
 
@@ -14,11 +14,36 @@ export function canPage(state: Pick<IncidentState, "me" | "org">): boolean {
 export type PickCheck = { pickable: true } | { pickable: false; reason: string };
 
 /** Roster members who may be added to this incident, or the short reason they may not. */
-export function pickCheck(member: RosterMember): PickCheck {
+export function pickCheck(member: RosterMember, room: Pick<MemberView, "fingerprint" | "state">[] = []): PickCheck {
   if (member.state === "pending") return { pickable: false, reason: "Waiting for approval" };
   if (member.state === "revoked") return { pickable: false, reason: "Revoked" };
+  // Same keys as a row already removed from this room: a revoked key stays revoked.
+  if (room.some((m) => m.state === "revoked" && m.fingerprint === member.fingerprint)) {
+    return { pickable: false, reason: "Removed from this room. They must enroll again with a fresh link." };
+  }
   if (member.keyChanged) return { pickable: false, reason: "Key changed, confirm with them first" };
   return { pickable: true };
+}
+
+/**
+ * Identities that count as already in the room. A live member is not counted when they came in under a roster
+ * row that is now revoked and the roster holds a newer approved enrollment for them: that new enrollment may
+ * replace the old access, so it stays on offer.
+ */
+export function identitiesInRoom(
+  members: Pick<MemberView, "identity" | "state" | "rosterId">[],
+  roster: RosterMember[],
+): Set<string> {
+  const out = new Set<string>();
+  for (const m of members) {
+    if (m.state === "revoked") continue;
+    const replaceable =
+      m.rosterId !== undefined &&
+      roster.some((r) => r.orgMemberId === m.rosterId && r.state === "revoked") &&
+      roster.some((r) => r.identity === m.identity && r.state === "active" && r.orgMemberId !== m.rosterId);
+    if (!replaceable) out.add(m.identity);
+  }
+  return out;
 }
 
 /** Roster members whose identity is not already in this incident (any state but revoked). */

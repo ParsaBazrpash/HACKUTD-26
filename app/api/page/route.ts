@@ -1,4 +1,4 @@
-import { loadPagerConfig } from '@/lib/pager/config';
+import { loadPagerConfig, pagerConfigProblems } from '@/lib/pager/config';
 import { handlePage, newSeenPages } from '@/lib/pager/page';
 import { MAX_PAGE_BODY_BYTES } from '@/lib/protocol/org';
 
@@ -12,6 +12,19 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ ok: false, error: 'bad_body' }, { status: 413, headers: { 'Cache-Control': 'no-store' } });
   }
   const raw = await request.text();
-  const result = await handlePage(raw, { cfg: loadPagerConfig(), fetch, now: Date.now, seen });
+  const cfg = loadPagerConfig();
+  const result = await handlePage(raw, { cfg, fetch, now: Date.now, seen });
+  if (!result.body.ok || result.detail) {
+    // Vercel function log: the check that refused, and for a bad config the setting names (never values).
+    console.warn(
+      '[page]',
+      JSON.stringify({
+        status: result.status,
+        error: result.body.ok ? undefined : result.body.error,
+        detail: result.detail,
+        configProblems: cfg ? undefined : pagerConfigProblems(),
+      }),
+    );
+  }
   return Response.json(result.body, { status: result.status, headers: { 'Cache-Control': 'no-store' } });
 }

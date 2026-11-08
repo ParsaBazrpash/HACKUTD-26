@@ -63,3 +63,25 @@ export function loadPagerConfig(env: Record<string, string | undefined> = proces
     return null;
   }
 }
+
+/** Names only (never values) of the settings that make loadPagerConfig return null. For server logs. */
+export function pagerConfigProblems(env: Record<string, string | undefined> = process.env): string[] {
+  const t = (k: string): string => env[k]?.trim() ?? '';
+  const out: string[] = [];
+  if (!/^AC[0-9a-zA-Z]{32}$/.test(t('TWILIO_ACCOUNT_SID'))) out.push('TWILIO_ACCOUNT_SID');
+  if (t('TWILIO_AUTH_TOKEN').length === 0) out.push('TWILIO_AUTH_TOKEN');
+  if (!isE164(t('TWILIO_FROM'))) out.push('TWILIO_FROM (must be E.164, e.g. +15551234567)');
+  if (t('PAGER_PRIVATE_KEY').length === 0) out.push('PAGER_PRIVATE_KEY');
+  if (t('SPACETIME_PAGER_TOKEN').length === 0) out.push('SPACETIME_PAGER_TOKEN');
+  if (t('SPACETIME_DB').length === 0) out.push('SPACETIME_DB');
+  if (!t('SPACETIME_HOST').startsWith('https://')) out.push('SPACETIME_HOST (must start with https://)');
+  if (!t('PUBLIC_BASE_URL').startsWith('https://')) out.push('PUBLIC_BASE_URL (must start with https://)');
+  try {
+    const pins = list(env.ORG_ADMIN_SIGN_PUB).map((x) => b64urlDecode(x));
+    if (pins.length === 0 || pins.some((x) => x.length !== PUBKEY_LEN)) out.push('ORG_ADMIN_SIGN_PUB (missing or not a 65-byte key)');
+  } catch {
+    out.push('ORG_ADMIN_SIGN_PUB (not base64url)');
+  }
+  if (list(env.PAGER_ALLOWED_NUMBERS).some((n) => !isE164(n))) out.push('PAGER_ALLOWED_NUMBERS (every entry must be E.164)');
+  return out;
+}
